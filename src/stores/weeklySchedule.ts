@@ -148,6 +148,15 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     return { ok: true }
   }
 
+  /**
+   * Vacía los bloques y slots en memoria. Conserva los ajustes del
+   * cronograma. Para «Borrar datos».
+   */
+  function reset(): void {
+    blocksWithSlots.value = []
+    lastError.value = null
+  }
+
   async function loadAll() {
     loading.value = true
     lastError.value = null
@@ -447,6 +456,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     visibleWindow,
     wouldOverlapOnDay,
     validateSlot,
+    reset,
     loadAll,
     createBlock,
     updateBlock,

@@ -10,12 +10,19 @@ import Text from '@/components/ui/Text.vue'
 import Heading from '@/components/ui/Heading.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Modal from '@/components/ui/Modal.vue'
+import { clearAppData } from '@/composables/clearAppData'
 
 const { current, currentId, themes, setTheme } = useTheme()
 const store = useCalendarStore()
 
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+
+const clearModalOpen = ref(false)
+const clearing = ref(false)
+const clearSuccess = ref(false)
+let clearSuccessTimer: ReturnType<typeof setTimeout> | null = null
 
 function handleClickOutside(e: MouseEvent) {
   if (dropdownRef.value && !dropdownRef.value.contains(e.target as Node)) {
@@ -29,7 +36,10 @@ function selectTheme(id: string) {
 }
 
 onMounted(() => document.addEventListener('mousedown', handleClickOutside))
-onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutside))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleClickOutside)
+  if (clearSuccessTimer) clearTimeout(clearSuccessTimer)
+})
 
 const primaryColor = computed(() => `rgb(${current.value.colors.primary})`)
 
@@ -43,6 +53,31 @@ async function handleConnect() {
 
 async function handleDisconnect() {
   await store.disconnect()
+}
+
+function openClearModal() {
+  clearModalOpen.value = true
+}
+
+function closeClearModal() {
+  clearModalOpen.value = false
+}
+
+async function confirmClearData() {
+  if (clearing.value) return
+  clearing.value = true
+  try {
+    await clearAppData()
+    clearModalOpen.value = false
+    clearSuccess.value = true
+    if (clearSuccessTimer) clearTimeout(clearSuccessTimer)
+    clearSuccessTimer = setTimeout(() => {
+      clearSuccess.value = false
+      clearSuccessTimer = null
+    }, 4000)
+  } finally {
+    clearing.value = false
+  }
 }
 </script>
 
@@ -187,6 +222,83 @@ async function handleDisconnect() {
           <Text variant="body-sm" mono>~/.local/share/com.aeon/</Text>.
         </Text>
       </Card>
+      <Card variant="default" padding="md">
+        <Text variant="card-title" as="h2" class="mb-2">Borrar datos</Text>
+        <Text variant="body-sm" color="muted" class="mb-4">
+          Borra todo el contenido de la app: hábitos, tareas, objetivos, notas, cronograma, eventos
+          locales del calendario y la sesión del Pomodoro. Esta acción no se puede deshacer.
+        </Text>
+        <Button variant="danger" size="sm" data-testid="clear-data-btn" @click="openClearModal">
+          Borrar datos
+        </Button>
+        <Text
+          v-if="clearSuccess"
+          variant="caption"
+          color="success"
+          class="mt-3 font-medium"
+          data-testid="clear-data-success"
+        >
+          Datos borrados.
+        </Text>
+      </Card>
     </section>
+
+    <Modal :open="clearModalOpen" size="md" @close="closeClearModal">
+      <div class="border-b border-hairline px-5 py-4">
+        <Text variant="card-title" as="h2">¿Borrar todos los datos?</Text>
+      </div>
+      <div class="flex flex-col gap-4 px-5 py-5">
+        <Text variant="body-sm" color="muted">Se va a borrar todo el contenido de la app:</Text>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <Text as="span" variant="body-sm" color="muted">Hábitos y sus check-ins</Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">Tareas y sus pasos</Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">Objetivos y sus logs</Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">Notas</Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">
+              Bloques y slots del cronograma semanal
+            </Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">Eventos locales del calendario</Text>
+          </li>
+          <li>
+            <Text as="span" variant="body-sm" color="muted">La sesión del Pomodoro</Text>
+          </li>
+        </ul>
+        <div class="flex flex-col gap-1">
+          <Text variant="eyebrow" color="subtle">Se conserva</Text>
+          <Text variant="body-sm" color="muted">
+            La distribución de Widgets, la conexión y los tokens de Google Calendar, el wallpaper,
+            los ajustes del cronograma y del Pomodoro, tus preferencias de UI y la marca de primera
+            ejecución.
+          </Text>
+        </div>
+        <Text variant="body-sm" class="font-medium text-accent-red">
+          Esta acción no se puede deshacer.
+        </Text>
+      </div>
+      <div class="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
+        <Button variant="tertiary" data-testid="clear-data-cancel" @click="closeClearModal">
+          Cancelar
+        </Button>
+        <Button
+          variant="danger"
+          data-testid="clear-data-confirm"
+          :loading="clearing"
+          @click="confirmClearData"
+        >
+          Borrar datos
+        </Button>
+      </div>
+    </Modal>
   </main>
 </template>

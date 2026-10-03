@@ -180,6 +180,14 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     await persistSession()
   }
 
+  /**
+   * Reinicia la sesión en memoria sin persistir. Para «Borrar datos», donde
+   * la clave de sesión ya fue eliminada y no debe volver a crearse.
+   */
+  function resetSession(): void {
+    session.value = copyInitialSession()
+  }
+
   async function saveSettings(patch: Partial<PomodoroSettings>): Promise<void> {
     settings.value = PomodoroSettingsSchema.parse({ ...settings.value, ...patch })
     if (!session.value.isRunning) {
@@ -200,6 +208,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     resume,
     skip,
     reset,
+    resetSession,
     saveSettings,
     playTestSound,
     advanceIfExpired,

@@ -69,6 +69,7 @@ import {
   parseGcalVisibleCalendarsJson,
   type GcalVisibleCalendars,
 } from '../schemas/calendar'
+import { DATA_CONFIG_KEYS, DATA_TABLES } from './dataScope'
 
 // ───────────────────────────────────────────────────────────────
 // Hábitos
@@ -438,6 +439,19 @@ export async function saveConfig(key: string, value: string): Promise<void> {
 export async function loadConfig(key: string): Promise<string | null> {
   const raw = await invoke<string | null>('load_config', { key })
   return raw
+}
+
+/**
+ * Borra todo el contenido de la app (hábitos, tareas, objetivos, notas,
+ * cronograma) y las claves de config que guardan datos, conservando el
+ * resto de la configuración. El alcance vive en `dataScope.ts`; el
+ * borrado lo ejecuta la capa de persistencia (Rust) en una transacción.
+ */
+export async function clearAllData(): Promise<void> {
+  await invoke('clear_all_data', {
+    tables: [...DATA_TABLES],
+    dataConfigKeys: [...DATA_CONFIG_KEYS],
+  })
 }
 
 // ───────────────────────────────────────────────────────────────

@@ -18,6 +18,12 @@ export const useNotesStore = defineStore('notes', () => {
   const loading = ref(false)
   const lastError = ref<string | null>(null)
 
+  /** Vacía el contenido en memoria (notas). Para «Borrar datos». */
+  function reset(): void {
+    notes.value = []
+    lastError.value = null
+  }
+
   async function loadNotes(): Promise<void> {
     loading.value = true
     lastError.value = null
@@ -74,6 +80,7 @@ export const useNotesStore = defineStore('notes', () => {
     notes,
     loading,
     lastError,
+    reset,
     loadNotes,
     createNote,
     updateNote,
