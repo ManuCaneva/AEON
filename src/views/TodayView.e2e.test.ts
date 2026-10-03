@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 import { useHabitsStore } from '@/stores/habits'
 import TodayView from './TodayView.vue'
 import * as db from '@/lib/db'
@@ -14,6 +15,13 @@ vi.mock('@/lib/db', () => ({
   upsertHabitLog: vi.fn(),
   deleteLog: vi.fn(),
   listLogsInRange: vi.fn(),
+}))
+
+vi.mock('@/composables/useHeatmapCols', () => ({
+  useHeatmapCols: ({ dataCols }: { dataCols: number }) => ({
+    cols: ref(Math.min(20, dataCols)),
+    actualCellSize: ref(10),
+  }),
 }))
 
 const habitId = '123e4567-e89b-12d3-a456-426614174000'

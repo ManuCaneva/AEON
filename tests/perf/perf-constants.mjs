@@ -27,8 +27,9 @@ export const BUDGET = {
 // Referencia orientativa para el diagnóstico de colapso de sidebar
 // (scripts/perf-sidebar-collapse.mjs), medido con el mismo colector:
 // baseline con reflow per-frame del heat grid: 6+ long tasks (hasta ~300ms
-// con muchos hábitos). Con el heat grid de ancho intrínseco y DOM constante
-// el toggle mide 0 long tasks y gaps < 100ms.
+// con muchos hábitos). Con la sidebar overlay (ADR 0009) el contenido se
+// redimensiona una sola vez por toggle y el toggle mide 0 long tasks y
+// gaps < 100ms.
 export const SIDEBAR_COLLAPSE_REFERENCE = {
   maxLongTasks: 0,
   maxFrameGapMs: 100,
