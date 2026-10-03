@@ -25,7 +25,7 @@ function onKeydown(e: KeyboardEvent) {
   <div
     role="button"
     tabindex="0"
-    class="flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-1.5 border-t border-dashed border-hairline py-2 text-ink-muted transition-colors duration-150 ease-out hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+    class="flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-1.5 py-2 text-ink-muted transition-colors duration-150 ease-out hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
     :class="cssClass"
     @click="onClick"
     @keydown="onKeydown"
