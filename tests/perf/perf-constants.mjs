@@ -26,9 +26,19 @@ export const BUDGET = {
 
 // Referencia orientativa para el diagnóstico de colapso de sidebar
 // (scripts/perf-sidebar-collapse.mjs), medido con el mismo colector:
-// baseline sin defer: 5-6 long tasks por colapso+expansión, gaps 66-150ms.
-// El objetivo del defer es 0 long tasks y gaps < 100ms.
+// baseline con reflow per-frame del heat grid: 6+ long tasks (hasta ~300ms
+// con muchos hábitos). Con el heat grid de ancho intrínseco y DOM constante
+// el toggle mide 0 long tasks y gaps < 100ms.
 export const SIDEBAR_COLLAPSE_REFERENCE = {
   maxLongTasks: 0,
+  maxFrameGapMs: 100,
+}
+
+// Budget de CI para el colapso/expansión de sidebar
+// (tests/perf/sidebar-collapse.spec.ts). En dev el toggle mide 0 long tasks;
+// el budget agrega headroom para máquinas de CI más lentas. La regresión que
+// protege (reflow per-frame del heat grid) daba 6+ long tasks por toggle.
+export const SIDEBAR_COLLAPSE_BUDGET = {
+  maxLongTasks: 2,
   maxFrameGapMs: 100,
 }

@@ -195,8 +195,9 @@ El movimiento sigue las reglas del ADR 0004 (`docs/adr/0004-dashboard-css-grid-n
 - **Scroll del calendario anual**: 400ms, mismo easing, transform-only.
 - **Fade-in** (`animate-fade-in`): 200ms, `opacity` + `translateY(4px)`, para menús y transiciones de contenido.
 - **Colores/transform en interacción**: `transition-colors duration-150` en botones, filas e inputs.
-- **Colapso de sidebar** (ADR 0007): el ancho anima 176px ↔ 56px en 300ms con `cubic-bezier(0.16, 1, 0.3, 1)`, acompañado de fundidos de opacidad (labels y textos de sección 300ms, logo 250ms, ícono del botón 150ms). El estado asentado (labels ocultos + filas centradas) se aplica al terminar la transición (`transitionend` + fallback).
-- Reglas: nunca animar `width`/`height`/`top`/`left`; solo `transform`/`opacity`. **Excepción documentada:** el ancho de la sidebar (ADR 0007), medida contra el presupuesto de performance; si se resiente, se revierte. El motor de grilla no se toca.
+- **Colapso de sidebar** (ADR 0007): el ancho anima 176px ↔ 56px en 300ms con `cubic-bezier(0.16, 1, 0.3, 1)`, acompañado de fundidos de opacidad (labels y textos de sección 300ms, logo 250ms, ícono del botón 150ms). El estado asentado (labels ocultos + filas centradas) se aplica al terminar la transición (`transitionend` + fallback). La suavidad depende de que los grids densos no refloween por cuadro (ver **Heatmap** abajo, ADR 0008); hay un escenario de colapso en el presupuesto de performance de CI (`tests/perf/sidebar-collapse.spec.ts`).
+- **Heatmap** (ADR 0008): DOM constante (siempre las 52 columnas de `dataCols`) y grid interno con ancho intrínseco (`w-max`) alineado a la derecha (`ml-auto`), recortado por el contenedor `overflow-hidden`. Así su caja no sigue el ancho de la tarjeta y no reflowea/re-renderiza durante la animación; las semanas más recientes quedan siempre visibles.
+- Reglas: nunca animar `width`/`height`/`top`/`left`; solo `transform`/`opacity`. **Excepción documentada:** el ancho de la sidebar (ADR 0007), medida contra el presupuesto de performance; si se resiente, se revierte. Un grid denso que deba sobrevivir a una animación de layout no debe dimensionarse por el contenedor (usar ancho intrínseco + recorte). El motor de grilla no se toca.
 
 ## Shapes
 

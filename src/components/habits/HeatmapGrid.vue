@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { HabitLog } from '@/schemas/habits'
 import { buildHeatmapGrid, HISTORY_ROWS } from '@/lib/buildHeatmapGrid'
 import { intensityFor, shadeFor } from '@/lib/habitColors'
-import { useHeatmapCols } from '@/composables/useHeatmapCols'
 
 const props = withDefaults(
   defineProps<{ logs: HabitLog[]; color: string; days?: number; target?: number }>(),
@@ -13,14 +12,15 @@ const props = withDefaults(
   }
 )
 
-const containerRef = ref<HTMLElement | null>(null)
+const CELL_SIZE = 10
+const GAP = 2
+
+// Cantidad de columnas del heatmap: constante para un `days` dado. El grid
+// SIEMPRE renderiza todas estas columnas (DOM constante) para que un cambio de
+// ancho no re-renderice las celdas: ese re-render era el costo dominante del
+// freeze al animar la sidebar. La ventana visible se recorta con
+// `overflow-hidden` y `ml-auto` deja siempre visibles las semanas más recientes.
 const dataCols = computed(() => Math.ceil(props.days / HISTORY_ROWS))
-const { cols, actualCellSize } = useHeatmapCols({
-  containerRef,
-  dataCols: dataCols.value,
-  cellSize: 10,
-  gap: 2,
-})
 
 const todayStr = computed(() => {
   const d = new Date()
@@ -59,36 +59,36 @@ function cellStyle(
 
 const cells = computed(() => {
   const built = buildHeatmapGrid({
-    days: cols.value * HISTORY_ROWS,
+    days: dataCols.value * HISTORY_ROWS,
     logs: props.logs,
     rows: HISTORY_ROWS,
     target: props.target,
   })
-  const size = actualCellSize.value
   const color = props.color
   const today = todayStr.value
-  return built.map((c) => cellStyle(c, size, color, today))
+  return built.map((c) => cellStyle(c, CELL_SIZE, color, today))
 })
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    data-testid="heat-grid"
-    class="grid overflow-hidden"
-    :style="{
-      gridTemplateColumns: `repeat(${cols}, ${actualCellSize}px)`,
-      gridTemplateRows: `repeat(${HISTORY_ROWS}, ${actualCellSize}px)`,
-      gridAutoFlow: 'column',
-      gap: '2px',
-    }"
-  >
+  <div data-testid="heat-grid" class="w-full overflow-hidden">
     <div
-      v-for="(style, i) in cells"
-      :key="i"
-      data-testid="heat-cell"
-      class="rounded-[2px] transition-colors duration-200"
-      :style="style"
-    />
+      data-testid="heat-grid-inner"
+      class="ml-auto grid w-max"
+      :style="{
+        gridTemplateColumns: `repeat(${dataCols}, ${CELL_SIZE}px)`,
+        gridTemplateRows: `repeat(${HISTORY_ROWS}, ${CELL_SIZE}px)`,
+        gridAutoFlow: 'column',
+        gap: `${GAP}px`,
+      }"
+    >
+      <div
+        v-for="(style, i) in cells"
+        :key="i"
+        data-testid="heat-cell"
+        class="rounded-[2px] transition-colors duration-200"
+        :style="style"
+      />
+    </div>
   </div>
 </template>
