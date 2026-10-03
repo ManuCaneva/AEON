@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -15,41 +15,42 @@ import Text from '@/components/ui/Text.vue'
 import logoWordmark from '@/assets/logo/logo-wordmark-current.svg?raw'
 
 const ui = useUiStore()
-const { transitioning, start, end, onEnd } = useLayoutTransition()
+const { start, end } = useLayoutTransition()
 
-// El layout colapsado final (labels ocultos, filas centradas) se aplica cuando
-// la transición de width termina de verdad: escuchamos transitionend en el
-// panel y, si no llega (pestaña oculta, interrupción), el fallback del
-// composable asienta el estado igual. Toggle rápido cancela el settle previo.
+// Duración del fundido de opacidad de labels y textos de sección. El ancho
+// salta sin animar (colapso discreto); el fundido cubre el paso visual.
+const SIDEBAR_FADE_MS = 150
+
+// El estado asentado (labels hidden, filas centradas) se aplica cuando el
+// fundido termina. Toggle rápido cancela el settle previo: no queda nada
+// pendiente ni timers sueltos.
 const settled = ref(ui.sidebarCollapsed)
-let stopSettle: (() => void) | undefined
+let settleTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(
   () => ui.sidebarCollapsed,
   (collapsed) => {
-    stopSettle?.()
-    stopSettle = undefined
-    settled.value = false
+    clearTimeout(settleTimer)
+    // Señal única de "el layout cambió": los widgets del dashboard se miden
+    // una sola vez por toggle.
     start()
-    stopSettle = onEnd(() => {
-      settled.value = collapsed
-      stopSettle = undefined
-    })
+    settled.value = false
+    if (collapsed) {
+      // Fundido ~150ms → al terminar, labels ocultos + filas centradas.
+      settleTimer = setTimeout(() => {
+        settled.value = true
+        end()
+      }, SIDEBAR_FADE_MS)
+    } else {
+      // Expandir es instantáneo: el layout ya saltó, la señal se emite al
+      // terminar el render para que nadie mida con el ancho viejo.
+      nextTick(() => end())
+    }
   }
 )
 
-function handleTransitionEnd(event: TransitionEvent) {
-  if (event.target !== event.currentTarget) return
-  if (event.propertyName !== 'width') return
-  if (!transitioning.value) return
-  end()
-}
-
 onBeforeUnmount(() => {
-  // Solo cancelamos el settle local: la transición global sigue su curso y
-  // termina sola (transitionend o fallback), sin cerrar la de otros consumidores.
-  stopSettle?.()
-  stopSettle = undefined
+  clearTimeout(settleTimer)
 })
 
 interface NavRow {
@@ -113,11 +114,7 @@ const rowActive = 'bg-surface-3 text-ink'
 
 <template>
   <aside
-    :class="[
-      'glass-strong flex h-full flex-col rounded-xl transition-[width] duration-150 ease-out',
-      ui.sidebarCollapsed ? 'w-14' : 'w-44',
-    ]"
-    @transitionend="handleTransitionEnd"
+    :class="['glass-strong flex h-full flex-col rounded-xl', ui.sidebarCollapsed ? 'w-14' : 'w-44']"
   >
     <div
       data-testid="sidebar-header"
