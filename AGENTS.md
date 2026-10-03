@@ -149,7 +149,7 @@ Si el cambio es más de 50 líneas, o toca la arquitectura, o agrega una depende
 
 ### Issue tracker
 
-Issues y specs viven como GitHub issues en `ManuCaneva/Habitos` (CLI `gh`). See `docs/agents/issue-tracker.md`.
+Issues y specs viven como GitHub issues en `ManuCaneva/AEON` (CLI `gh`). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
