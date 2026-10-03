@@ -22,41 +22,33 @@ const { cols, actualCellSize } = useHeatmapCols({
   gap: 2,
 })
 
-const cells = computed(() =>
-  buildHeatmapGrid({
-    days: cols.value * HISTORY_ROWS,
-    logs: props.logs,
-    rows: HISTORY_ROWS,
-    target: props.target,
-  })
-)
-
 const todayStr = computed(() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 
-function cellStyle(c: {
-  completed: boolean
-  isEmpty: boolean
-  date: string
-  count: number
-  target: number
-}) {
+// Puro y sin dependencias reactivas: se memoiza dentro del computed de `cells`,
+// de modo que un re-render no vuelve a calcular las 364 celdas.
+function cellStyle(
+  c: { completed: boolean; isEmpty: boolean; date: string; count: number; target: number },
+  size: number,
+  color: string,
+  today: string
+): Record<string, string> {
   const baseStyle: Record<string, string> = {
-    width: `${actualCellSize.value}px`,
-    height: `${actualCellSize.value}px`,
+    width: `${size}px`,
+    height: `${size}px`,
   }
 
   if (c.isEmpty) {
     baseStyle.background = 'transparent'
   } else {
     const intensity = intensityFor(c.count, c.target)
-    const base = shadeFor(props.color, intensity)
+    const base = shadeFor(color, intensity)
     const full = c.count > 0 && c.count >= c.target
-    if (c.date === todayStr.value && full) {
+    if (c.date === today && full) {
       baseStyle.background = base
-      baseStyle.boxShadow = `0 0 0 1px ${shadeFor(props.color, 1)}`
+      baseStyle.boxShadow = `0 0 0 1px ${shadeFor(color, 1)}`
     } else {
       baseStyle.background = base
     }
@@ -64,6 +56,19 @@ function cellStyle(c: {
 
   return baseStyle
 }
+
+const cells = computed(() => {
+  const built = buildHeatmapGrid({
+    days: cols.value * HISTORY_ROWS,
+    logs: props.logs,
+    rows: HISTORY_ROWS,
+    target: props.target,
+  })
+  const size = actualCellSize.value
+  const color = props.color
+  const today = todayStr.value
+  return built.map((c) => cellStyle(c, size, color, today))
+})
 </script>
 
 <template>
@@ -79,11 +84,11 @@ function cellStyle(c: {
     }"
   >
     <div
-      v-for="(c, i) in cells"
+      v-for="(style, i) in cells"
       :key="i"
       data-testid="heat-cell"
       class="rounded-[2px] transition-colors duration-200"
-      :style="cellStyle(c)"
+      :style="style"
     />
   </div>
 </template>

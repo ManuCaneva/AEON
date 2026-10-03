@@ -6,6 +6,7 @@ import NewHabitCard from '@/components/habits/NewHabitCard.vue'
 import EmptyState from '@/components/habits/EmptyState.vue'
 import HabitSection from '@/components/habits/HabitSection.vue'
 import EntityListing from '@/components/ui/EntityListing.vue'
+import type { HabitLog } from '@/schemas/habits'
 
 withDefaults(
   defineProps<{
@@ -16,10 +17,13 @@ withDefaults(
   }
 )
 
+// Referencia estable para hábitos sin logs: evita re-render de la tarjeta por un array nuevo.
+const EMPTY_LOGS: HabitLog[] = []
+
 const habits = useHabitsStore()
 
 const list = computed(() => habits.activeHabits)
-const logs = computed(() => habits.logs)
+const logsByHabit = computed(() => habits.logsByHabit)
 </script>
 
 <template>
@@ -35,9 +39,9 @@ const logs = computed(() => habits.logs)
       <div v-else class="flex flex-col gap-1">
         <HabitCard
           v-for="habit in list"
-          :key="`${habit.id}-${habit.updated_at}`"
+          :key="habit.id"
           :habit="habit"
-          :logs="logs.filter((l) => l.habit_id === habit.id)"
+          :logs="logsByHabit.get(habit.id) ?? EMPTY_LOGS"
         />
       </div>
     </HabitSection>

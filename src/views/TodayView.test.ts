@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import TodayView from './TodayView.vue'
 import NewHabitCard from '@/components/habits/NewHabitCard.vue'
+import { useHabitsStore } from '@/stores/habits'
 
-vi.mock('@/stores/habits', () => ({
-  useHabitsStore: () => ({
+vi.mock('@/stores/habits', async () => {
+  const { reactive } = await import('vue')
+  const store = reactive({
     activeHabits: [
       {
         id: 'h1',
@@ -21,14 +24,16 @@ vi.mock('@/stores/habits', () => ({
       },
     ],
     logs: [],
+    logsByHabit: new Map([['h1', []]]),
     completedToday: new Map(),
     isCompletedToday: vi.fn(() => false),
     incrementCheckIn: vi.fn(),
     decrementCheckIn: vi.fn(),
     getTodayDate: () => '2026-01-01',
     streakFor: vi.fn(() => 0),
-  }),
-}))
+  })
+  return { useHabitsStore: () => store }
+})
 
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({
@@ -108,5 +113,29 @@ describe('TodayView', () => {
     expect(scroll.exists()).toBe(true)
     expect(scroll.classes()).toContain('overflow-auto')
     expect(scroll.classes()).toContain('p-2')
+  })
+
+  it('no remonta la tarjeta cuando cambia updated_at del hábito', async () => {
+    const wrapper = mount(TodayView)
+    const before = wrapper.findComponent({ name: 'HabitCard' }).element
+
+    useHabitsStore().activeHabits[0].updated_at = '2026-02-02T00:00:00.000Z'
+    await nextTick()
+
+    const after = wrapper.findComponent({ name: 'HabitCard' }).element
+    expect(after).toBe(before)
+  })
+
+  it('pasa a HabitCard los logs memoizados del store, sin filtrar en cada render', async () => {
+    const wrapper = mount(TodayView)
+    const store = useHabitsStore()
+    const card = wrapper.findComponent({ name: 'HabitCard' })
+
+    expect(card.props('logs')).toBe(store.logsByHabit.get('h1'))
+
+    store.activeHabits[0].name = 'Meditar 10 min'
+    await nextTick()
+
+    expect(card.props('logs')).toBe(store.logsByHabit.get('h1'))
   })
 })
