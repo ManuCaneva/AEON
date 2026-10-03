@@ -51,6 +51,15 @@ describe('pomodoro store', () => {
     vi.useRealTimers()
   })
 
+  it('arranca en reposo: sin sesión guardada el cronómetro no corre', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    expect(store.session.isRunning).toBe(false)
+    expect(store.session.endsAt).toBeNull()
+    expect(store.session.phase).toBe('focus')
+    expect(store.remainingMs).toBe(defaultPomodoroSettings.focusMinutes * 60_000)
+  })
+
   it('starts, pauses, and resumes using timestamp-based remaining time', async () => {
     const store = usePomodoroStore()
     await store.load()
