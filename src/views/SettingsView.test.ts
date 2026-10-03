@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { computed, ref } from 'vue'
 import SettingsView from './SettingsView.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { useUiStore } from '@/stores/ui'
 
 const mockTheme = {
   id: 'dark',
@@ -240,5 +241,31 @@ describe('SettingsView', () => {
     mockCalendarStore.oauthStatus = 'idle'
     const disconnected = mount(SettingsView)
     expect(disconnected.get("[data-testid='gcal-status']").classes()).toContain('text-ink-muted')
+  })
+
+  it('ofrece tres opciones de tamaño de letra y aplica la elegida', async () => {
+    const wrapper = mount(SettingsView)
+    const group = wrapper.find("[data-testid='text-size-group']")
+    expect(group.exists()).toBe(true)
+    const buttons = group.findAll('button')
+    expect(buttons).toHaveLength(3)
+    expect(group.text()).toContain('Pequeño')
+    expect(group.text()).toContain('Mediano')
+    expect(group.text()).toContain('Grande')
+
+    await buttons[2].trigger('click')
+    const ui = useUiStore()
+    expect(ui.textSize).toBe('large')
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.15')
+  })
+
+  it('marca la opción activa de tamaño de letra', async () => {
+    const ui = useUiStore()
+    ui.setTextSize('small')
+    const wrapper = mount(SettingsView)
+    const buttons = wrapper.find("[data-testid='text-size-group']").findAll('button')
+    expect(buttons[0].attributes('aria-pressed')).toBe('true')
+    expect(buttons[1].attributes('aria-pressed')).toBe('false')
+    expect(buttons[2].attributes('aria-pressed')).toBe('false')
   })
 })

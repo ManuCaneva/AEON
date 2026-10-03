@@ -191,10 +191,10 @@ function cancelEdit() {
       <!-- Header -->
       <header class="flex flex-shrink-0 items-start justify-between border-b border-hairline pb-4">
         <div>
-          <h2 class="mb-1 text-xl font-semibold leading-tight text-ink">
+          <h2 class="mb-1 text-headline font-semibold leading-tight text-ink">
             {{ isFormMode ? (editingEvent ? 'Editar Evento' : 'Nuevo Evento') : 'Agenda del Día' }}
           </h2>
-          <p class="text-sm text-ink-muted">
+          <p class="text-body-sm text-ink-muted">
             {{ formattedDateTitle }}
           </p>
         </div>
@@ -212,7 +212,7 @@ function cancelEdit() {
         <!-- Error Banner / Permissions warning -->
         <div
           v-if="localError || store.syncError"
-          class="mb-4 flex gap-3 rounded-lg border p-3 text-sm"
+          class="mb-4 flex gap-3 rounded-lg border p-3 text-body-sm"
           :class="
             showPermissionWarning
               ? 'border-accent-red/25 bg-accent-red-tint text-accent-red'
@@ -240,7 +240,7 @@ function cancelEdit() {
             v-if="filteredEvents.length === 0"
             class="flex flex-col items-center justify-center py-12 text-center"
           >
-            <p class="mb-4 text-sm text-ink-muted">No hay eventos agendados para este día.</p>
+            <p class="mb-4 text-body-sm text-ink-muted">No hay eventos agendados para este día.</p>
             <Button
               variant="secondary"
               size="sm"
@@ -263,15 +263,15 @@ function cancelEdit() {
                   :style="{ backgroundColor: evt.color }"
                 />
                 <div class="flex min-w-0 flex-col gap-1">
-                  <h4 class="truncate text-sm font-medium leading-normal text-ink">
+                  <h4 class="truncate text-body-sm font-medium leading-normal text-ink">
                     {{ evt.title }}
                   </h4>
-                  <p class="text-xs font-medium text-ink-muted">
+                  <p class="text-caption font-medium text-ink-muted">
                     {{ parseTimeFromIso(evt.start) }} - {{ parseTimeFromIso(evt.end) }}
                   </p>
                   <p
                     v-if="evt.description"
-                    class="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-subtle"
+                    class="mt-1 whitespace-pre-wrap text-caption leading-relaxed text-ink-subtle"
                   >
                     {{ evt.description }}
                   </p>
@@ -308,7 +308,7 @@ function cancelEdit() {
           <!-- Title -->
           <div>
             <label
-              class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              class="mb-1.5 block text-caption font-semibold uppercase tracking-wider text-ink-muted"
               >Título</label
             >
             <Input
@@ -321,7 +321,7 @@ function cancelEdit() {
           <!-- Description -->
           <div>
             <label
-              class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              class="mb-1.5 block text-caption font-semibold uppercase tracking-wider text-ink-muted"
               >Descripción</label
             >
             <Textarea
@@ -335,12 +335,12 @@ function cancelEdit() {
           <!-- Calendar Selector -->
           <div v-if="!editingEvent">
             <label
-              class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              class="mb-1.5 block text-caption font-semibold uppercase tracking-wider text-ink-muted"
               >Calendario de Destino</label
             >
             <select
               v-model="calendarId"
-              class="w-full rounded-md border border-hairline bg-surface-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+              class="w-full rounded-md border border-hairline bg-surface-2 px-3 py-2 text-body-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
               data-testid="calendar-select"
             >
               <option value="local">Local (Solo esta app)</option>
@@ -354,14 +354,14 @@ function cancelEdit() {
           <div class="flex gap-4">
             <div class="flex-1">
               <label
-                class="mb-1.5 block text-center text-xs font-semibold uppercase tracking-wider text-ink-muted"
+                class="mb-1.5 block text-center text-caption font-semibold uppercase tracking-wider text-ink-muted"
                 >Inicio</label
               >
               <TimePicker v-model="startTime" data-testid="event-start-picker" />
             </div>
             <div class="flex-1">
               <label
-                class="mb-1.5 block text-center text-xs font-semibold uppercase tracking-wider text-ink-muted"
+                class="mb-1.5 block text-center text-caption font-semibold uppercase tracking-wider text-ink-muted"
                 >Fin</label
               >
               <TimePicker v-model="endTime" data-testid="event-end-picker" />
@@ -371,7 +371,7 @@ function cancelEdit() {
           <!-- Google Calendar Color Picker -->
           <div>
             <label
-              class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              class="mb-1.5 block text-caption font-semibold uppercase tracking-wider text-ink-muted"
               >Color del Evento</label
             >
             <div
@@ -379,7 +379,7 @@ function cancelEdit() {
             >
               <button
                 type="button"
-                class="flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-medium transition-all"
+                class="flex h-6 w-6 items-center justify-center rounded-full border-2 text-caption font-medium transition-all"
                 :class="
                   selectedColorId === undefined
                     ? 'scale-110 border-ink bg-transparent text-ink ring-2 ring-primary/25'

@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Check, ChevronDown } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import { useCalendarStore } from '@/stores/calendar'
+import { useUiStore } from '@/stores/ui'
+import type { TextSize } from '@/lib/textSize'
 import GcalVisibilityCard from '@/components/calendar/GcalVisibilityCard.vue'
 import WallpaperCard from '@/components/settings/WallpaperCard.vue'
 import Card from '@/components/ui/Card.vue'
@@ -13,6 +15,13 @@ import Badge from '@/components/ui/Badge.vue'
 
 const { current, currentId, themes, setTheme } = useTheme()
 const store = useCalendarStore()
+const ui = useUiStore()
+
+const textSizeOptions: { id: TextSize; label: string }[] = [
+  { id: 'small', label: 'Pequeño' },
+  { id: 'medium', label: 'Mediano' },
+  { id: 'large', label: 'Grande' },
+]
 
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -101,6 +110,38 @@ async function handleDisconnect() {
                 <Check v-if="t.id === currentId" :size="14" class="shrink-0 text-primary" />
               </button>
             </div>
+          </div>
+        </div>
+      </Card>
+      <Card variant="default" padding="md">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <Text variant="card-title" as="h2" class="mb-1">Tamaño de letra</Text>
+            <Text variant="body-sm" color="muted">
+              Elegí qué tan grande se ve el texto en toda la app.
+            </Text>
+          </div>
+          <div
+            data-testid="text-size-group"
+            role="group"
+            aria-label="Tamaño de letra"
+            class="flex shrink-0 items-center gap-1 rounded-md border border-hairline bg-surface-1 p-1"
+          >
+            <button
+              v-for="opt in textSizeOptions"
+              :key="opt.id"
+              type="button"
+              :aria-pressed="ui.textSize === opt.id"
+              class="cursor-pointer rounded px-2.5 py-1 text-body-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              :class="
+                ui.textSize === opt.id
+                  ? 'bg-surface-3 text-ink'
+                  : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+              "
+              @click="ui.setTextSize(opt.id)"
+            >
+              {{ opt.label }}
+            </button>
           </div>
         </div>
       </Card>

@@ -142,13 +142,13 @@ async function deleteBlock() {
 <template>
   <Modal :open="open" size="md" @close="emit('close')">
     <div class="p-4">
-      <h3 class="mb-3 text-card-title text-lg font-semibold text-ink">
+      <h3 class="mb-3 text-card-title font-semibold text-ink">
         {{ block ? 'Editar bloque' : 'Nuevo bloque' }}
       </h3>
-      <label class="mb-1 block text-caption text-xs font-medium text-ink-muted">Título</label>
+      <label class="mb-1 block text-caption font-medium text-ink-muted">Título</label>
       <Input v-model="title" placeholder="Ej. Gimnasio" />
 
-      <label class="mb-1.5 mt-3 block text-caption text-xs font-medium text-ink-muted">Color</label>
+      <label class="mb-1.5 mt-3 block text-caption font-medium text-ink-muted">Color</label>
       <div class="flex gap-2">
         <button
           v-for="c in BLOCK_COLOR_TOKENS"
@@ -167,8 +167,8 @@ async function deleteBlock() {
       </div>
 
       <div class="mt-4">
-        <label class="mb-2 block text-caption text-xs font-medium text-ink-muted">Horarios</label>
-        <div v-if="drafts.length === 0" class="mb-2 text-body-sm text-sm italic text-ink-subtle">
+        <label class="mb-2 block text-caption font-medium text-ink-muted">Horarios</label>
+        <div v-if="drafts.length === 0" class="mb-2 text-body-sm italic text-ink-subtle">
           Sin horarios asignados
         </div>
         <div
@@ -179,7 +179,7 @@ async function deleteBlock() {
             editingIndex === index ? 'border-primary' : 'border-hairline',
           ]"
         >
-          <div class="flex-1 text-body-sm text-sm">
+          <div class="flex-1 text-body-sm">
             <span class="font-medium">{{ DAYS[draft.day_of_week] }}</span>
             <span class="ml-2 text-ink-subtle"
               >{{ minutesToHHMM(draft.start_minutes) }} -
@@ -188,14 +188,14 @@ async function deleteBlock() {
           </div>
           <button
             type="button"
-            class="px-2 py-1 text-xs text-primary hover:text-primary-hover"
+            class="px-2 py-1 text-caption text-primary hover:text-primary-hover"
             @click="startEditing(index)"
           >
             Editar
           </button>
           <button
             type="button"
-            class="px-2 py-1 text-xs text-accent-red transition-colors hover:text-accent-red/80"
+            class="px-2 py-1 text-caption text-accent-red transition-colors hover:text-accent-red/80"
             @click="removeDraft(index)"
           >
             Eliminar
@@ -204,10 +204,10 @@ async function deleteBlock() {
       </div>
 
       <div class="mt-4 rounded-lg border border-hairline bg-surface-2 p-3">
-        <label class="mb-2 block text-caption text-xs font-medium text-ink-muted">
+        <label class="mb-2 block text-caption font-medium text-ink-muted">
           {{ editingIndex !== null ? 'Editar horario' : 'Agregar horario' }}
         </label>
-        <label class="mb-1 block text-caption text-xs font-medium text-ink-muted">Día</label>
+        <label class="mb-1 block text-caption font-medium text-ink-muted">Día</label>
         <select
           v-model="slotDay"
           class="mb-2 w-full rounded-md border border-hairline bg-surface-2 px-2 py-1.5 text-body"
@@ -216,13 +216,13 @@ async function deleteBlock() {
         </select>
         <div class="flex gap-3">
           <div class="flex-1">
-            <label class="mb-1.5 block text-center text-caption text-xs font-medium text-ink-muted"
+            <label class="mb-1.5 block text-center text-caption font-medium text-ink-muted"
               >Inicio</label
             >
             <TimePicker v-model="slotStart" />
           </div>
           <div class="flex-1">
-            <label class="mb-1.5 block text-center text-caption text-xs font-medium text-ink-muted"
+            <label class="mb-1.5 block text-center text-caption font-medium text-ink-muted"
               >Fin</label
             >
             <TimePicker v-model="slotEnd" />
@@ -238,7 +238,7 @@ async function deleteBlock() {
         </div>
       </div>
 
-      <p v-if="error" class="mt-2 text-body-sm text-sm text-accent-red">{{ error }}</p>
+      <p v-if="error" class="mt-2 text-body-sm text-accent-red">{{ error }}</p>
 
       <div class="mt-5 flex justify-between">
         <Button v-if="block" variant="danger" @click="deleteBlock">Eliminar</Button>

@@ -57,39 +57,57 @@ const config: Config = {
       },
       fontSize: {
         'display-xl': [
-          'clamp(2rem, 5vw, 5rem)',
+          'calc(clamp(2rem, 5vw, 5rem) * var(--text-scale))',
           { lineHeight: '1.05', letterSpacing: '-0.0375em', fontWeight: '600' },
         ],
         'display-lg': [
-          'clamp(1.75rem, 3.5vw, 3.5rem)',
+          'calc(clamp(1.75rem, 3.5vw, 3.5rem) * var(--text-scale))',
           { lineHeight: '1.10', letterSpacing: '-0.0321em', fontWeight: '600' },
         ],
         'display-md': [
-          'clamp(1.5rem, 2.5vw, 2.5rem)',
+          'calc(clamp(1.5rem, 2.5vw, 2.5rem) * var(--text-scale))',
           { lineHeight: '1.15', letterSpacing: '-0.025em', fontWeight: '600' },
         ],
         headline: [
-          'clamp(1.25rem, 1.75vw, 1.75rem)',
+          'calc(clamp(1.25rem, 1.75vw, 1.75rem) * var(--text-scale))',
           { lineHeight: '1.20', letterSpacing: '-0.0214em', fontWeight: '600' },
         ],
         'card-title': [
-          'clamp(1rem, 1.4vw, 1.375rem)',
+          'calc(clamp(1rem, 1.4vw, 1.375rem) * var(--text-scale))',
           { lineHeight: '1.25', letterSpacing: '-0.0182em', fontWeight: '500' },
         ],
         subhead: [
-          'clamp(0.9rem, 1.25vw, 1.25rem)',
+          'calc(clamp(0.9rem, 1.25vw, 1.25rem) * var(--text-scale))',
           { lineHeight: '1.40', letterSpacing: '-0.01em', fontWeight: '400' },
         ],
         'body-lg': [
-          'clamp(0.875rem, 1.125vw, 1.125rem)',
+          'calc(clamp(0.875rem, 1.125vw, 1.125rem) * var(--text-scale))',
           { lineHeight: '1.50', letterSpacing: '-0.0056em', fontWeight: '400' },
         ],
-        body: ['16px', { lineHeight: '1.50', letterSpacing: '-0.0031em', fontWeight: '400' }],
-        'body-sm': ['14px', { lineHeight: '1.50', letterSpacing: '0', fontWeight: '400' }],
-        caption: ['12px', { lineHeight: '1.40', letterSpacing: '0', fontWeight: '400' }],
-        button: ['14px', { lineHeight: '1.20', letterSpacing: '0', fontWeight: '500' }],
-        eyebrow: ['13px', { lineHeight: '1.30', letterSpacing: '0.0308em', fontWeight: '500' }],
-        mono: ['13px', { lineHeight: '1.50', letterSpacing: '0', fontWeight: '400' }],
+        body: [
+          'calc(16px * var(--text-scale))',
+          { lineHeight: '1.50', letterSpacing: '-0.0031em', fontWeight: '400' },
+        ],
+        'body-sm': [
+          'calc(14px * var(--text-scale))',
+          { lineHeight: '1.50', letterSpacing: '0', fontWeight: '400' },
+        ],
+        caption: [
+          'calc(12px * var(--text-scale))',
+          { lineHeight: '1.40', letterSpacing: '0', fontWeight: '400' },
+        ],
+        button: [
+          'calc(14px * var(--text-scale))',
+          { lineHeight: '1.20', letterSpacing: '0', fontWeight: '500' },
+        ],
+        eyebrow: [
+          'calc(13px * var(--text-scale))',
+          { lineHeight: '1.30', letterSpacing: '0.0308em', fontWeight: '500' },
+        ],
+        mono: [
+          'calc(13px * var(--text-scale))',
+          { lineHeight: '1.50', letterSpacing: '0', fontWeight: '400' },
+        ],
       },
       borderRadius: {
         xs: '4px',

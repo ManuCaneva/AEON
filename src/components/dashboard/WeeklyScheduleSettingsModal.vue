@@ -57,7 +57,7 @@ async function save() {
 <template>
   <Modal :open="open" size="sm" @close="emit('close')">
     <div class="p-4">
-      <h3 class="mb-3 text-card-title text-lg font-semibold text-ink">Ajustes del cronograma</h3>
+      <h3 class="mb-3 text-card-title font-semibold text-ink">Ajustes del cronograma</h3>
       <label class="mb-1.5 block text-caption font-medium text-ink-muted">Granularidad</label>
       <div class="mb-4 flex gap-2">
         <button
@@ -65,7 +65,7 @@ async function save() {
           :key="g"
           type="button"
           :class="[
-            'rounded-md border px-3 py-1.5 text-sm transition-colors',
+            'rounded-md border px-3 py-1.5 text-body-sm transition-colors',
             granularity === g
               ? 'border-primary bg-primary text-on-primary'
               : 'border-hairline text-ink-muted hover:bg-surface-2',
@@ -83,7 +83,7 @@ async function save() {
           type="button"
           :aria-pressed="enabledDays.includes(index)"
           :class="[
-            'rounded-md border px-2 py-1.5 text-sm transition-colors',
+            'rounded-md border px-2 py-1.5 text-body-sm transition-colors',
             enabledDays.includes(index)
               ? 'border-primary bg-primary text-on-primary'
               : 'border-hairline text-ink-muted hover:bg-surface-2',
@@ -93,7 +93,7 @@ async function save() {
           {{ day }}
         </button>
       </div>
-      <p v-if="error" class="mt-2 text-body-sm text-sm text-accent-red">{{ error }}</p>
+      <p v-if="error" class="mt-2 text-body-sm text-accent-red">{{ error }}</p>
       <div class="mt-5 flex justify-end gap-2">
         <Button variant="ghost" @click="emit('close')">Cancelar</Button>
         <Button @click="save">Guardar</Button>
