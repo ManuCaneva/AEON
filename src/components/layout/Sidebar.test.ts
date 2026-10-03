@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import { mount } from '@vue/test-utils'
 import Sidebar from './Sidebar.vue'
-import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import {
+  LAYOUT_TRANSITION_FALLBACK_MS,
+  useLayoutTransition,
+} from '@/composables/useLayoutTransition'
 
 const setViewMode = vi.fn()
 const toggleEditMode = vi.fn()
@@ -13,6 +16,12 @@ let uiState: Record<string, unknown>
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => uiState,
 }))
+
+function fireTransitionEnd(el: Element, propertyName = 'width') {
+  const event = new Event('transitionend', { bubbles: true }) as Event & { propertyName: string }
+  event.propertyName = propertyName
+  el.dispatchEvent(event)
+}
 
 function mountSidebar() {
   return mount(Sidebar)
@@ -98,12 +107,14 @@ describe('Sidebar', () => {
     }
   })
 
-  it('renders the wordmark logo instead of a text title in the header', () => {
+  it('renders the wordmark logo and the crossfading toggle icons', () => {
     const wrapper = mountSidebar()
     const header = wrapper.get('[data-testid="sidebar-header"]')
     expect(header.find('[data-testid="sidebar-logo"]').exists()).toBe(true)
-    expect(header.findAll('svg')).toHaveLength(2)
-    expect(header.get('[data-testid="sidebar-toggle"]').find('svg').exists()).toBe(true)
+
+    const toggle = header.get('[data-testid="sidebar-toggle"]')
+    expect(toggle.find('[data-testid="toggle-icon-collapse"]').exists()).toBe(true)
+    expect(toggle.find('[data-testid="toggle-icon-expand"]').exists()).toBe(true)
   })
 
   it('anchors the collapse toggle to the right when expanded', async () => {
@@ -163,15 +174,46 @@ describe('Sidebar', () => {
     expect(collapsed.get('aside').classes()).not.toContain('w-44')
   })
 
-  it('el ancho salta sin transición: solo los labels y textos funden opacidad', () => {
+  it('anima el width del panel 300ms con la curva del snap, sin animar todo', () => {
     const wrapper = mountSidebar()
     const aside = wrapper.get('aside')
-    expect(aside.classes()).not.toContain('transition-[width]')
+    expect(aside.classes()).toContain('transition-[width]')
+    expect(aside.classes()).toContain('duration-300')
+    expect(aside.classes()).toContain('ease-[cubic-bezier(0.16,1,0.3,1)]')
     expect(aside.classes()).not.toContain('transition-all')
+  })
+
+  it('labels y textos de sección funden 300ms; el logo 250ms', () => {
+    const wrapper = mountSidebar()
 
     const label = wrapper.get('[data-testid="nav-label-dashboard"]')
     expect(label.classes()).toContain('transition-opacity')
-    expect(label.classes()).toContain('duration-150')
+    expect(label.classes()).toContain('duration-300')
+
+    const eyebrow = wrapper.get('.text-eyebrow')
+    expect(eyebrow.classes()).toContain('transition-opacity')
+    expect(eyebrow.classes()).toContain('duration-300')
+
+    const logo = wrapper.get('[data-testid="sidebar-logo"]')
+    expect(logo.classes()).toContain('transition-opacity')
+    expect(logo.classes()).toContain('duration-[250ms]')
+  })
+
+  it('el ícono del toggle hace crossfade de 150ms entre colapsar y expandir', async () => {
+    const wrapper = mountWithReactiveUi(false)
+
+    const collapseIcon = wrapper.get('[data-testid="toggle-icon-collapse"]')
+    const expandIcon = wrapper.get('[data-testid="toggle-icon-expand"]')
+    expect(collapseIcon.classes()).toContain('transition-opacity')
+    expect(collapseIcon.classes()).toContain('duration-150')
+    expect(collapseIcon.classes()).toContain('opacity-100')
+    expect(expandIcon.classes()).toContain('opacity-0')
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+
+    expect(collapseIcon.classes()).toContain('opacity-0')
+    expect(expandIcon.classes()).toContain('opacity-100')
   })
 
   it('al montar ya colapsado, asienta el layout colapsado sin esperar', () => {
@@ -181,8 +223,7 @@ describe('Sidebar', () => {
     expect(wrapper.get('[data-testid="sidebar-logo"]').classes()).toContain('hidden')
   })
 
-  it('colapsando: funde los labels y asienta el layout al terminar el fundido', async () => {
-    vi.useFakeTimers()
+  it('colapsando: fadea labels sin centrar hasta el settle por transitionend', async () => {
     const wrapper = mountWithReactiveUi(false)
 
     uiState.sidebarCollapsed = true
@@ -198,17 +239,121 @@ describe('Sidebar', () => {
     expect(row.classes()).not.toContain('justify-center')
     expect(wrapper.get('[data-testid="sidebar-header"]').classes()).not.toContain('justify-center')
 
-    vi.advanceTimersByTime(149)
-    await nextTick()
-    expect(label.classes()).not.toContain('hidden')
-    expect(row.classes()).not.toContain('justify-center')
-
-    vi.advanceTimersByTime(1)
+    fireTransitionEnd(aside.element, 'width')
     await nextTick()
 
     expect(label.classes()).toContain('hidden')
     expect(row.classes()).toContain('justify-center')
     expect(wrapper.get('[data-testid="sidebar-header"]').classes()).toContain('justify-center')
+  })
+
+  it('colapsando: settle cae al fallback si transitionend no llega', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountWithReactiveUi(false)
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+
+    const label = wrapper.get('[data-testid="nav-label-pomodoro"]')
+    expect(label.classes()).not.toContain('hidden')
+
+    vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS - 1)
+    await nextTick()
+    expect(label.classes()).not.toContain('hidden')
+
+    vi.advanceTimersByTime(1)
+    await nextTick()
+
+    expect(label.classes()).toContain('hidden')
+    expect(wrapper.get('[data-testid="nav-pomodoro"]').classes()).toContain('justify-center')
+  })
+
+  it('colapsando: ignora transitionend de propiedades que no son width', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountWithReactiveUi(false)
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+
+    fireTransitionEnd(wrapper.get('aside').element, 'opacity')
+    await nextTick()
+    expect(wrapper.get('[data-testid="nav-label-pomodoro"]').classes()).not.toContain('hidden')
+
+    fireTransitionEnd(wrapper.get('aside').element, 'width')
+    await nextTick()
+    expect(wrapper.get('[data-testid="nav-label-pomodoro"]').classes()).toContain('hidden')
+
+    vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS * 2)
+  })
+
+  it('expandir hace fade-in de labels y logo en vez de aparecer de golpe', async () => {
+    const wrapper = mountWithReactiveUi(true)
+    const label = wrapper.get('[data-testid="nav-label-pomodoro"]')
+    const logo = wrapper.get('[data-testid="sidebar-logo"]')
+    expect(label.classes()).toContain('hidden')
+    expect(logo.classes()).toContain('hidden')
+
+    uiState.sidebarCollapsed = false
+    await nextTick()
+
+    // Primer cuadro: ya visibles (sin display:none) pero en opacidad 0.
+    expect(label.classes()).not.toContain('hidden')
+    expect(label.classes()).toContain('opacity-0')
+    expect(logo.classes()).not.toContain('hidden')
+    expect(logo.classes()).toContain('opacity-0')
+
+    await nextTick()
+    await nextTick()
+
+    // Cuadro siguiente: opacidad 1, la transición corre.
+    expect(label.classes()).not.toContain('opacity-0')
+    expect(logo.classes()).not.toContain('opacity-0')
+  })
+
+  it('expandir revierte el layout y anima el ancho', async () => {
+    const wrapper = mountWithReactiveUi(true)
+    expect(wrapper.get('[data-testid="nav-pomodoro"]').classes()).toContain('justify-center')
+
+    uiState.sidebarCollapsed = false
+    await nextTick()
+
+    const row = wrapper.get('[data-testid="nav-pomodoro"]')
+    expect(wrapper.get('aside').classes()).toContain('w-44')
+    expect(row.classes()).not.toContain('justify-center')
+  })
+
+  it('expandir antes del settle cancela el layout colapsado pendiente', async () => {
+    const wrapper = mountWithReactiveUi(false)
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+    uiState.sidebarCollapsed = false
+    await nextTick()
+
+    // Aunque llegue el transitionend tardío de la ida, la vuelta ya revirtió.
+    fireTransitionEnd(wrapper.get('aside').element, 'width')
+    await nextTick()
+
+    const row = wrapper.get('[data-testid="nav-pomodoro"]')
+    expect(row.classes()).not.toContain('justify-center')
+    expect(wrapper.get('[data-testid="nav-label-pomodoro"]').classes()).not.toContain('hidden')
+  })
+
+  it('transitionend no llega y expandir después: el fallback no asienta el layout colapsado', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountWithReactiveUi(false)
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+    uiState.sidebarCollapsed = false
+    await nextTick()
+
+    vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS * 2)
+    await nextTick()
+
+    const row = wrapper.get('[data-testid="nav-pomodoro"]')
+    expect(row.classes()).not.toContain('justify-center')
+    expect(wrapper.get('[data-testid="nav-label-pomodoro"]').classes()).not.toContain('hidden')
   })
 
   it('colapsado asentado: los labels ocultos no reciben foco ni se anuncian', () => {
@@ -225,7 +370,6 @@ describe('Sidebar', () => {
   })
 
   it('al asentar el colapso emite una única señal de que el layout cambió', async () => {
-    vi.useFakeTimers()
     const { onEnd } = useLayoutTransition()
     const layoutChanged = vi.fn()
     const unsubscribe = onEnd(layoutChanged)
@@ -235,7 +379,7 @@ describe('Sidebar', () => {
     await nextTick()
     expect(layoutChanged).not.toHaveBeenCalled()
 
-    vi.advanceTimersByTime(150)
+    fireTransitionEnd(wrapper.get('aside').element, 'width')
     await nextTick()
     expect(layoutChanged).toHaveBeenCalledTimes(1)
 
@@ -243,36 +387,7 @@ describe('Sidebar', () => {
     wrapper.unmount()
   })
 
-  it('expandir revierte el layout inmediatamente', async () => {
-    const wrapper = mountWithReactiveUi(true)
-    expect(wrapper.get('[data-testid="nav-pomodoro"]').classes()).toContain('justify-center')
-
-    uiState.sidebarCollapsed = false
-    await nextTick()
-
-    const row = wrapper.get('[data-testid="nav-pomodoro"]')
-    expect(wrapper.get('aside').classes()).toContain('w-44')
-    expect(row.classes()).not.toContain('justify-center')
-  })
-
-  it('expandir antes del fundido cancela el asentamiento colapsado pendiente', async () => {
-    vi.useFakeTimers()
-    const wrapper = mountWithReactiveUi(false)
-
-    uiState.sidebarCollapsed = true
-    await nextTick()
-    uiState.sidebarCollapsed = false
-    await nextTick()
-
-    vi.advanceTimersByTime(1000)
-    await nextTick()
-
-    const row = wrapper.get('[data-testid="nav-pomodoro"]')
-    expect(row.classes()).not.toContain('justify-center')
-    expect(wrapper.get('[data-testid="nav-label-pomodoro"]').classes()).not.toContain('hidden')
-  })
-
-  it('desmontar durante el fundido no deja timers colgados', async () => {
+  it('desmontar durante el settle no deja timers colgados', async () => {
     vi.useFakeTimers()
     const wrapper = mountWithReactiveUi(false)
 
@@ -280,7 +395,7 @@ describe('Sidebar', () => {
     await nextTick()
     wrapper.unmount()
 
-    expect(() => vi.advanceTimersByTime(1000)).not.toThrow()
+    expect(() => vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS * 2)).not.toThrow()
     await nextTick()
   })
 })

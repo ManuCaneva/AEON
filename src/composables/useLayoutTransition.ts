@@ -1,6 +1,8 @@
 import { readonly, ref, type Ref } from 'vue'
 
-export const LAYOUT_TRANSITION_FALLBACK_MS = 400
+// Cubre los 300ms de la transición de ancho de la sidebar más el asentado
+// posterior (labels ocultos + filas centradas) por si el transitionend no llega.
+export const LAYOUT_TRANSITION_FALLBACK_MS = 600
 
 const active = ref(false)
 let fallbackTimer: ReturnType<typeof setTimeout> | undefined

@@ -15,42 +15,58 @@ import Text from '@/components/ui/Text.vue'
 import logoWordmark from '@/assets/logo/logo-wordmark-current.svg?raw'
 
 const ui = useUiStore()
-const { start, end } = useLayoutTransition()
+const { transitioning, start, end, onEnd } = useLayoutTransition()
 
-// Duración del fundido de opacidad de labels y textos de sección. El ancho
-// salta sin animar (colapso discreto); el fundido cubre el paso visual.
-const SIDEBAR_FADE_MS = 150
-
-// El estado asentado (labels hidden, filas centradas) se aplica cuando el
-// fundido termina. Toggle rápido cancela el settle previo: no queda nada
-// pendiente ni timers sueltos.
+// El panel anima su ancho (176px ↔ 56px) en 300ms con la curva del snap de
+// widgets; los fundidos de opacidad acompañan (labels/textos 300ms, logo
+// 250ms, ícono del botón 150ms). El estado asentado (labels ocultos + filas
+// centradas) se aplica cuando la transición de ancho termina de verdad
+// (transitionend), con el fallback del composable como red.
 const settled = ref(ui.sidebarCollapsed)
-let settleTimer: ReturnType<typeof setTimeout> | undefined
+// Al expandir, los labels vuelven de `display:none`. Los mostramos un cuadro
+// en opacidad 0 y recién en el siguiente la subimos a 1, para que la
+// transición de opacidad corra en vez de aparecer de golpe.
+const expanding = ref(false)
+let stopSettle: (() => void) | undefined
+let revealToken = 0
 
 watch(
   () => ui.sidebarCollapsed,
   (collapsed) => {
-    clearTimeout(settleTimer)
-    // Señal única de "el layout cambió": los widgets del dashboard se miden
-    // una sola vez por toggle.
-    start()
+    stopSettle?.()
+    stopSettle = undefined
     settled.value = false
-    if (collapsed) {
-      // Fundido ~150ms → al terminar, labels ocultos + filas centradas.
-      settleTimer = setTimeout(() => {
-        settled.value = true
-        end()
-      }, SIDEBAR_FADE_MS)
-    } else {
-      // Expandir es instantáneo: el layout ya saltó, la señal se emite al
-      // terminar el render para que nadie mida con el ancho viejo.
-      nextTick(() => end())
+    expanding.value = !collapsed
+    // Invalida cualquier reveal pendiente de un toggle anterior.
+    const token = ++revealToken
+    // Señal única de "el layout cambió": los widgets del dashboard se miden
+    // una sola vez por toggle, al asentarse.
+    start()
+    stopSettle = onEnd(() => {
+      settled.value = collapsed
+      stopSettle = undefined
+    })
+    if (!collapsed) {
+      nextTick(() => {
+        if (token !== revealToken) return
+        expanding.value = false
+      })
     }
   }
 )
 
+function handleTransitionEnd(event: TransitionEvent) {
+  if (event.target !== event.currentTarget) return
+  if (event.propertyName !== 'width') return
+  if (!transitioning.value) return
+  end()
+}
+
 onBeforeUnmount(() => {
-  clearTimeout(settleTimer)
+  // Solo cancelamos el settle local: la transición global sigue su curso y
+  // termina sola (transitionend o fallback), sin cerrar la de otros consumidores.
+  stopSettle?.()
+  stopSettle = undefined
 })
 
 interface NavRow {
@@ -94,9 +110,9 @@ const systemRows = computed<NavRow[]>(() => [
   },
 ])
 
-const collapseIcon = computed(() => (ui.sidebarCollapsed ? PanelLeftOpen : PanelLeftClose))
-
-const fadeClass = computed(() => (ui.sidebarCollapsed && !settled.value ? 'opacity-0' : ''))
+const fadeClass = computed(() =>
+  (ui.sidebarCollapsed && !settled.value) || expanding.value ? 'opacity-0' : ''
+)
 const hideClass = computed(() => (ui.sidebarCollapsed && settled.value ? 'hidden' : ''))
 const textFade = computed(() => [fadeClass.value, hideClass.value])
 const logoFade = computed(() => [fadeClass.value, hideClass.value, 'text-ink'])
@@ -114,7 +130,11 @@ const rowActive = 'bg-surface-3 text-ink'
 
 <template>
   <aside
-    :class="['glass-strong flex h-full flex-col rounded-xl', ui.sidebarCollapsed ? 'w-14' : 'w-44']"
+    :class="[
+      'glass-strong flex h-full flex-col rounded-xl transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+      ui.sidebarCollapsed ? 'w-14' : 'w-44',
+    ]"
+    @transitionend="handleTransitionEnd"
   >
     <div
       data-testid="sidebar-header"
@@ -124,7 +144,7 @@ const rowActive = 'bg-surface-3 text-ink'
       <span
         data-testid="sidebar-logo"
         aria-hidden="true"
-        class="pointer-events-none absolute left-1/2 top-1/2 h-5 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-150 [&>svg]:h-full [&>svg]:w-auto"
+        class="pointer-events-none absolute left-1/2 top-1/2 h-5 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-[250ms] [&>svg]:h-full [&>svg]:w-auto"
         :class="logoFade"
         v-html="logoWordmark"
       />
@@ -136,7 +156,20 @@ const rowActive = 'bg-surface-3 text-ink'
         title="Colapsar sidebar"
         @click="ui.toggleSidebar()"
       >
-        <component :is="collapseIcon" :size="18" class="shrink-0" />
+        <span class="grid shrink-0 place-items-center">
+          <PanelLeftClose
+            data-testid="toggle-icon-collapse"
+            :size="18"
+            class="transition-opacity duration-150 [grid-area:1/1]"
+            :class="ui.sidebarCollapsed ? 'opacity-0' : 'opacity-100'"
+          />
+          <PanelLeftOpen
+            data-testid="toggle-icon-expand"
+            :size="18"
+            class="transition-opacity duration-150 [grid-area:1/1]"
+            :class="ui.sidebarCollapsed ? 'opacity-100' : 'opacity-0'"
+          />
+        </span>
       </button>
     </div>
 
@@ -144,7 +177,7 @@ const rowActive = 'bg-surface-3 text-ink'
       <Text
         variant="eyebrow"
         color="subtle"
-        class="px-2 pb-1 pt-2 transition-opacity duration-150"
+        class="px-2 pb-1 pt-2 transition-opacity duration-300"
         :class="textFade"
       >
         Navegación
@@ -160,7 +193,7 @@ const rowActive = 'bg-surface-3 text-ink'
         <component :is="row.icon" :size="18" class="shrink-0" />
         <span
           :data-testid="`nav-label-${row.key}`"
-          class="min-w-0 flex-1 truncate text-left transition-opacity duration-150"
+          class="min-w-0 flex-1 truncate text-left transition-opacity duration-300"
           :class="textFade"
         >
           {{ row.label }}
@@ -172,7 +205,7 @@ const rowActive = 'bg-surface-3 text-ink'
       <Text
         variant="eyebrow"
         color="subtle"
-        class="px-2 pb-1 pt-1 transition-opacity duration-150"
+        class="px-2 pb-1 pt-1 transition-opacity duration-300"
         :class="textFade"
       >
         Sistema
@@ -190,7 +223,7 @@ const rowActive = 'bg-surface-3 text-ink'
         <component :is="row.icon" :size="18" class="shrink-0" />
         <span
           :data-testid="`nav-label-${row.key}`"
-          class="min-w-0 flex-1 truncate text-left transition-opacity duration-150"
+          class="min-w-0 flex-1 truncate text-left transition-opacity duration-300"
           :class="textFade"
         >
           {{ row.label }}
