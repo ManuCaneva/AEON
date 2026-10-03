@@ -195,8 +195,8 @@ El movimiento sigue las reglas del ADR 0004 (`docs/adr/0004-dashboard-css-grid-n
 - **Scroll del calendario anual**: 400ms, mismo easing, transform-only.
 - **Fade-in** (`animate-fade-in`): 200ms, `opacity` + `translateY(4px)`, para menús y transiciones de contenido.
 - **Colores/transform en interacción**: `transition-colors duration-150` en botones, filas e inputs.
-- **Colapso de sidebar** (ADR 0006): el ancho salta entre 176px y 56px en un solo repintado; lo único que anima es la opacidad de labels y textos de sección (~150ms). Es la regla de movimiento cumplida, no una excepción.
-- Reglas: nunca animar `width`/`height`/`top`/`left`; solo `transform`/`opacity`. El motor de grilla no se toca.
+- **Colapso de sidebar** (ADR 0007): el ancho anima 176px ↔ 56px en 300ms con `cubic-bezier(0.16, 1, 0.3, 1)`, acompañado de fundidos de opacidad (labels y textos de sección 300ms, logo 250ms, ícono del botón 150ms). El estado asentado (labels ocultos + filas centradas) se aplica al terminar la transición (`transitionend` + fallback).
+- Reglas: nunca animar `width`/`height`/`top`/`left`; solo `transform`/`opacity`. **Excepción documentada:** el ancho de la sidebar (ADR 0007), medida contra el presupuesto de performance; si se resiente, se revierte. El motor de grilla no se toca.
 
 ## Shapes
 
@@ -293,7 +293,7 @@ Todos los componentes consumen tokens y acentos; ninguno hardcodea color. Los pr
 
 ### Sidebar & Shell
 
-**`Sidebar`** (`Sidebar.vue`) — panel flotante `rounded-xl border-hairline` `glass-strong`, ancho expandida `w-44` (176px) / colapsada `w-14` (56px). El ancho salta entre los dos estados en un solo repintado, sin transición: al colapsar, labels y eyebrows funden opacidad (~150ms) y después pasan a `display:none`, así que no reciben foco ni se anuncian; los iconos quedan visibles y centrados (ADR 0006). Header con el **wordmark SVG** (`src/assets/logo/logo-wordmark-current.svg`) y el botón de colapsar anclado a la derecha cuando está expandida; colapsado queda únicamente el botón, centrado. Secciones con **eyebrow** ("Navegación", "Sistema") y filas `rounded-md px-2 py-1.5 text-caption font-medium`: idle `text-ink-muted hover:bg-surface-2 hover:text-ink`, activa `bg-surface-3 text-ink`; sin dots.
+**`Sidebar`** (`Sidebar.vue`) — panel flotante `rounded-xl border-hairline` `glass-strong`, ancho expandida `w-44` (176px) / colapsada `w-14` (56px). El ancho anima 300ms con `cubic-bezier(0.16, 1, 0.3, 1)` en ambos sentidos, sincronizado con fundidos de opacidad (labels y eyebrows 300ms, logo 250ms, ícono del botón 150ms). Al terminar la transición de ancho (`transitionend`, con fallback) se asienta el estado: al colapsar, labels y eyebrows pasan a `display:none`, así que no reciben foco ni se anuncian, y las filas/header se centran; al expandir, labels y logo hacen fade-in (ADR 0007). Header con el **wordmark SVG** (`src/assets/logo/logo-wordmark-current.svg`) y el botón de colapsar anclado a la derecha cuando está expandida; colapsado queda únicamente el botón, centrado. Secciones con **eyebrow** ("Navegación", "Sistema") y filas `rounded-md px-2 py-1.5 text-caption font-medium`: idle `text-ink-muted hover:bg-surface-2 hover:text-ink`, activa `bg-surface-3 text-ink`; sin dots.
 
 **Shell** (`App.vue`) — `flex h-screen gap-3 overflow-hidden bg-canvas p-3`: sidebar + panel de contenido `rounded-xl border-hairline bg-canvas` con `p-4`. Nada toca el borde de la ventana.
 
