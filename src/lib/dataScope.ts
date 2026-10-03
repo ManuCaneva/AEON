@@ -35,9 +35,14 @@ export const DATA_CONFIG_KEYS = ['local-calendar-events', 'pomodoro-session'] as
 // distribución de Widgets, conexión y tokens de Google Calendar,
 // wallpaper, ajustes del cronograma y del Pomodoro, y la marca de
 // primera ejecución.
+
+// Marca persistente de "ya se sembraron los datos de ejemplo": la siembra
+// ocurre como máximo una vez en la vida de la instalación.
+export const SEED_MARKER_KEY = 'aeon-seed-done'
+
 export const PRESERVED_CONFIG_KEYS = [
   'aeon-dashboard-layout',
-  'aeon-seed-done',
+  SEED_MARKER_KEY,
   'gcal-visible-calendars',
   'gcal_access_token',
   'gcal_pending_oauth',
