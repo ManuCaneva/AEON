@@ -105,6 +105,8 @@ Ambas se inyectan por tema (`--font-sans` / `--font-mono`) y Tailwind las expone
 
 ### Hierarchy
 
+Todos los tokens se multiplican por `var(--text-scale)` (ver *Escala configurable: dos ejes*); la columna Tamaño muestra la base responsiva.
+
 | Token | Tamaño | Peso | Line Height | Letter Spacing | Uso |
 |---|---|---|---|---|---|
 | `text-display-xl` | `clamp(2rem, 5vw, 5rem)` | 600 | 1.05 | -0.0375em | Hero máximo |
@@ -120,6 +122,15 @@ Ambas se inyectan por tema (`--font-sans` / `--font-mono`) y Tailwind las expone
 | `text-button` | 14px | 500 | 1.20 | 0 | Labels de botones |
 | `text-eyebrow` | 13px | 500 | 1.30 | +0.0308em | Eyebrow de sección (`uppercase` en uso) |
 | `text-mono` | 13px | 400 | 1.50 | 0 | IDs, rutas, datos técnicos |
+
+### Escala configurable: dos ejes
+
+La tipografía de la app es el resultado de dos ejes ortogonales:
+
+1. **Re-escalado responsivo (siempre activo, sin configuración)**: los tokens grandes (`display-*`, `headline`, `card-title`, `subhead`, `body-lg`) usan `clamp()` sobre `vw`; dentro de un widget, `card-title`, `body`, `body-sm`, `body-lg`, `caption` y `subhead` se re-mapean a `clamp()` sobre `cqw` (sección *Widget-responsive scaling* de `src/styles/tailwind.css`). El techo de cada clamp es el tamaño nominal del token: en espacios chicos el texto se achica, nunca se agranda más allá del default.
+2. **Factor del usuario (configurable)**: `--text-scale` vive en `:root` (default `1`) y multiplica **todos** los tokens de tipografía, incluido el resultado del clamp. Tiene tres valores fijos, elegibles en Settings → **Tamaño de letra**: Pequeño `0.9`, Mediano `1` (default: deja la app igual que sin configurar), Grande `1.15`. La elección se aplica al instante y persiste en `localStorage` (`aeon.textSize`); la lógica pura vive en `src/lib/textSize.ts`.
+
+Espaciados, bordes y radios **no** escalan: la escala solo cambia el texto.
 
 ### Principles
 
@@ -141,7 +152,7 @@ Ambas se inyectan por tema (`--font-sans` / `--font-mono`) y Tailwind las expone
 
 ### Panels & Floating Shell
 
-El shell de la app deja **flotar** el contenido: `App.vue` usa `flex h-screen gap-3 p-3 bg-canvas`, el sidebar es un panel `rounded-xl border border-hairline bg-surface-1`, y el área de contenido es otro panel `rounded-xl border border-hairline bg-canvas` con `p-4` interno. No hay chrome que toque los bordes de la ventana.
+El shell de la app deja **flotar** el contenido: `App.vue` usa `flex h-screen gap-3 p-3 bg-canvas`, el sidebar es un panel `rounded-xl` `glass-strong`, y el área de contenido es otro panel `rounded-xl border border-hairline bg-canvas` con `p-4` interno. No hay chrome que toque los bordes de la ventana.
 
 ### Whitespace Philosophy
 
@@ -184,6 +195,7 @@ El movimiento sigue las reglas del ADR 0004 (`docs/adr/0004-dashboard-css-grid-n
 - **Scroll del calendario anual**: 400ms, mismo easing, transform-only.
 - **Fade-in** (`animate-fade-in`): 200ms, `opacity` + `translateY(4px)`, para menús y transiciones de contenido.
 - **Colores/transform en interacción**: `transition-colors duration-150` en botones, filas e inputs.
+- **Colapso de sidebar** (ADR 0006): el ancho salta entre 176px y 56px en un solo repintado; lo único que anima es la opacidad de labels y textos de sección (~150ms). Es la regla de movimiento cumplida, no una excepción.
 - Reglas: nunca animar `width`/`height`/`top`/`left`; solo `transform`/`opacity`. El motor de grilla no se toca.
 
 ## Shapes
@@ -281,7 +293,7 @@ Todos los componentes consumen tokens y acentos; ninguno hardcodea color. Los pr
 
 ### Sidebar & Shell
 
-**`Sidebar`** (`Sidebar.vue`) — panel flotante `rounded-xl border-hairline bg-surface-1`, ancho `w-56` (colapsado `w-14`). Header solo con el texto **AEON** y el botón de colapsar anclado a la derecha; colapsado queda únicamente el botón, dentro del panel. Secciones con **eyebrow** ("Navegación", "Sistema") y filas `rounded-md px-2 py-1.5 text-caption font-medium`: idle `text-ink-muted hover:bg-surface-2 hover:text-ink`, activa `bg-surface-3 text-ink`; cada fila lleva un **dot** semántico (primary/orange/green/purple, o `ink-tertiary` cuando está off).
+**`Sidebar`** (`Sidebar.vue`) — panel flotante `rounded-xl border-hairline` `glass-strong`, ancho expandida `w-44` (176px) / colapsada `w-14` (56px). El ancho salta entre los dos estados en un solo repintado, sin transición: al colapsar, labels y eyebrows funden opacidad (~150ms) y después pasan a `display:none`, así que no reciben foco ni se anuncian; los iconos quedan visibles y centrados (ADR 0006). Header con el **wordmark SVG** (`src/assets/logo/logo-wordmark-current.svg`) y el botón de colapsar anclado a la derecha cuando está expandida; colapsado queda únicamente el botón, centrado. Secciones con **eyebrow** ("Navegación", "Sistema") y filas `rounded-md px-2 py-1.5 text-caption font-medium`: idle `text-ink-muted hover:bg-surface-2 hover:text-ink`, activa `bg-surface-3 text-ink`; sin dots.
 
 **Shell** (`App.vue`) — `flex h-screen gap-3 overflow-hidden bg-canvas p-3`: sidebar + panel de contenido `rounded-xl border-hairline bg-canvas` con `p-4`. Nada toca el borde de la ventana.
 
