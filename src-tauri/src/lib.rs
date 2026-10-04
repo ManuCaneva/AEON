@@ -39,6 +39,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::config::save_config,
             commands::config::load_config,
+            commands::data::clear_all_data,
             commands::habits::create_habit,
             commands::habits::list_habits,
             commands::habits::update_habit,

@@ -90,6 +90,13 @@ export const useGoalsStore = defineStore('goals', () => {
 
   const archivedGoals = computed(() => goals.value.filter((g) => g.archived_at !== null))
 
+  /** Vacía el contenido en memoria (objetivos y sus logs). Para «Borrar datos». */
+  function reset(): void {
+    goals.value = []
+    logs.value = []
+    lastError.value = null
+  }
+
   async function loadGoals(includeArchived = false): Promise<void> {
     loading.value = true
     lastError.value = null
@@ -221,6 +228,7 @@ export const useGoalsStore = defineStore('goals', () => {
     lastError,
     activeGoals,
     archivedGoals,
+    reset,
     loadGoals,
     loadLogsForRange,
     createGoal,

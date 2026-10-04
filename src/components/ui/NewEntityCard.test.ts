@@ -63,13 +63,28 @@ describe('NewEntityCard', () => {
     expect(wrapper.find("[role='button']").classes()).toContain('extra-class')
   })
 
-  it('has dashed border-top and centered layout', () => {
+  it('does not draw a dashed top border', () => {
     const wrapper = mount(NewEntityCard, { props: defaultProps })
     const el = wrapper.find("[role='button']")
-    expect(el.classes()).toContain('border-t')
-    expect(el.classes()).toContain('border-dashed')
+    expect(el.classes()).not.toContain('border-t')
+    expect(el.classes()).not.toContain('border-dashed')
+  })
+
+  it('keeps min height and centered layout', () => {
+    const wrapper = mount(NewEntityCard, { props: defaultProps })
+    const el = wrapper.find("[role='button']")
+    expect(el.classes()).toContain('min-h-[44px]')
     expect(el.classes()).toContain('flex')
     expect(el.classes()).toContain('items-center')
+  })
+
+  it('keeps hover and focus-visible styles', () => {
+    const wrapper = mount(NewEntityCard, { props: defaultProps })
+    const el = wrapper.find("[role='button']")
+    expect(el.classes()).toContain('hover:bg-surface-2')
+    expect(el.classes()).toContain('hover:text-ink')
+    expect(el.classes()).toContain('focus-visible:ring-2')
+    expect(el.classes()).toContain('focus-visible:ring-primary/40')
   })
 
   it('renders Plus icon', () => {

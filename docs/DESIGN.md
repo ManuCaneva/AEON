@@ -288,7 +288,7 @@ Todos los componentes consumen tokens y acentos; ninguno hardcodea color. Los pr
 
 ### Invitations & Loading
 
-**`NewEntityCard`** (`NewEntityCard.vue`) — zona de drop-in: `min-h-[44px]`, `border-t border-dashed border-hairline`, `text-ink-muted hover:bg-surface-2 hover:text-ink`, focus ring violeta, ícono Plus.
+**`NewEntityCard`** (`NewEntityCard.vue`) — zona de drop-in: `min-h-[44px]`, sin borde superior (la única línea separadora es la sólida del pie de `EntityListing`), `text-ink-muted hover:bg-surface-2 hover:text-ink`, focus ring violeta, ícono Plus.
 
 **`Skeleton`** (`Skeleton.vue`) — `animate-pulse bg-surface-2`; variantes `text` (h-3 w-full rounded-sm), `circle` (h-10 w-10 rounded-full), `rect` (h-24 w-full rounded-md).
 

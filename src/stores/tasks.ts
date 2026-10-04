@@ -70,6 +70,12 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const pendingTasks = computed(() => activeTasks.value.filter((t) => t.status !== 'done'))
 
+  /** Vacía el contenido en memoria (tareas y sus pasos). Para «Borrar datos». */
+  function reset(): void {
+    tasks.value = []
+    lastError.value = null
+  }
+
   async function loadTasks(includeArchived = false): Promise<void> {
     loading.value = true
     lastError.value = null
@@ -157,6 +163,7 @@ export const useTasksStore = defineStore('tasks', () => {
     activeTasks,
     archivedTasks,
     pendingTasks,
+    reset,
     loadTasks,
     createTask,
     updateTask,

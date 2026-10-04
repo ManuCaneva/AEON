@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { h } from 'vue'
 import EntityListing from './EntityListing.vue'
+import NewEntityCard from './NewEntityCard.vue'
 
 function mountListing(props: Record<string, unknown> = {}) {
   return mount(EntityListing, {
@@ -36,5 +38,18 @@ describe('EntityListing', () => {
       slots: { default: 'contenido' },
     })
     expect(wrapper.find('.text-eyebrow').exists()).toBe(false)
+  })
+
+  it('dibuja una sola línea separadora (footer sólida) sobre la zona de creación', () => {
+    const wrapper = mount(EntityListing, {
+      props: { title: 'Tareas' },
+      slots: {
+        default: '<div>contenido</div>',
+        footer: () => h(NewEntityCard, { label: 'Nueva tarea' }),
+      },
+    })
+    expect(wrapper.findAll('.border-dashed')).toHaveLength(0)
+    expect(wrapper.findAll('.border-t')).toHaveLength(1)
+    expect(wrapper.find('.border-t').classes()).toContain('border-hairline')
   })
 })

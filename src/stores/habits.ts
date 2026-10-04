@@ -263,6 +263,13 @@ export const useHabitsStore = defineStore('habits', () => {
     lastError.value = null
   }
 
+  /** Vacía el contenido en memoria (hábitos y check-in). Para «Borrar datos». */
+  function reset(): void {
+    habits.value = []
+    logs.value = []
+    lastError.value = null
+  }
+
   async function loadInitialData(): Promise<void> {
     loading.value = true
     lastError.value = null
@@ -316,6 +323,7 @@ export const useHabitsStore = defineStore('habits', () => {
     resetCheckIn,
     // boot
     loadInitialData,
+    reset,
     // lógica de dominio
     isHabitDueOn,
     isHabitDueToday,

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { computed, ref } from 'vue'
 import SettingsView from './SettingsView.vue'
@@ -93,6 +93,12 @@ vi.mock('@/components/settings/WallpaperCard.vue', () => ({
   default: { template: '<div data-testid="mock-wallpaper-card" />' },
 }))
 
+const clearAppDataMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+
+vi.mock('@/composables/clearAppData', () => ({
+  clearAppData: clearAppDataMock,
+}))
+
 describe('SettingsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -104,6 +110,10 @@ describe('SettingsView', () => {
     mockCalendarStore.calendars = []
     mockCalendarStore.isCalendarHidden = () => false
     mockCalendarStore.fetchCalendars.mockResolvedValue(new Map())
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
   })
 
   it('el main tiene h-full y overflow-y-auto', () => {
@@ -267,5 +277,80 @@ describe('SettingsView', () => {
     expect(buttons[0].attributes('aria-pressed')).toBe('true')
     expect(buttons[1].attributes('aria-pressed')).toBe('false')
     expect(buttons[2].attributes('aria-pressed')).toBe('false')
+  })
+  it('muestra la sección Borrar datos al final, después del almacenamiento local', () => {
+    const wrapper = mount(SettingsView)
+    const trigger = wrapper.find("[data-testid='clear-data-btn']")
+    expect(trigger.exists()).toBe(true)
+    expect(trigger.text()).toContain('Borrar datos')
+    expect(trigger.classes()).toContain('text-accent-red')
+
+    const text = wrapper.text()
+    expect(text.indexOf('Almacenamiento local')).toBeLessThan(text.indexOf('Borrar datos'))
+  })
+
+  it('abre un modal que nombra qué se borra, qué se conserva y que es irreversible', async () => {
+    const wrapper = mount(SettingsView, { attachTo: document.body })
+    await wrapper.find("[data-testid='clear-data-btn']").trigger('click')
+
+    const dialog = document.body.querySelector("[role='dialog']")
+    expect(dialog).not.toBeNull()
+    const content = (dialog?.textContent ?? '').toLowerCase()
+
+    // Qué se borra
+    expect(content).toContain('hábitos')
+    expect(content).toContain('check-in')
+    expect(content).toContain('tareas')
+    expect(content).toContain('objetivos')
+    expect(content).toContain('notas')
+    expect(content).toContain('cronograma')
+    expect(content).toContain('eventos locales')
+    expect(content).toContain('pomodoro')
+    // Qué se conserva
+    expect(content).toContain('distribución de widgets')
+    expect(content).toContain('google calendar')
+    expect(content).toContain('wallpaper')
+    // Irreversible y sin escribir texto
+    expect(content).toContain('no se puede deshacer')
+    expect(dialog?.querySelector('input')).toBeNull()
+  })
+
+  it('confirmar borra los datos, cierra el modal y confirma sin salir de Configuración', async () => {
+    const wrapper = mount(SettingsView, { attachTo: document.body })
+    await wrapper.find("[data-testid='clear-data-btn']").trigger('click')
+
+    const confirm = document.body.querySelector("[data-testid='clear-data-confirm']") as HTMLElement
+    confirm.click()
+    await flushPromises()
+
+    expect(clearAppDataMock).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[role='dialog']")).toBeNull()
+    })
+    expect(wrapper.find("[data-testid='settings-view']").exists()).toBe(true)
+    expect(document.body.querySelector("[data-testid='clear-data-success']")).not.toBeNull()
+  })
+
+  it('cancelar cierra el modal sin borrar datos y sin salir de Configuración', async () => {
+    const wrapper = mount(SettingsView, { attachTo: document.body })
+    await wrapper.find("[data-testid='clear-data-btn']").trigger('click')
+
+    const cancel = document.body.querySelector("[data-testid='clear-data-cancel']") as HTMLElement
+    cancel.click()
+    await flushPromises()
+
+    expect(clearAppDataMock).not.toHaveBeenCalled()
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[role='dialog']")).toBeNull()
+    })
+    expect(wrapper.find("[data-testid='settings-view']").exists()).toBe(true)
+  })
+
+  it('el modal de borrado no usa colores de paleta crudos', async () => {
+    const wrapper = mount(SettingsView, { attachTo: document.body })
+    await wrapper.find("[data-testid='clear-data-btn']").trigger('click')
+    await flushPromises()
+
+    expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
   })
 })
