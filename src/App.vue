@@ -16,6 +16,8 @@ import GoalFormModal from '@/components/goals/GoalFormModal.vue'
 import NoteFormModal from '@/components/notes/NoteFormModal.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
+import UpdateModal from '@/components/layout/UpdateModal.vue'
+import { useUpdater } from '@/composables/useUpdater'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -23,11 +25,21 @@ const goals = useGoalsStore()
 const ui = useUiStore()
 const pomodoro = usePomodoroStore()
 
+const {
+  status: updateStatus,
+  progress: updateProgress,
+  checkForUpdate,
+  update: applyUpdate,
+  dismiss: dismissUpdate,
+  dismissForever: dismissUpdateForever,
+} = useUpdater()
+
 useTheme()
 
 let pomodoroTicker: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
+  void checkForUpdate()
   ui.loadWallpaper()
   await habits.loadInitialData()
   await tasks.loadTasks()
@@ -74,5 +86,14 @@ onBeforeUnmount(() => {
     <TaskFormModal />
     <GoalFormModal />
     <NoteFormModal />
+
+    <UpdateModal
+      :open="updateStatus !== 'idle'"
+      :status="updateStatus"
+      :progress="updateProgress"
+      @update="applyUpdate"
+      @dismiss="dismissUpdate"
+      @dismiss-forever="dismissUpdateForever"
+    />
   </div>
 </template>
