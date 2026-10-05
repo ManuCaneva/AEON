@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { migrateStorageKey } from '@/lib/storageKey'
+import { isTextSize, textSizeScale, type TextSize } from '@/lib/textSize'
 import * as db from '@/lib/db'
 import {
   WallpaperSettingsSchema,
@@ -91,6 +92,33 @@ export const useUiStore = defineStore('ui', () => {
 
   const sidebarCollapsed = useStorage<boolean>('aeon.sidebarCollapsed', false)
 
+  const textSize = useStorage<TextSize>('aeon.textSize', 'medium', undefined, {
+    flush: 'sync',
+    serializer: {
+      read: (raw) => {
+        try {
+          const parsed: unknown = JSON.parse(raw)
+          return isTextSize(parsed) ? parsed : 'medium'
+        } catch {
+          return 'medium'
+        }
+      },
+      write: (v) => JSON.stringify(v),
+    },
+  })
+
+  watch(
+    textSize,
+    (v) => {
+      document.documentElement.style.setProperty('--text-scale', String(textSizeScale(v)))
+    },
+    { immediate: true, flush: 'sync' }
+  )
+
+  function setTextSize(size: TextSize) {
+    textSize.value = size
+  }
+
   const editMode = ref(false)
 
   const habits = createEntityUi()
@@ -164,6 +192,8 @@ export const useUiStore = defineStore('ui', () => {
   return {
     viewMode,
     sidebarCollapsed,
+    textSize,
+    setTextSize,
     editMode,
     isEditing: habits.isEditing,
     isEditingTask: tasks.isEditing,

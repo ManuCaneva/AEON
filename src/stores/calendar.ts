@@ -428,6 +428,16 @@ export const useCalendarStore = defineStore('calendar', () => {
     currentYear.value--
   }
 
+  /**
+   * Elimina los eventos locales del calendario en memoria (son datos) y los
+   * quita de la lista combinada. Conserva la conexión y los eventos de
+   * Google. Para «Borrar datos».
+   */
+  function resetLocalEvents(): void {
+    localEvents.value = []
+    events.value = events.value.filter((e) => e.calendarId !== 'local')
+  }
+
   async function loadPersistedConfig(): Promise<void> {
     const [at, rt, exp, localJson, visibleCalendars] = await Promise.all([
       loadConfig(GCAL_ACCESS_TOKEN),
@@ -738,6 +748,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     hiddenCalendarIds: readonly(hiddenCalendarIds),
     isCalendarHidden,
     setCalendarHidden,
+    resetLocalEvents,
     createEvent,
     updateEvent,
     deleteEvent,

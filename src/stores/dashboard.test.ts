@@ -19,19 +19,33 @@ describe('dashboard store (grilla entera)', () => {
     vi.mocked(loadConfig).mockResolvedValue(null)
   })
 
-  it('carga el layout por defecto en enteros', async () => {
+  it('carga la distribución por defecto con los siete widgets en su geometría', async () => {
     const store = useDashboardStore()
     await flush()
-    expect(store.layout).toHaveLength(6)
-    expect(store.layout[0].i).toBe('habits')
-    expect(store.layout[0].x).toBe(0)
-    expect(store.layout[0].y).toBe(0)
-    expect(store.layout[0].w).toBe(6)
-    expect(store.layout[0].h).toBe(4)
-    expect(store.layout[1].i).toBe('tasks')
-    expect(store.layout[2].i).toBe('goals')
-    expect(store.layout[3].i).toBe('year-calendar')
-    expect(store.layout[4].i).toBe('weekly-schedule')
+    expect(store.layout).toHaveLength(7)
+    const byId = Object.fromEntries(store.layout.map((i) => [i.i, i]))
+    expect(byId.habits).toMatchObject({ x: 0, y: 0, w: 2, h: 7 })
+    expect(byId.pomodoro).toMatchObject({ x: 0, y: 7, w: 2, h: 3 })
+    expect(byId['weekly-schedule']).toMatchObject({ x: 2, y: 0, w: 6, h: 5 })
+    expect(byId.notes).toMatchObject({ x: 2, y: 5, w: 6, h: 5 })
+    expect(byId.goals).toMatchObject({ x: 8, y: 0, w: 3, h: 5 })
+    expect(byId.tasks).toMatchObject({ x: 8, y: 5, w: 3, h: 5 })
+    expect(byId['year-calendar']).toMatchObject({ x: 11, y: 0, w: 1, h: 10 })
+  })
+
+  it('el layout por defecto tesela la grilla 12×10 sin solapamientos ni desbordes', async () => {
+    const store = useDashboardStore()
+    await flush()
+    const area = store.layout.reduce((acc, i) => acc + i.w * i.h, 0)
+    expect(area).toBe(COLS * ROWS)
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const covering = store.layout.filter(
+          (i) => i.x <= col && col < i.x + i.w && i.y <= row && row < i.y + i.h
+        )
+        expect(covering, `celda (${col}, ${row}) debe tener exactamente un widget`).toHaveLength(1)
+      }
+    }
   })
 
   it('carga layout guardado válido en enteros', async () => {
@@ -115,7 +129,7 @@ describe('dashboard store (grilla entera)', () => {
     vi.mocked(loadConfig).mockResolvedValue(JSON.stringify('not-an-array'))
     const store = useDashboardStore()
     await flush()
-    expect(store.layout).toHaveLength(6)
+    expect(store.layout).toHaveLength(7)
     expect(store.layout[0].i).toBe('habits')
   })
 
@@ -207,64 +221,88 @@ describe('dashboard store (grilla entera)', () => {
     expect(oldItem.w).toBe(oldW)
   })
 
-  it('posiciones por defecto correctas: tasks a la derecha (x=6), goals debajo (y=4)', async () => {
+  it('posiciones por defecto correctas: columna izquierda hábitos+pomodoro, tareas y objetivos a la derecha', async () => {
     const store = useDashboardStore()
     await flush()
+    const habits = store.layout.find((i) => i.i === 'habits')!
+    expect(habits.x).toBe(0)
+    expect(habits.y).toBe(0)
+    expect(habits.w).toBe(2)
+    expect(habits.h).toBe(7)
+    const pomodoro = store.layout.find((i) => i.i === 'pomodoro')!
+    expect(pomodoro.x).toBe(0)
+    expect(pomodoro.y).toBe(7)
+    expect(pomodoro.w).toBe(2)
+    expect(pomodoro.h).toBe(3)
     const tasks = store.layout.find((i) => i.i === 'tasks')!
-    expect(tasks.x).toBe(6)
-    expect(tasks.y).toBe(0)
+    expect(tasks.x).toBe(8)
+    expect(tasks.y).toBe(5)
     const goals = store.layout.find((i) => i.i === 'goals')!
-    expect(goals.x).toBe(0)
-    expect(goals.y).toBe(4)
+    expect(goals.x).toBe(8)
+    expect(goals.y).toBe(0)
+  })
+
+  it('el pomodoro está habilitado por defecto en el layout inicial', async () => {
+    const store = useDashboardStore()
+    await flush()
+    expect(store.layout.some((i) => i.i === 'pomodoro')).toBe(true)
   })
 
   it("addWidget('goals') con layout parcial: solo habits", async () => {
     const store = useDashboardStore()
     await flush()
-    store.updateLayout([{ i: 'habits', x: 0, y: 0, w: 6, h: 4 }])
+    store.updateLayout([{ i: 'habits', x: 0, y: 0, w: 2, h: 7 }])
     store.addWidget('goals')
     const item = store.layout.find((i) => i.i === 'goals')
     expect(item).toBeDefined()
-    expect(item!.x).toBe(0)
-    expect(item!.y).toBe(4)
-    expect(item!.w).toBe(12)
-    expect(item!.h).toBe(2)
+    expect(item!.x).toBe(8)
+    expect(item!.y).toBe(0)
+    expect(item!.w).toBe(3)
+    expect(item!.h).toBe(5)
   })
 
   it("addWidget('tasks') con layout parcial: solo habits", async () => {
     const store = useDashboardStore()
     await flush()
-    store.updateLayout([{ i: 'habits', x: 0, y: 0, w: 6, h: 4 }])
+    store.updateLayout([{ i: 'habits', x: 0, y: 0, w: 2, h: 7 }])
     store.addWidget('tasks')
     const item = store.layout.find((i) => i.i === 'tasks')
     expect(item).toBeDefined()
-    expect(item!.x).toBe(6)
-    expect(item!.y).toBe(0)
-    expect(item!.w).toBe(6)
-    expect(item!.h).toBe(4)
+    expect(item!.x).toBe(8)
+    expect(item!.y).toBe(5)
+    expect(item!.w).toBe(3)
+    expect(item!.h).toBe(5)
   })
 
   it('no agrega un widget duplicado', async () => {
     const store = useDashboardStore()
     await flush()
     store.addWidget('habits')
-    expect(store.layout).toHaveLength(6)
+    expect(store.layout).toHaveLength(7)
   })
 
   it('elimina un widget del layout', async () => {
     const store = useDashboardStore()
     await flush()
     store.removeWidget('habits')
-    expect(store.layout).toHaveLength(5)
+    expect(store.layout).toHaveLength(6)
   })
 
   it('resetea al layout por defecto', async () => {
     const store = useDashboardStore()
     await flush()
     store.updateLayout([{ i: 'habits', x: 4, y: 4, w: 2, h: 2 }])
+    store.removeWidget('pomodoro')
     store.resetLayout()
-    expect(store.layout[0].x).toBe(0)
-    expect(store.layout[0].w).toBe(6)
+    expect(store.layout).toHaveLength(7)
+    const byId = Object.fromEntries(store.layout.map((i) => [i.i, i]))
+    expect(byId.habits).toMatchObject({ x: 0, y: 0, w: 2, h: 7 })
+    expect(byId.pomodoro).toMatchObject({ x: 0, y: 7, w: 2, h: 3 })
+    expect(byId['weekly-schedule']).toMatchObject({ x: 2, y: 0, w: 6, h: 5 })
+    expect(byId.notes).toMatchObject({ x: 2, y: 5, w: 6, h: 5 })
+    expect(byId.goals).toMatchObject({ x: 8, y: 0, w: 3, h: 5 })
+    expect(byId.tasks).toMatchObject({ x: 8, y: 5, w: 3, h: 5 })
+    expect(byId['year-calendar']).toMatchObject({ x: 11, y: 0, w: 1, h: 10 })
   })
 
   it('moveTo rechaza solapamiento real pero permite bordes pegados', async () => {

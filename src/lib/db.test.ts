@@ -19,7 +19,9 @@ import {
   listNotes,
   updateNote,
   deleteNote,
+  clearAllData,
 } from './db'
+import { DATA_TABLES, DATA_CONFIG_KEYS, PRESERVED_CONFIG_KEYS } from './dataScope'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -674,5 +676,38 @@ describe('db.deleteNote', () => {
     expect(invoke).toHaveBeenCalledWith('delete_note', {
       id: '123e4567-e89b-12d3-a456-426614174000',
     })
+  })
+})
+
+describe('db.clearAllData — alcance de borrado (persistencia)', () => {
+  it('invoca clear_all_data pasando exactamente las tablas y las claves de datos', async () => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+    await clearAllData()
+    expect(invoke).toHaveBeenCalledWith('clear_all_data', {
+      tables: [...DATA_TABLES],
+      dataConfigKeys: [...DATA_CONFIG_KEYS],
+    })
+  })
+
+  it('qué se borra y qué no se toca: las claves pasadas son datos, jamás configuración', async () => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+    await clearAllData()
+    const arg = vi.mocked(invoke).mock.calls[0][1] as {
+      tables: string[]
+      dataConfigKeys: string[]
+    }
+    // Se vacían exactamente las tablas de contenido.
+    expect([...arg.tables].sort()).toEqual([...DATA_TABLES].sort())
+    const sent = new Set(arg.dataConfigKeys)
+    // Se borra: todos los datos de config.
+    for (const key of DATA_CONFIG_KEYS) {
+      expect(sent.has(key)).toBe(true)
+    }
+    // No se toca: ninguna clave de configuración viaja al borrado.
+    for (const key of PRESERVED_CONFIG_KEYS) {
+      expect(sent.has(key)).toBe(false)
+    }
   })
 })

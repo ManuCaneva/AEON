@@ -250,7 +250,7 @@ function makeGrabScrollable(el: HTMLElement, onScrollFn: () => void, onScrollEnd
     </div>
 
     <!-- Separator -->
-    <div class="z-10 select-none pb-0.5 text-lg font-semibold text-ink-subtle">:</div>
+    <div class="z-10 select-none pb-0.5 text-card-title font-semibold text-ink-subtle">:</div>
 
     <!-- Minutes Column -->
     <div

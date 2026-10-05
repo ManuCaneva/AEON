@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import * as db from '@/lib/db'
 import { useUiStore } from './ui'
@@ -126,5 +126,57 @@ describe('ui store: wallpaper', () => {
     await expect(ui.setWallpaper('https://ejemplo.com/foto.png')).rejects.toThrow()
     expect(db.saveConfig).not.toHaveBeenCalled()
     expect(ui.wallpaperUrl).toBeNull()
+  })
+})
+
+describe('ui store: tamaño de letra', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    const values = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    })
+    document.documentElement.style.removeProperty('--text-scale')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('arranca con Mediano (default) y lo aplica como --text-scale', () => {
+    const ui = useUiStore()
+    expect(ui.textSize).toBe('medium')
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1')
+  })
+
+  it('setTextSize persiste la elección en localStorage', () => {
+    const ui = useUiStore()
+    ui.setTextSize('large')
+    expect(ui.textSize).toBe('large')
+    expect(JSON.parse(localStorage.getItem('aeon.textSize') as string)).toBe('large')
+  })
+
+  it('setTextSize aplica --text-scale al instante', () => {
+    const ui = useUiStore()
+    ui.setTextSize('small')
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('0.9')
+    ui.setTextSize('large')
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.15')
+  })
+
+  it('lee una elección persistida válida al iniciar', () => {
+    localStorage.setItem('aeon.textSize', JSON.stringify('large'))
+    const ui = useUiStore()
+    expect(ui.textSize).toBe('large')
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.15')
+  })
+
+  it('cae a Mediano con una elección persistida inválida', () => {
+    localStorage.setItem('aeon.textSize', JSON.stringify('enorme'))
+    const ui = useUiStore()
+    expect(ui.textSize).toBe('medium')
   })
 })

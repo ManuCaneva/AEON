@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
 
 permissions:
   contents: write
@@ -12,6 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # La versión vive en src-tauri/tauri.conf.json y se publica con el tag vX.Y.Z.
+      # Si el tag ya existe, el merge no puede publicar nada: hay que bumpear antes.
+      - name: Guard release version
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            echo "::error::El tag v$VERSION ya existe. Corré 'npm run release:bump -- <nueva-version>' antes de mergear."
+            exit 1
+          fi
 
       - name: Install system dependencies
         run: |
@@ -49,12 +59,11 @@ jobs:
     needs: test
     strategy:
       fail-fast: false
+      # Serializado a propósito: los dos jobs escriben el mismo latest.json en el
+      # release. En paralelo se pisan y algún sistema queda sin entrada en el updater.
+      max-parallel: 1
       matrix:
         include:
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
           - platform: windows-latest
@@ -79,8 +88,6 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -96,10 +103,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_GCAL_CLIENT_ID: ${{ secrets.VITE_GCAL_CLIENT_ID }}
           VITE_GCAL_CLIENT_SECRET: ${{ secrets.VITE_GCAL_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'AEON v__VERSION__'
-          releaseBody: 'Descargá la versión para tu sistema operativo. La app no está firmada: Windows puede mostrar un aviso de SmartScreen y macOS puede pedir clic derecho → Abrir la primera vez.'
+          releaseBody: 'Descargá la versión para tu sistema operativo. La app no está firmada: Windows puede mostrar un aviso de SmartScreen y pedir confirmación la primera vez.'
           releaseDraft: false
           prerelease: false
+          # Publica latest.json firmado, que es lo que consulta el updater in-app.
+          includeUpdaterJson: true
+          # En Windows el updater debe apuntar al instalador NSIS, no al MSI.
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}

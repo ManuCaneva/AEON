@@ -25,6 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Persistir la DB en el app_data_dir multiplataforma.
             let dir: PathBuf = app
@@ -39,6 +41,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::config::save_config,
             commands::config::load_config,
+            commands::data::clear_all_data,
             commands::habits::create_habit,
             commands::habits::list_habits,
             commands::habits::update_habit,

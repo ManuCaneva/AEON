@@ -1,0 +1,15 @@
+# Heatmap con DOM constante y ancho intrínseco (fix del freeze al animar la sidebar)
+
+**Superseded por ADR 0009.** El DOM constante + `ml-auto` recortaba columnas a mitad (cuadrados cortados) y no bajaba del techo de fps: el costo real era el resize del contenido, no el ancho del heat grid. El ADR 0009 revierte este cambio (el heatmap vuelve a columnas enteras responsivas) y desacopla el contenido de la animación con la sidebar overlay. Se conservan de este ADR el `content-visibility: auto` del heat grid y el escenario de colapso en CI.
+
+El ADR 0007 restauró la animación de ancho de la sidebar, pero el dashboard seguía trabandose al colapsar/expandir —mucho más cuanto más hábitos— mientras que Pomodoro quedaba suave. La causa no era JavaScript: el perfil muestra `Layout + Paint + Raster` dominando y `FunctionCall` despreciable. Ocultar los heatmaps en la medición lleva el toggle de 6 long tasks (hasta ~300ms con 40 hábitos, settle ~1.6s) a 0.
+
+El heat grid (`HeatmapGrid.vue`) era un grid de nivel bloque con `width: auto`: su caja seguía el ancho de la tarjeta, que cambia en cada cuadro de la animación, así que el navegador re-colocaba sus ~364 celdas × N hábitos por cuadro (layout completo). Encima, `useHeatmapCols` recalculaba las columnas visibles y **re-renderizaba todas las celdas** cuando el ancho cruzaba un umbral (~10 veces por toggle). Ese re-render, no el ancho en sí, era el costo dominante.
+
+Decidimos que el heat grid renderice **DOM constante**: siempre todas las columnas de `dataCols` (52 para 364 días), sin recalcular celdas por ancho. El grid interno usa **ancho intrínseco** (`w-max`) para que su caja no siga la tarjeta, y se alinea a la derecha (`ml-auto`): el contenedor `overflow-hidden` recorta las semanas más viejas por la izquierda y deja siempre visibles las más recientes. Esto vuelve prescindible a `useHeatmapCols`, que se elimina.
+
+Consecuencias: el toggle de la sidebar mide 0 long tasks incluso con 40 hábitos (gap ~50ms, settle ~89ms); la animación del ADR 0007 queda suave de verdad. Cambio visual único: en tarjetas más anchas que el grid (~622px) el espacio vacío pasa de la derecha a la izquierda; en tarjetas angostas (lo normal) es idéntico. El heat grid ya no se adapta al ancho de la tarjeta (siempre dibuja hasta 52 semanas y recorta), lo que además elimina el re-render disparado por el `ResizeObserver`. Se agrega un escenario de colapso de sidebar al presupuesto de performance de CI (`tests/perf/sidebar-collapse.spec.ts`) para que la regresión no vuelva.
+
+Esto **enmienda el ADR 0007**: su premisa —que el trabajo repetido de la dashboard eliminado en `c92f4a9` era la causa dominante— era incompleta; quedaba el reflow/re-render del heat grid. La animación de ancho se mantiene.
+
+Considered options: dejar el grid responsivo y diferir el recálculo de columnas hasta el fin de la transición — el re-render único con 20 hábitos seguía costando ~6 long tasks; reposicionar el grid con `transform` por cuadro — rasteriza los grids y empeora (2.7–6.7 long tasks promedio); volver al snap discreto (ADR 0006) — se descarta porque el heat grid se puede arreglar sin perder el movimiento.

@@ -16,6 +16,8 @@ import GoalFormModal from '@/components/goals/GoalFormModal.vue'
 import NoteFormModal from '@/components/notes/NoteFormModal.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
+import UpdateModal from '@/components/layout/UpdateModal.vue'
+import { useUpdater } from '@/composables/useUpdater'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -23,11 +25,21 @@ const goals = useGoalsStore()
 const ui = useUiStore()
 const pomodoro = usePomodoroStore()
 
+const {
+  status: updateStatus,
+  progress: updateProgress,
+  checkForUpdate,
+  update: applyUpdate,
+  dismiss: dismissUpdate,
+  dismissForever: dismissUpdateForever,
+} = useUpdater()
+
 useTheme()
 
 let pomodoroTicker: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
+  void checkForUpdate()
   ui.loadWallpaper()
   await habits.loadInitialData()
   await tasks.loadTasks()
@@ -53,7 +65,13 @@ onBeforeUnmount(() => {
   <div class="relative isolate flex h-screen gap-3 overflow-hidden bg-canvas p-3 text-ink">
     <WallpaperLayer :url="ui.wallpaperUrl" />
 
-    <Sidebar />
+    <div
+      data-testid="sidebar-slot"
+      class="relative h-full shrink-0"
+      :class="ui.sidebarCollapsed ? 'w-14' : 'w-44'"
+    >
+      <Sidebar class="absolute inset-y-0 left-0 z-10" />
+    </div>
 
     <div class="glass-strong flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
       <div class="min-h-0 flex-1 overflow-hidden p-4">
@@ -68,5 +86,14 @@ onBeforeUnmount(() => {
     <TaskFormModal />
     <GoalFormModal />
     <NoteFormModal />
+
+    <UpdateModal
+      :open="updateStatus !== 'idle'"
+      :status="updateStatus"
+      :progress="updateProgress"
+      @update="applyUpdate"
+      @dismiss="dismissUpdate"
+      @dismiss-forever="dismissUpdateForever"
+    />
   </div>
 </template>

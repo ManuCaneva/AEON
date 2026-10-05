@@ -19,6 +19,9 @@
     "http:allow-fetch-send",
     "deep-link:default",
     "deep-link:allow-is-registered",
-    "deep-link:allow-register"
+    "deep-link:allow-register",
+    "updater:default",
+    "process:default",
+    "process:allow-restart"
   ]
 }

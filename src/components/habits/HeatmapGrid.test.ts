@@ -86,6 +86,36 @@ describe('HeatmapGrid (column-major)', () => {
     expect(filled).toBeTruthy()
   })
 
+  it('actualiza las celdas cuando cambian los logs', async () => {
+    const today = todayLocalStr()
+    const w = mount(HeatmapGrid, {
+      props: {
+        logs: [
+          {
+            id: '1',
+            habit_id: 'h',
+            log_date: today,
+            completed_at: today,
+            note: null,
+            count: 1,
+            created_at: today,
+          },
+        ],
+        color: '#5e6ad2',
+        days: 364,
+      },
+    })
+    const hasFilled = () =>
+      w
+        .findAll("[data-testid='heat-cell']")
+        .some((el) => (el.element as HTMLElement).style.background === 'rgba(94, 106, 210, 1)')
+
+    expect(hasFilled()).toBe(true)
+
+    await w.setProps({ logs: [] })
+    expect(hasFilled()).toBe(false)
+  })
+
   it('celda no completada usa shadeFor al 15%', () => {
     const w = mount(HeatmapGrid, { props: { logs: [], color: '#5e6ad2', days: 364 } })
     const off = w

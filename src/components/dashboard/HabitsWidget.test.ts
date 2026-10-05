@@ -21,6 +21,7 @@ vi.mock('@/stores/habits', () => ({
       },
     ],
     logs: [],
+    logsByHabit: new Map(),
     completedToday: new Map(),
     isCompletedToday: vi.fn(() => false),
     incrementCheckIn: vi.fn(),

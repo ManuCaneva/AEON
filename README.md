@@ -13,10 +13,9 @@ AEON reúne hábitos, tareas, objetivos, cronograma semanal, calendario anual y 
 
 [![Release](https://img.shields.io/github/v/release/ManuCaneva/AEON)](https://github.com/ManuCaneva/AEON/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-Download-0078D4?logo=windows)](https://github.com/ManuCaneva/AEON/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-Download-000000?logo=apple)](https://github.com/ManuCaneva/AEON/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-Download-FCC624?logo=linux)](https://github.com/ManuCaneva/AEON/releases/latest)
 
-Los instaladores de cada sistema operativo están en la [página de releases](https://github.com/ManuCaneva/AEON/releases/latest). La app no está firmada: Windows puede mostrar un aviso de SmartScreen y macOS puede pedir clic derecho → **Abrir** la primera vez.
+Los instaladores de cada sistema operativo están en la [página de releases](https://github.com/ManuCaneva/AEON/releases/latest). La app no está firmada: Windows puede mostrar un aviso de SmartScreen la primera vez.
 
 ## Qué incluye
 
@@ -39,7 +38,6 @@ Tauri 2 + Rust (rusqlite) como shell de escritorio, Vue 3.5 + TypeScript + Pinia
 - **Node.js 20+**
 - **Rust estable** (vía [rustup](https://rustup.rs))
 - **Linux**: `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
-- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
 - **Windows**: WebView2 (preinstalado en Windows 11) + MSVC build tools
 
 ### Puesta en marcha
@@ -78,7 +76,7 @@ npm run test:perf     # presupuesto de rendimiento del dashboard
 
 ### Releases
 
-Pushear un tag dispara el workflow de GitHub Actions que compila y publica los instaladores (Windows, macOS Intel y Apple Silicon, Linux) en [releases](https://github.com/ManuCaneva/AEON/releases):
+Pushear un tag dispara el workflow de GitHub Actions que compila y publica los instaladores (Windows y Linux) en [releases](https://github.com/ManuCaneva/AEON/releases):
 
 ```sh
 git tag v1.0.0
