@@ -15,7 +15,38 @@ AEON reúne hábitos, tareas, objetivos, cronograma semanal, calendario anual y 
 [![Windows](https://img.shields.io/badge/Windows-Download-0078D4?logo=windows)](https://github.com/ManuCaneva/AEON/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-Download-FCC624?logo=linux)](https://github.com/ManuCaneva/AEON/releases/latest)
 
-Los instaladores de cada sistema operativo están en la [página de releases](https://github.com/ManuCaneva/AEON/releases/latest). La app no está firmada: Windows puede mostrar un aviso de SmartScreen la primera vez.
+Los instaladores de cada sistema operativo están en la [página de releases](https://github.com/ManuCaneva/AEON/releases/latest).
+
+### Windows
+
+Descargá `AEON_x.y.z_x64-setup.exe` y ejecutalo. La app no está firmada, así que SmartScreen puede avisar la primera vez: **Más información → Ejecutar de todas formas**.
+
+### Linux
+
+Descargá `AEON_x.y.z_amd64.AppImage`. Necesita FUSE 2, que en Arch y derivados no viene instalado:
+
+```sh
+# Arch, CachyOS, EndeavourOS, Manjaro
+sudo pacman -S fuse2
+
+# Debian / Ubuntu
+sudo apt install libfuse2
+```
+
+Después:
+
+```sh
+mkdir -p ~/Applications
+mv ~/Downloads/AEON_*.AppImage ~/Applications/
+chmod +x ~/Applications/AEON_*.AppImage
+~/Applications/AEON_*.AppImage
+```
+
+Dejalo en tu carpeta personal, no en `/usr/bin`: el actualizador reescribe el AppImage donde está instalado, y en una ruta del sistema no tiene permisos.
+
+### Actualizaciones
+
+La app chequea sola si hay una versión nueva al abrirse y ofrece actualizar con un botón. No hace falta bajar nada a mano.
 
 ## Qué incluye
 
@@ -76,14 +107,15 @@ npm run test:perf     # presupuesto de rendimiento del dashboard
 
 ### Releases
 
-Pushear un tag dispara el workflow de GitHub Actions que compila y publica los instaladores (Windows y Linux) en [releases](https://github.com/ManuCaneva/AEON/releases):
+Llegar a `main` (por PR y merge) dispara el workflow de GitHub Actions que compila y publica los instaladores (Windows y Linux) en [releases](https://github.com/ManuCaneva/AEON/releases):
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+npm run release:bump -- 0.1.1   # actualiza la versión en los tres archivos
 ```
 
-La versión del tag tiene que matchear `version` en `src-tauri/tauri.conf.json`.
+El script mueve la versión de `package.json`, `Cargo.toml` y `tauri.conf.json` juntos o de ninguno. Después: commit, PR y merge a `main`.
+
+El workflow **falla a propósito** si el tag `v<versión>` ya existe, así que hay que bumpear antes de mergear. Además de los instaladores publica `latest.json`, el archivo firmado que consulta el actualizador in-app.
 
 ## Roadmap
 
