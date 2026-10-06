@@ -21,7 +21,23 @@ Los instaladores de cada sistema operativo están en la [página de releases](ht
 
 Descargá `AEON_x.y.z_x64-setup.exe` y ejecutalo. La app no está firmada, así que SmartScreen puede avisar la primera vez: **Más información → Ejecutar de todas formas**.
 
+También hay un `AEON_x.y.z_x64_en-US.msi` si preferís el instalador de Windows Installer.
+
 ### Linux
+
+En Debian, Ubuntu, Fedora y openSUSE instalá el paquete: deja la app en el menú con su ícono, sin pasos extra.
+
+```sh
+# Debian / Ubuntu
+sudo apt install ~/Downloads/AEON_x.y.z_amd64.deb
+
+# Fedora / openSUSE
+sudo dnf install ~/Downloads/AEON-x.y.z-1.x86_64.rpm
+```
+
+En el resto de las distros, o si querés algo portable, usá el AppImage.
+
+#### AppImage
 
 Descargá `AEON_x.y.z_amd64.AppImage`. Necesita FUSE 2, que en Arch y derivados no viene instalado:
 
@@ -33,20 +49,22 @@ sudo pacman -S fuse2
 sudo apt install libfuse2
 ```
 
-Después:
+Después hacelo ejecutable y abrilo una vez:
 
 ```sh
-mkdir -p ~/Applications
-mv ~/Downloads/AEON_*.AppImage ~/Applications/
-chmod +x ~/Applications/AEON_*.AppImage
-~/Applications/AEON_*.AppImage
+chmod +x ~/Downloads/AEON_*.AppImage
+~/Downloads/AEON_*.AppImage
 ```
 
-Dejalo en tu carpeta personal, no en `/usr/bin`: el actualizador reescribe el AppImage donde está instalado, y en una ruta del sistema no tiene permisos.
+En ese primer arranque la app se registra sola: se mueve a `~/Applications/aeon.AppImage`, aparece en el menú de aplicaciones con su ícono y queda lista para anclar al dock. El archivo ya no lleva versión en el nombre, así que sigue siendo el mismo después de cada actualización.
+
+No hace falta moverlo a mano. Si borrás el acceso o movés el archivo, al próximo arranque se vuelve a armar. Dejalo dentro de tu carpeta personal y no en `/usr/bin`: en una ruta del sistema no tiene permisos para reescribirse, y si queda en otro sistema de archivos no puede moverse solo a `~/Applications`.
 
 ### Actualizaciones
 
-La app chequea sola si hay una versión nueva al abrirse y ofrece actualizar con un botón. No hace falta bajar nada a mano.
+La app chequea sola si hay una versión nueva al abrirse y ofrece actualizar con un botón. En el AppImage y en Windows la actualización se aplica sola, sin bajar nada a mano.
+
+En instalaciones por paquete (`.deb`/`.rpm`) el actualizador no puede reemplazar archivos del sistema, así que el botón te lleva a la [página de releases](https://github.com/ManuCaneva/AEON/releases/latest) para que bajes el paquete nuevo.
 
 ## Qué incluye
 
@@ -110,7 +128,7 @@ npm run test:perf     # presupuesto de rendimiento del dashboard
 Llegar a `main` (por PR y merge) dispara el workflow de GitHub Actions que compila y publica los instaladores (Windows y Linux) en [releases](https://github.com/ManuCaneva/AEON/releases):
 
 ```sh
-npm run release:bump -- 0.1.1   # actualiza la versión en los tres archivos
+npm run release:bump -- <nueva-version>   # actualiza la versión en los tres archivos
 ```
 
 El script mueve la versión de `package.json`, `Cargo.toml` y `tauri.conf.json` juntos o de ninguno. Después: commit, PR y merge a `main`.
@@ -119,7 +137,7 @@ El workflow **falla a propósito** si el tag `v<versión>` ya existe, así que h
 
 ## Roadmap
 
-La v1.0.0 incluye todo lo listado en **Qué incluye**, estable en `main`.
+Todo lo listado en **Qué incluye** está estable y disponible en `main`.
 
 **Próximo**
 
