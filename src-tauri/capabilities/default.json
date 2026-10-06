@@ -20,6 +20,29 @@
     "deep-link:default",
     "deep-link:allow-is-registered",
     "deep-link:allow-register",
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$HOME/Applications" },
+        { "path": "$HOME/Applications/**" },
+        { "path": "$HOME/.local/share/applications" },
+        { "path": "$HOME/.local/share/applications/**" },
+        { "path": "$HOME/.local/share/icons/hicolor/256x256/apps" },
+        { "path": "$HOME/.local/share/icons/hicolor/256x256/apps/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$HOME/.local/share/applications/**" }]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "$HOME/.local/share/icons/hicolor/256x256/apps/**" }]
+    },
+    {
+      "identifier": "fs:allow-rename",
+      "allow": [{ "path": "$HOME/**" }]
+    },
     "updater:default",
     "process:default",
     "process:allow-restart"

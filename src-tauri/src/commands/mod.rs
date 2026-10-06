@@ -2,6 +2,7 @@
 // commands/mod.rs — Submódulos de Tauri commands
 // =============================================================
 
+pub mod app_image;
 pub mod config;
 pub mod data;
 pub mod goal_logs;
