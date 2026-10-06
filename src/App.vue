@@ -18,6 +18,7 @@ import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
 import UpdateModal from '@/components/layout/UpdateModal.vue'
 import { useUpdater } from '@/composables/useUpdater'
+import { useDesktopEntry } from '@/composables/useDesktopEntry'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -34,12 +35,24 @@ const {
   dismissForever: dismissUpdateForever,
 } = useUpdater()
 
+const { ensureDesktopEntry } = useDesktopEntry()
+
 useTheme()
 
 let pomodoroTicker: ReturnType<typeof setInterval> | undefined
 
+/**
+ * Registra el AppImage en el menú de Linux antes de chequear updates. Si movió
+ * el binario en este arranque, se omite el chequeo: el updater todavía tiene la
+ * ruta vieja en memoria y escribiría en un archivo inexistente.
+ */
+async function registerDesktopIntegration(): Promise<void> {
+  const renamedAppImage = await ensureDesktopEntry()
+  if (!renamedAppImage) void checkForUpdate()
+}
+
 onMounted(async () => {
-  void checkForUpdate()
+  void registerDesktopIntegration()
   ui.loadWallpaper()
   await habits.loadInitialData()
   await tasks.loadTasks()
