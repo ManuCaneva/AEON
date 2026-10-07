@@ -19,6 +19,9 @@ export const DESKTOP_ENTRY_FILENAME = 'aeon.desktop'
 /** Nombre del icono; la clave `Icon=` lo referencia sin extensión. */
 export const ICON_FILENAME = 'aeon.png'
 
+/** Caché derivada del tema hicolor; se borra para forzar que se re-escanee. */
+export const ICON_THEME_CACHE_FILENAME = 'icon-theme.cache'
+
 /** Une segmentos garantizando un único separador (Linux). */
 function joinPath(base: string, ...parts: string[]): string {
   const trimmedBase = base.replace(/\/+$/, '')
@@ -46,14 +49,27 @@ export function desktopEntryPath(homeDir: string): string {
   return joinPath(desktopEntryDir(homeDir), DESKTOP_ENTRY_FILENAME)
 }
 
+/** Raíz del tema de iconos hicolor por usuario. */
+export function iconThemeDir(homeDir: string): string {
+  return joinPath(homeDir, '.local', 'share', 'icons', 'hicolor')
+}
+
 /** Carpeta del icono 256x256 en el tema hicolor. */
 export function iconDir(homeDir: string): string {
-  return joinPath(homeDir, '.local', 'share', 'icons', 'hicolor', '256x256', 'apps')
+  return joinPath(iconThemeDir(homeDir), '256x256', 'apps')
 }
 
 /** Ruta del icono que referencia `Icon=aeon`. */
 export function iconPath(homeDir: string): string {
   return joinPath(iconDir(homeDir), ICON_FILENAME)
+}
+
+/**
+ * Caché derivada del tema hicolor. Si existe y no conoce `aeon`, el entorno
+ * puede ignorar el icono: se borra para forzar un re-escaneo.
+ */
+export function iconThemeCachePath(homeDir: string): string {
+  return joinPath(iconThemeDir(homeDir), ICON_THEME_CACHE_FILENAME)
 }
 
 function stripTrailingSlash(path: string): string {

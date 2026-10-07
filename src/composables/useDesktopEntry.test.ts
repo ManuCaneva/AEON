@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { homeDir } from '@tauri-apps/api/path'
-import { mkdir, rename, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { mkdir, remove, rename, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useDesktopEntry } from './useDesktopEntry'
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/path', () => ({ homeDir: vi.fn() }))
 vi.mock('@tauri-apps/plugin-fs', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
+  remove: vi.fn().mockResolvedValue(undefined),
   rename: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   writeTextFile: vi.fn().mockResolvedValue(undefined),
@@ -17,12 +18,18 @@ const HOME = '/home/ana'
 const STABLE = '/home/ana/Applications/aeon.AppImage'
 const DESKTOP_FILE = '/home/ana/.local/share/applications/aeon.desktop'
 const ICON_FILE = '/home/ana/.local/share/icons/hicolor/256x256/apps/aeon.png'
+const ICON_CACHE_FILE = '/home/ana/.local/share/icons/hicolor/icon-theme.cache'
 
 describe('useDesktopEntry', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(homeDir).mockResolvedValue(HOME)
     vi.mocked(invoke).mockResolvedValue(STABLE)
+    vi.mocked(mkdir).mockResolvedValue(undefined)
+    vi.mocked(remove).mockResolvedValue(undefined)
+    vi.mocked(rename).mockResolvedValue(undefined)
+    vi.mocked(writeFile).mockResolvedValue(undefined)
+    vi.mocked(writeTextFile).mockResolvedValue(undefined)
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ arrayBuffer: async () => new ArrayBuffer(8) })
@@ -107,6 +114,49 @@ describe('useDesktopEntry', () => {
       DESKTOP_FILE,
       expect.stringContaining('Exec=/home/ana/Downloads/AEON_0.1.1_amd64.appimage')
     )
+    consoleError.mockRestore()
+  })
+
+  it('escribe el icono antes que la entrada del menú', async () => {
+    const { ensureDesktopEntry } = useDesktopEntry(true)
+    await ensureDesktopEntry()
+    const iconOrder = vi.mocked(writeFile).mock.invocationCallOrder.slice(-1)[0]
+    const entryOrder = vi.mocked(writeTextFile).mock.invocationCallOrder.slice(-1)[0]
+    expect(iconOrder).toBeLessThan(entryOrder)
+  })
+
+  it('invalida la caché del tema de iconos después de escribir el icono', async () => {
+    const { ensureDesktopEntry } = useDesktopEntry(true)
+    await ensureDesktopEntry()
+    expect(remove).toHaveBeenCalledWith(ICON_CACHE_FILE)
+    const iconOrder = vi.mocked(writeFile).mock.invocationCallOrder.slice(-1)[0]
+    const removeOrder = vi.mocked(remove).mock.invocationCallOrder.slice(-1)[0]
+    expect(removeOrder).toBeGreaterThan(iconOrder)
+  })
+
+  it('sigue registrando aunque no exista la caché de iconos', async () => {
+    vi.mocked(remove).mockRejectedValue(new Error('no existe'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ensureDesktopEntry } = useDesktopEntry(true)
+    await expect(ensureDesktopEntry()).resolves.toBe(false)
+    expect(writeTextFile).toHaveBeenCalledWith(
+      DESKTOP_FILE,
+      expect.stringContaining(`Exec=${STABLE}`)
+    )
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('igual escribe la entrada si falla el icono', async () => {
+    vi.mocked(writeFile).mockRejectedValue(new Error('permiso denegado'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ensureDesktopEntry } = useDesktopEntry(true)
+    await expect(ensureDesktopEntry()).resolves.toBe(false)
+    expect(writeTextFile).toHaveBeenCalledWith(
+      DESKTOP_FILE,
+      expect.stringContaining(`Exec=${STABLE}`)
+    )
+    expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
   })
 })
