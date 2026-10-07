@@ -6,6 +6,8 @@ import {
   escapeExecArgument,
   iconDir,
   iconPath,
+  iconThemeCachePath,
+  iconThemeDir,
   isSamePath,
   stableAppImageDir,
   stableAppImagePath,
@@ -21,6 +23,10 @@ describe('desktopEntry', () => {
       expect(iconDir('/home/ana')).toBe('/home/ana/.local/share/icons/hicolor/256x256/apps')
       expect(iconPath('/home/ana')).toBe(
         '/home/ana/.local/share/icons/hicolor/256x256/apps/aeon.png'
+      )
+      expect(iconThemeDir('/home/ana')).toBe('/home/ana/.local/share/icons/hicolor')
+      expect(iconThemeCachePath('/home/ana')).toBe(
+        '/home/ana/.local/share/icons/hicolor/icon-theme.cache'
       )
     })
 
