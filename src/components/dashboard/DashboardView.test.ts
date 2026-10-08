@@ -29,6 +29,7 @@ vi.mock('@/stores/habits', () => ({
 
 let editModeValue = false
 const mockRemoveWidget = vi.fn()
+const mockResizeTo = vi.fn()
 
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({
@@ -47,7 +48,7 @@ vi.mock('@/stores/dashboard', () => ({
       return [{ i: 'habits', x: 0, y: 0, w: 6, h: 4 }]
     },
     moveTo: vi.fn(),
-    resizeTo: vi.fn(),
+    resizeTo: mockResizeTo,
     removeWidget: mockRemoveWidget,
     saveEdit: vi.fn(),
     discardEdit: vi.fn(),
@@ -187,5 +188,14 @@ describe('DashboardView', () => {
     removeBtn.vm.$emit('remove', 'habits')
     await wrapper.vm.$nextTick()
     expect(mockRemoveWidget).toHaveBeenCalledWith('habits')
+  })
+
+  it('al redimensionar reenvía posición y tamaño al store', async () => {
+    editModeValue = true
+    const wrapper = mount(DashboardView)
+    const item = wrapper.findComponent({ name: 'GridItemVue' })
+    item.vm.$emit('resized', 'habits', 1, 2, 5, 4)
+    await wrapper.vm.$nextTick()
+    expect(mockResizeTo).toHaveBeenCalledWith('habits', 5, 4, 1, 2)
   })
 })

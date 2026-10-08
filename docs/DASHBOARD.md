@@ -41,6 +41,7 @@ El contenedor es `display: grid` con `grid-template-columns: repeat(12, minmax(0
 
 - El drag y resize se habilitan únicamente en modo edición.
 - `interactjs` entrega posición y tamaño en píxeles durante el gesto (el widget se mueve con `transform` / se redimensiona con px absolutos).
+- El redimensionado funciona desde las cuatro aristas y las cuatro esquinas (diagonales). Al estirar desde arriba o la izquierda, el borde opuesto queda anclado: el preview se desplaza con `transform` mientras cambia el tamaño, y al soltar se ajustan juntos la posición (`x`/`y`) y el tamaño (`w`/`h`). El snap a celdas enteras y el rechazo por colisión son los mismos que en el resto de los gestos.
 - Al soltar, `gridSnap` (`pxToCells`) convierte a celdas enteras y el widget vuelve a la grilla nativa.
 - La animación FLIP (transform-only, ~180ms, `cubic-bezier(0.16,1,0.3,1)`) suaviza el snap final (ver `src/composables/flip.ts`).
 - Los ítems de la grilla usan `contain: layout` para aislar el costo de layout sin recortar la pintura: la cruz del modo edición se centra en la esquina superior derecha del widget y la mitad que sobresale queda visible (ver «Modo edición»).
@@ -90,6 +91,7 @@ Los widgets se adaptan al tamaño de su celda sin desbordar el panel:
 - La grilla lleva `isolate` en modo edición: los `z-index` de los ítems quedan contenidos bajo el `WidgetPicker` y los modales, que siguen por encima (`z-50`).
 - En modo edición el root del dashboard suelta su `overflow-hidden` para que la mitad de la cruz que sobresale no se recorte contra el borde de la vista; el `p-4` del panel da el aire necesario. En reposo conserva `overflow-hidden` y los widgets miden exactamente igual en ambos modos (sin padding extra).
 - El contenido de cada widget se desatura (`filter: grayscale(1)`), se atenúa (`opacity: 0.6`) y deja de recibir punteros (`pointer-events: none`) mientras dura la edición, para no disparar acciones por accidente. El arrastre, el redimensionado y la cruz viven fuera de esa capa y siguen operativos.
+- El redimensionado se descubre con handles invisibles sobre las cuatro aristas y las cuatro esquinas, cada uno con su cursor (`ns-resize` en horizontales, `ew-resize` en verticales, `nwse-resize`/`nesw-resize` en las diagonales). Al hacer hover en modo edición aparecen en las esquinas unos grips de dos líneas (una horizontal y una vertical) que marcan la affordance; sin hover no se ven.
 - La grilla (12×10) se dibuja en modo edición con líneas finas continuas de 1px a baja opacidad, con `repeating-linear-gradient` sobre el contenedor y solo tokens de color; en reposo no queda rastro.
 
 ## Archivos relacionados

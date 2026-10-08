@@ -19,12 +19,42 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   moved: [id: string, x: number, y: number]
-  resized: [id: string, w: number, h: number]
+  resized: [id: string, x: number, y: number, w: number, h: number]
 }>()
 
 const elRef = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 const isFlipping = ref(false)
+const isHovered = ref(false)
+
+/**
+ * Handles invisibles que marcan el cursor de redimensionado en cada arista y
+ * esquina. interactjs detecta el borde por proximidad del puntero; estos
+ * elementos solo aportan la affordance visual (cursor) y aíslan la lógica de
+ * estilos. Las clases van como literales para que el escáner de Tailwind las
+ * encuentre.
+ */
+const RESIZE_HANDLES: Array<{ position: string; classes: string }> = [
+  { position: 'n', classes: 'top-0 left-1/4 right-1/4 h-1.5 cursor-ns-resize' },
+  { position: 's', classes: 'bottom-0 left-1/4 right-1/4 h-1.5 cursor-ns-resize' },
+  { position: 'w', classes: 'left-0 top-1/4 bottom-1/4 w-1.5 cursor-ew-resize' },
+  { position: 'e', classes: 'right-0 top-1/4 bottom-1/4 w-1.5 cursor-ew-resize' },
+  { position: 'nw', classes: 'left-0 top-0 h-2.5 w-2.5 cursor-nwse-resize' },
+  { position: 'ne', classes: 'right-0 top-0 h-2.5 w-2.5 cursor-nesw-resize' },
+  { position: 'sw', classes: 'left-0 bottom-0 h-2.5 w-2.5 cursor-nesw-resize' },
+  { position: 'se', classes: 'right-0 bottom-0 h-2.5 w-2.5 cursor-nwse-resize' },
+]
+
+/**
+ * Grips de esquina: dos líneas en forma de L que aparecen al hacer hover en
+ * modo edición. El ancla define en qué vértice del widget se dibujan.
+ */
+const CORNER_GRIPS: Array<{ corner: string; anchor: string }> = [
+  { corner: 'nw', anchor: 'left-0 top-0' },
+  { corner: 'ne', anchor: 'right-0 top-0' },
+  { corner: 'sw', anchor: 'left-0 bottom-0' },
+  { corner: 'se', anchor: 'right-0 bottom-0' },
+]
 
 const gridStyle = computed(() => ({
   gridColumn: `${props.item.x + 1} / span ${props.item.w}`,
@@ -90,6 +120,8 @@ let dragAccumX = 0
 let dragAccumY = 0
 let resizeAccumW = 0
 let resizeAccumH = 0
+let resizeAccumLeft = 0
+let resizeAccumTop = 0
 let resizeBaseW = 0
 let resizeBaseH = 0
 
@@ -98,6 +130,9 @@ function applyResizeOffset() {
   if (!el) return
   el.style.width = `${resizeBaseW + resizeAccumW}px`
   el.style.height = `${resizeBaseH + resizeAccumH}px`
+  // Al tirar de arriba/izquierda el borde opuesto queda anclado: crecer hacia
+  // ese lado se compensa desplazando el item con transform (solo preview).
+  el.style.transform = `translate(${resizeAccumLeft}px, ${resizeAccumTop}px)`
 }
 
 useDashDrag(elRef, editModeRef, {
@@ -107,6 +142,8 @@ useDashDrag(elRef, editModeRef, {
     dragAccumY = 0
     resizeAccumW = 0
     resizeAccumH = 0
+    resizeAccumLeft = 0
+    resizeAccumTop = 0
   },
   onDragMove(dx, dy) {
     dragAccumX += dx
@@ -140,6 +177,8 @@ useDashDrag(elRef, editModeRef, {
     dragAccumY = 0
     resizeAccumW = 0
     resizeAccumH = 0
+    resizeAccumLeft = 0
+    resizeAccumTop = 0
     isDragging.value = false
     emit('moved', props.item.i, snapped.x, snapped.y)
     if (el) {
@@ -152,6 +191,8 @@ useDashDrag(elRef, editModeRef, {
     dragAccumY = 0
     resizeAccumW = 0
     resizeAccumH = 0
+    resizeAccumLeft = 0
+    resizeAccumTop = 0
     const el = elRef.value
     if (el) {
       const rect = el.getBoundingClientRect()
@@ -167,9 +208,11 @@ useDashDrag(elRef, editModeRef, {
     }
     applyResizeOffset()
   },
-  onResizeMove(dw, dh) {
+  onResizeMove(dw, dh, dl = 0, dt = 0) {
     resizeAccumW += dw
     resizeAccumH += dh
+    resizeAccumLeft += dl
+    resizeAccumTop += dt
     applyResizeOffset()
   },
   onResizeEnd() {
@@ -178,13 +221,14 @@ useDashDrag(elRef, editModeRef, {
     if (el) {
       el.style.width = ''
       el.style.height = ''
+      el.style.transform = ''
     }
     const { containerWidth, containerHeight } = containerSize()
     const colWidth = containerWidth / COLS
     const rowHeight = containerHeight / ROWS
     const snapped = pxToCells(
-      props.item.x * colWidth,
-      props.item.y * rowHeight,
+      props.item.x * colWidth + resizeAccumLeft,
+      props.item.y * rowHeight + resizeAccumTop,
       props.item.w * colWidth + resizeAccumW,
       props.item.h * rowHeight + resizeAccumH,
       containerWidth,
@@ -195,8 +239,10 @@ useDashDrag(elRef, editModeRef, {
     dragAccumY = 0
     resizeAccumW = 0
     resizeAccumH = 0
+    resizeAccumLeft = 0
+    resizeAccumTop = 0
     isDragging.value = false
-    emit('resized', props.item.i, snapped.w, snapped.h)
+    emit('resized', props.item.i, snapped.x, snapped.y, snapped.w, snapped.h)
     if (el) {
       nextTick(() => applyFlip(first))
     }
@@ -215,6 +261,8 @@ useDashDrag(elRef, editModeRef, {
       isDragging && 'grid-item--dragging',
       isFlipping && 'grid-item--flip',
     ]"
+    @mouseenter="isHovered = true"
+    @mouseleave="isHovered = false"
   >
     <div
       data-testid="widget-content"
@@ -224,6 +272,35 @@ useDashDrag(elRef, editModeRef, {
     >
       <slot />
     </div>
+    <template v-if="editMode">
+      <div
+        v-for="handle in RESIZE_HANDLES"
+        :key="handle.position"
+        :data-testid="`resize-handle-${handle.position}`"
+        class="absolute"
+        :class="handle.classes"
+      />
+      <template v-if="isHovered">
+        <div
+          v-for="grip in CORNER_GRIPS"
+          :key="grip.corner"
+          :data-testid="`corner-grip-${grip.corner}`"
+          class="pointer-events-none absolute z-10 h-3 w-3"
+          :class="grip.anchor"
+        >
+          <span
+            data-testid="corner-grip-line"
+            class="absolute h-px w-3 bg-hairline-strong"
+            :class="grip.anchor"
+          />
+          <span
+            data-testid="corner-grip-line"
+            class="absolute h-3 w-px bg-hairline-strong"
+            :class="grip.anchor"
+          />
+        </div>
+      </template>
+    </template>
     <slot name="controls" />
   </div>
 </template>

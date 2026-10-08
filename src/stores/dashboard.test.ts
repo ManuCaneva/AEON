@@ -372,6 +372,42 @@ describe('dashboard store (grilla entera)', () => {
     expect(store.layout[0].h).toBe(ROWS - 5)
   })
 
+  it('resizeTo con nueva posición (desde arriba/izquierda) actualiza x/y junto con w/h', async () => {
+    const store = useDashboardStore()
+    await flush()
+    store.updateLayout([{ i: 'a', x: 6, y: 0, w: 4, h: 3 }])
+    store.resizeTo('a', 5, 3, 5, 0)
+    const after = store.layout.find((i) => i.i === 'a')!
+    expect(after.x).toBe(5)
+    expect(after.w).toBe(5)
+    expect(after.y).toBe(0)
+    expect(after.h).toBe(3)
+  })
+
+  it('resizeTo con nueva posición clampa x/y para no salirse del contenedor', async () => {
+    const store = useDashboardStore()
+    await flush()
+    store.updateLayout([{ i: 'a', x: 6, y: 6, w: 4, h: 3 }])
+    store.resizeTo('a', 4, 3, 11, 9)
+    const after = store.layout.find((i) => i.i === 'a')!
+    expect(after.x).toBe(COLS - 4)
+    expect(after.y).toBe(ROWS - 3)
+  })
+
+  it('resizeTo con nueva posición rechaza la colisión resultante', async () => {
+    const store = useDashboardStore()
+    await flush()
+    store.updateLayout([
+      { i: 'a', x: 6, y: 0, w: 4, h: 3 },
+      { i: 'b', x: 2, y: 0, w: 3, h: 3 },
+    ])
+    // Con nueva posición, `a` invadiría `b`.
+    store.resizeTo('a', 5, 3, 2, 0)
+    const after = store.layout.find((i) => i.i === 'a')!
+    expect(after.x).toBe(6)
+    expect(after.w).toBe(4)
+  })
+
   it('addWidget busca primera posición libre si default está ocupada', () => {
     const layout: import('./dashboard').Layout = [{ i: 'a', x: 0, y: 0, w: 6, h: 4 }]
     const pos = findFreePosition(6, 4, layout)

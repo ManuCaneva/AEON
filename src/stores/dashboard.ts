@@ -302,18 +302,28 @@ export const useDashboardStore = defineStore('dashboard', () => {
     persistIfNotEditing()
   }
 
-  function resizeTo(id: string, w: number, h: number) {
+  /**
+   * Redimensiona un item a (w, h) celdas. Si se pasa (x, y) —al tirar desde
+   * arriba o la izquierda— también se mueve la posición, de modo que el borde
+   * opuesto quede anclado. Clampa tamaño y posición y rechaza colisiones reales.
+   */
+  function resizeTo(id: string, w: number, h: number, x?: number, y?: number) {
     const item = layout.value.find((i) => i.i === id)
     if (!item) return
     const minW = item.minW ?? 1
     const minH = item.minH ?? 1
-    const clampedW = clamp(w, minW, COLS - item.x)
-    const clampedH = clamp(h, minH, ROWS - item.y)
-    if (wouldCollide(item.x, item.y, clampedW, clampedH, layout.value, id)) {
+    // Sin nueva posición (tirar de derecha/abajo) el tope lo marca el borde
+    // del contenedor. Con nueva posición (tirar de izquierda/arriba) se
+    // redimensiona y se mueve: se clampa la posición, no el tamaño.
+    const clampedW = x === undefined ? clamp(w, minW, COLS - item.x) : clamp(w, minW, COLS)
+    const clampedH = y === undefined ? clamp(h, minH, ROWS - item.y) : clamp(h, minH, ROWS)
+    const clampedX = clamp(x ?? item.x, 0, COLS - clampedW)
+    const clampedY = clamp(y ?? item.y, 0, ROWS - clampedH)
+    if (wouldCollide(clampedX, clampedY, clampedW, clampedH, layout.value, id)) {
       return
     }
     layout.value = layout.value.map((i) =>
-      i.i === id ? markRaw({ ...i, w: clampedW, h: clampedH }) : i
+      i.i === id ? markRaw({ ...i, x: clampedX, y: clampedY, w: clampedW, h: clampedH }) : i
     )
     persistIfNotEditing()
   }

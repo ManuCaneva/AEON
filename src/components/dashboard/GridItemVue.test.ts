@@ -15,7 +15,7 @@ vi.mock('@/composables/useDashDrag', () => ({
       onDragMove: (dx: number, dy: number) => void
       onDragEnd: () => void
       onResizeStart: () => void
-      onResizeMove: (dw: number, dh: number) => void
+      onResizeMove: (dw: number, dh: number, dl?: number, dt?: number) => void
       onResizeEnd: () => void
     }
   ) => {
@@ -36,6 +36,32 @@ vi.mock('@/composables/flip', () => ({
 
 function makeItem(overrides: Partial<LayoutItem> = {}): LayoutItem {
   return { i: 'habits', x: 0, y: 0, w: 6, h: 4, minW: 1, minH: 1, ...overrides }
+}
+
+/**
+ * Monta un item en modo edición con un contenedor de 1200×800 (col=100px,
+ * row=80px) para poder razonar el snap en celdas enteras sin depender de
+ * getBoundingClientRect (que happy-dom devuelve en cero).
+ */
+function mountResizable(item: Partial<LayoutItem> = {}) {
+  const wrapper = mount(GridItemVue, {
+    props: { item: makeItem(item), editMode: true },
+  })
+  const el = wrapper.element as HTMLElement
+  const container = el.parentElement as HTMLElement
+  Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+  Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+  return { wrapper, el }
+}
+
+async function resize(
+  wrapper: ReturnType<typeof mountResizable>['wrapper'],
+  move: [dw: number, dh: number, dl: number, dt: number]
+) {
+  dragCallbacks.onResizeStart?.()
+  dragCallbacks.onResizeMove?.(...move)
+  dragCallbacks.onResizeEnd?.()
+  await wrapper.vm.$nextTick()
 }
 
 describe('GridItemVue', () => {
@@ -132,7 +158,7 @@ describe('GridItemVue', () => {
     expect(emitted[0]).toEqual(['habits', 1, 1])
   })
 
-  it('emite resized en enteros tras un resize con snap', async () => {
+  it('emite resized en enteros tras un resize con snap (incluye posición)', async () => {
     const wrapper = mount(GridItemVue, {
       props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
     })
@@ -150,7 +176,155 @@ describe('GridItemVue', () => {
 
     const emitted = wrapper.emitted('resized') as unknown[][]
     expect(emitted).toHaveLength(1)
-    expect(emitted[0]).toEqual(['habits', 8, 5])
+    // x/y intactos: la arista opuesta (izquierda/arriba) queda anclada.
+    expect(emitted[0]).toEqual(['habits', 0, 0, 8, 5])
+  })
+
+  // Cada caso parte de un contenedor 1200×800 (col=100px, row=80px) y mueve
+  // una arista o esquina. El deltaRect de interactjs es per-evento: dw/dh son
+  // el crecimiento y dl/dt el desplazamiento del borde opuesto.
+  const RESIZE_CASES: Array<{
+    name: string
+    item: Partial<LayoutItem>
+    move: [number, number, number, number]
+    expected: [string, number, number, number, number]
+  }> = [
+    {
+      name: 'arista derecha',
+      item: { x: 0, y: 0, w: 6, h: 3 },
+      move: [100, 0, 0, 0],
+      expected: ['habits', 0, 0, 7, 3],
+    },
+    {
+      name: 'arista izquierda',
+      item: { x: 6, y: 0, w: 4, h: 3 },
+      move: [100, 0, -100, 0],
+      expected: ['habits', 5, 0, 5, 3],
+    },
+    {
+      name: 'arista inferior',
+      item: { x: 0, y: 0, w: 6, h: 3 },
+      move: [0, 80, 0, 0],
+      expected: ['habits', 0, 0, 6, 4],
+    },
+    {
+      name: 'arista superior',
+      item: { x: 0, y: 5, w: 6, h: 3 },
+      move: [0, 80, 0, -80],
+      expected: ['habits', 0, 4, 6, 4],
+    },
+    {
+      name: 'esquina inferior derecha',
+      item: { x: 0, y: 0, w: 4, h: 3 },
+      move: [100, 80, 0, 0],
+      expected: ['habits', 0, 0, 5, 4],
+    },
+    {
+      name: 'esquina superior izquierda',
+      item: { x: 6, y: 6, w: 4, h: 3 },
+      move: [100, 80, -100, -80],
+      expected: ['habits', 5, 5, 5, 4],
+    },
+    {
+      name: 'esquina superior derecha',
+      item: { x: 0, y: 6, w: 4, h: 3 },
+      move: [100, 80, 0, -80],
+      expected: ['habits', 0, 5, 5, 4],
+    },
+    {
+      name: 'esquina inferior izquierda',
+      item: { x: 6, y: 0, w: 4, h: 3 },
+      move: [100, 80, -100, 0],
+      expected: ['habits', 5, 0, 5, 4],
+    },
+  ]
+
+  it.each(RESIZE_CASES)(
+    'redimensiona desde la $name con snap y anclaje',
+    async ({ item, move, expected }) => {
+      const { wrapper } = mountResizable(item)
+      await resize(wrapper, move)
+      const emitted = wrapper.emitted('resized') as unknown[][]
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0]).toEqual(expected)
+    }
+  )
+
+  it('desde la arista izquierda el preview se desplaza con transform (borde opuesto anclado)', () => {
+    const { el } = mountResizable({ x: 6, y: 0, w: 4, h: 3 })
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 0, -100, 0)
+    // La grilla posiciona el item; el preview crece hacia la izquierda vía transform.
+    expect(el.style.left).toBe('')
+    expect(el.style.top).toBe('')
+    expect(el.style.width).toBe('500px')
+    expect(el.style.transform).toContain('translate(-100px, 0px)')
+    dragCallbacks.onResizeEnd?.()
+    expect(el.style.transform).toBe('')
+  })
+
+  it('desde la arista superior el preview se desplaza en vertical con transform', () => {
+    const { el } = mountResizable({ x: 0, y: 5, w: 6, h: 3 })
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(0, 80, 0, -80)
+    expect(el.style.height).toBe('320px')
+    expect(el.style.transform).toContain('translate(0px, -80px)')
+    dragCallbacks.onResizeEnd?.()
+  })
+
+  it('rechaza el crecimiento que se saldría del borde izquierdo clampeando la posición', async () => {
+    // x=1, se tira 200px a la izquierda: el left resultante sería -100 → clamp a 0.
+    const { wrapper } = mountResizable({ x: 1, y: 0, w: 4, h: 3 })
+    await resize(wrapper, [200, 0, -200, 0])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 0, 0, 6, 3])
+  })
+
+  it('en modo edición expone handles de resize con el cursor correspondiente en cada arista y esquina', () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    const expectedCursors: Record<string, string> = {
+      n: 'cursor-ns-resize',
+      s: 'cursor-ns-resize',
+      e: 'cursor-ew-resize',
+      w: 'cursor-ew-resize',
+      ne: 'cursor-nesw-resize',
+      sw: 'cursor-nesw-resize',
+      nw: 'cursor-nwse-resize',
+      se: 'cursor-nwse-resize',
+    }
+    for (const [position, cursor] of Object.entries(expectedCursors)) {
+      const handle = wrapper.find(`[data-testid="resize-handle-${position}"]`)
+      expect(handle.exists()).toBe(true)
+      expect(handle.classes()).toContain(cursor)
+    }
+  })
+
+  it('fuera del modo edición no renderiza handles de resize', () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: false } })
+    expect(wrapper.find('[data-testid="resize-handle-n"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="resize-handle-se"]').exists()).toBe(false)
+  })
+
+  it('en modo edición los grips de esquina aparecen con hover y se van al salir', async () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
+
+    await wrapper.trigger('mouseenter')
+    for (const position of ['nw', 'ne', 'se', 'sw']) {
+      const grip = wrapper.find(`[data-testid="corner-grip-${position}"]`)
+      expect(grip.exists()).toBe(true)
+      // Cada grip son dos líneas (una horizontal y una vertical).
+      expect(grip.findAll('[data-testid="corner-grip-line"]')).toHaveLength(2)
+    }
+
+    await wrapper.trigger('mouseleave')
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
+  })
+
+  it('en reposo no renderiza grips de esquina aunque haya hover', async () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: false } })
+    await wrapper.trigger('mouseenter')
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
   })
 
   it('agrega clase grid-item--dragging durante el gesto', async () => {

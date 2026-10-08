@@ -14,8 +14,8 @@ function onMoved(id: string, x: number, y: number) {
   dashboard.moveTo(id, x, y)
 }
 
-function onResized(id: string, w: number, h: number) {
-  dashboard.resizeTo(id, w, h)
+function onResized(id: string, x: number, y: number, w: number, h: number) {
+  dashboard.resizeTo(id, w, h, x, y)
 }
 
 function onRemoveWidget(id: string) {
