@@ -10,7 +10,7 @@ import {
   type FlipRect,
 } from '@/composables/flip'
 import { useDashDrag } from '@/composables/useDashDrag'
-import { COLS, ROWS, itemZIndex } from '@/lib/grid'
+import { COLS, ROWS, itemZIndex, DRAGGING_Z_INDEX } from '@/lib/grid'
 
 const props = defineProps<{
   item: LayoutItem
@@ -20,6 +20,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   moved: [id: string, x: number, y: number]
   resized: [id: string, x: number, y: number, w: number, h: number]
+  preview: [id: string, x: number, y: number, w: number, h: number]
+  'preview-end': []
 }>()
 
 const elRef = ref<HTMLElement | null>(null)
@@ -60,8 +62,6 @@ const gridStyle = computed(() => ({
   gridColumn: `${props.item.x + 1} / span ${props.item.w}`,
   gridRow: `${props.item.y + 1} / span ${props.item.h}`,
 }))
-
-const DRAGGING_Z_INDEX = COLS * ROWS + 1
 
 const itemStyle = computed(() => {
   if (!props.editMode) return gridStyle.value
@@ -135,6 +135,61 @@ function applyResizeOffset() {
   el.style.transform = `translate(${resizeAccumLeft}px, ${resizeAccumTop}px)`
 }
 
+/**
+ * Celdas enteras que ocuparía el ítem si se soltara ahora mismo. Es la única
+ * fuente del snap: la usan tanto la previsualización en vivo como el evento de
+ * fin de gesto, así el widget cae exactamente donde se previsualizó.
+ */
+function dragCells() {
+  const { containerWidth, containerHeight } = containerSize()
+  const colWidth = containerWidth / COLS
+  const rowHeight = containerHeight / ROWS
+  return pxToCells(
+    props.item.x * colWidth + dragAccumX,
+    props.item.y * rowHeight + dragAccumY,
+    props.item.w * colWidth,
+    props.item.h * rowHeight,
+    containerWidth,
+    containerHeight,
+    { minW: props.item.minW, minH: props.item.minH }
+  )
+}
+
+function resizeCells() {
+  const { containerWidth, containerHeight } = containerSize()
+  const colWidth = containerWidth / COLS
+  const rowHeight = containerHeight / ROWS
+  return pxToCells(
+    props.item.x * colWidth + resizeAccumLeft,
+    props.item.y * rowHeight + resizeAccumTop,
+    props.item.w * colWidth + resizeAccumW,
+    props.item.h * rowHeight + resizeAccumH,
+    containerWidth,
+    containerHeight,
+    { minW: props.item.minW, minH: props.item.minH }
+  )
+}
+
+/** Previsualización inicial: la geometría actual del ítem en celdas. */
+function emitItemPreview() {
+  emit('preview', props.item.i, props.item.x, props.item.y, props.item.w, props.item.h)
+}
+
+/** Previsualización del destino en vivo; se omite sin contenedor medible. */
+function emitDragPreview() {
+  const { containerWidth, containerHeight } = containerSize()
+  if (containerWidth <= 0 || containerHeight <= 0) return
+  const cells = dragCells()
+  emit('preview', props.item.i, cells.x, cells.y, cells.w, cells.h)
+}
+
+function emitResizePreview() {
+  const { containerWidth, containerHeight } = containerSize()
+  if (containerWidth <= 0 || containerHeight <= 0) return
+  const cells = resizeCells()
+  emit('preview', props.item.i, cells.x, cells.y, cells.w, cells.h)
+}
+
 useDashDrag(elRef, editModeRef, {
   onDragStart() {
     isDragging.value = true
@@ -144,6 +199,7 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumH = 0
     resizeAccumLeft = 0
     resizeAccumTop = 0
+    emitItemPreview()
   },
   onDragMove(dx, dy) {
     dragAccumX += dx
@@ -152,6 +208,7 @@ useDashDrag(elRef, editModeRef, {
     if (el) {
       el.style.transform = `translate(${dragAccumX}px, ${dragAccumY}px)`
     }
+    emitDragPreview()
   },
   onDragEnd() {
     const el = elRef.value
@@ -159,20 +216,7 @@ useDashDrag(elRef, editModeRef, {
     if (el) {
       el.style.transform = ''
     }
-    const { containerWidth, containerHeight } = containerSize()
-    const colWidth = containerWidth / COLS
-    const rowHeight = containerHeight / ROWS
-    const startLeft = props.item.x * colWidth
-    const startTop = props.item.y * rowHeight
-    const snapped = pxToCells(
-      startLeft + dragAccumX,
-      startTop + dragAccumY,
-      props.item.w * colWidth,
-      props.item.h * rowHeight,
-      containerWidth,
-      containerHeight,
-      { minW: props.item.minW, minH: props.item.minH }
-    )
+    const snapped = dragCells()
     dragAccumX = 0
     dragAccumY = 0
     resizeAccumW = 0
@@ -181,6 +225,7 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumTop = 0
     isDragging.value = false
     emit('moved', props.item.i, snapped.x, snapped.y)
+    emit('preview-end')
     if (el) {
       nextTick(() => applyFlip(first))
     }
@@ -207,6 +252,7 @@ useDashDrag(elRef, editModeRef, {
       }
     }
     applyResizeOffset()
+    emitItemPreview()
   },
   onResizeMove(dw, dh, dl = 0, dt = 0) {
     resizeAccumW += dw
@@ -214,6 +260,7 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumLeft += dl
     resizeAccumTop += dt
     applyResizeOffset()
+    emitResizePreview()
   },
   onResizeEnd() {
     const el = elRef.value
@@ -223,18 +270,7 @@ useDashDrag(elRef, editModeRef, {
       el.style.height = ''
       el.style.transform = ''
     }
-    const { containerWidth, containerHeight } = containerSize()
-    const colWidth = containerWidth / COLS
-    const rowHeight = containerHeight / ROWS
-    const snapped = pxToCells(
-      props.item.x * colWidth + resizeAccumLeft,
-      props.item.y * rowHeight + resizeAccumTop,
-      props.item.w * colWidth + resizeAccumW,
-      props.item.h * rowHeight + resizeAccumH,
-      containerWidth,
-      containerHeight,
-      { minW: props.item.minW, minH: props.item.minH }
-    )
+    const snapped = resizeCells()
     dragAccumX = 0
     dragAccumY = 0
     resizeAccumW = 0
@@ -243,6 +279,7 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumTop = 0
     isDragging.value = false
     emit('resized', props.item.i, snapped.x, snapped.y, snapped.w, snapped.h)
+    emit('preview-end')
     if (el) {
       nextTick(() => applyFlip(first))
     }
@@ -320,6 +357,7 @@ useDashDrag(elRef, editModeRef, {
 }
 
 .grid-item--dragging {
+  opacity: 0.5;
   transition: none !important;
 }
 

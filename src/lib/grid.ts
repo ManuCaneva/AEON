@@ -10,3 +10,11 @@ export const ROWS = 10
 export function itemZIndex(x: number, y: number): number {
   return y * COLS + (COLS - x)
 }
+
+/**
+ * El ítem en gesto (arrastre/redimensionado) se pinta por encima de la zona de
+ * destino, y esta por encima de cualquier ítem en reposo. itemZIndex nunca pasa
+ * de COLS*ROWS.
+ */
+export const DROP_ZONE_Z_INDEX = COLS * ROWS + 1
+export const DRAGGING_Z_INDEX = COLS * ROWS + 2
