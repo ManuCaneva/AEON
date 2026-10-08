@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-El dashboard de AEON es una grilla nativa de CSS de 12×10 con widgets independientes. El usuario puede activar el modo edición desde la sidebar, mover y redimensionar widgets, ocultarlos o restaurar el layout por defecto.
+El dashboard de AEON es una grilla nativa de CSS de 12×10 con widgets independientes. El usuario puede activar el modo edición desde la sidebar, mover y redimensionar widgets, y ocultarlos o agregarlos. Los cambios de edición se confirman explícitamente («Guardar») o se descartan («Descartar cambios»).
 
 El layout no usa JS en el loop de resize: cada widget se posiciona con `grid-column` / `grid-row` en enteros sobre un contenedor `display: grid` (`repeat(12, minmax(0, 1fr))` / `repeat(10, minmax(0, 1fr))`, `gap: 4px`). El mínimo explícito `0` evita que los tracks se inflen por min-content y que el contenido desborde el panel en viewports chicos (HD). El navegador reparte el espacio; JS solo interviene al soltar un gesto (snap a celda + animación FLIP transform-only). Ver `docs/adr/0004-dashboard-css-grid-nativo-presupuesto-ci.md`.
 
@@ -17,7 +17,7 @@ App.vue
         └── widgets registrados en src/lib/dashboardWidgets.ts
 ```
 
-El store `src/stores/dashboard.ts` mantiene el layout (enteros) y expone las operaciones de mover, redimensionar, agregar, quitar y restaurar widgets. `src/stores/ui.ts` mantiene el modo de edición y la vista activa.
+El store `src/stores/dashboard.ts` mantiene el layout (enteros) y expone las operaciones de mover, redimensionar, agregar y quitar widgets, además del borrador de edición (guardar y deshacer). `src/stores/ui.ts` mantiene el modo de edición y la vista activa.
 
 ## Geometría
 
@@ -41,11 +41,16 @@ El contenedor es `display: grid` con `grid-template-columns: repeat(12, minmax(0
 
 - El drag y resize se habilitan únicamente en modo edición.
 - `interactjs` entrega posición y tamaño en píxeles durante el gesto (el widget se mueve con `transform` / se redimensiona con px absolutos).
+- El redimensionado funciona desde las cuatro aristas y las cuatro esquinas (diagonales). Al estirar desde arriba o la izquierda, el borde opuesto queda anclado: el preview se desplaza con `transform` mientras cambia el tamaño, y al soltar se ajustan juntos la posición (`x`/`y`) y el tamaño (`w`/`h`). El snap a celdas enteras y el rechazo por colisión son los mismos que en el resto de los gestos.
 - Al soltar, `gridSnap` (`pxToCells`) convierte a celdas enteras y el widget vuelve a la grilla nativa.
 - La animación FLIP (transform-only, ~180ms, `cubic-bezier(0.16,1,0.3,1)`) suaviza el snap final (ver `src/composables/flip.ts`).
 - Los ítems de la grilla usan `contain: layout` para aislar el costo de layout sin recortar la pintura: la cruz del modo edición se centra en la esquina superior derecha del widget y la mitad que sobresale queda visible (ver «Modo edición»).
-- El store valida, clampa y rechaza colisiones reales (acepta bordes tocándose), y persiste cada cambio.
-- El botón de reset restaura las posiciones declaradas por cada widget.
+- El store valida, clampa y rechaza colisiones reales (acepta bordes tocándose).
+- En modo edición las mutaciones (mover, redimensionar, agregar, quitar) solo modifican el layout en memoria: no tocan la persistencia.
+- «Guardar» persiste el layout en la clave existente, cierra el modo edición y muestra un aviso breve («Cambios guardados») que se descarta solo (~1.5s). «Descartar cambios» restaura exactamente el layout con el que se entró a la sesión de edición —incluidos los widgets agregados o quitados durante la misma—, cierra el modo edición y muestra «Cambios descartados». Ambos botones están deshabilitados mientras no haya cambios pendientes.
+- La detección de cambios sin guardar es una comparación profunda contra el layout persistido: un gesto que termina donde empezó no cuenta como cambio.
+- Al intentar salir del modo edición con cambios sin guardar —por el toggle de edición o por navegar a otra vista— se abre un único diálogo con «Guardar y salir», «Descartar cambios» y «Seguir editando». La navegación a la vista destino se aplica recién al resolver el diálogo; sin cambios, la salida y la navegación son directas.
+- Fuera del modo edición las mutaciones se persisten de inmediato.
 - `WidgetPicker` controla qué widgets están visibles.
 
 ## Rendimiento
@@ -85,11 +90,17 @@ Los widgets se adaptan al tamaño de su celda sin desbordar el panel:
 - Mientras se arrastra o redimensiona, el ítem activo sube al tope de la grilla (`DRAGGING_Z_INDEX`) para no quedar debajo de un vecino con mayor `z` de celda.
 - La grilla lleva `isolate` en modo edición: los `z-index` de los ítems quedan contenidos bajo el `WidgetPicker` y los modales, que siguen por encima (`z-50`).
 - En modo edición el root del dashboard suelta su `overflow-hidden` para que la mitad de la cruz que sobresale no se recorte contra el borde de la vista; el `p-4` del panel da el aire necesario. En reposo conserva `overflow-hidden` y los widgets miden exactamente igual en ambos modos (sin padding extra).
+- El contenido de cada widget se desatura (`filter: grayscale(1)`), se atenúa (`opacity: 0.6`) y deja de recibir punteros (`pointer-events: none`) mientras dura la edición, para no disparar acciones por accidente. El arrastre, el redimensionado y la cruz viven fuera de esa capa y siguen operativos.
+- El redimensionado se descubre con handles invisibles sobre las cuatro aristas y las cuatro esquinas, cada uno con su cursor (`ns-resize` en horizontales, `ew-resize` en verticales, `nwse-resize`/`nesw-resize` en las diagonales). Al hacer hover en modo edición aparecen en las esquinas unos grips de dos líneas (una horizontal y una vertical) que marcan la affordance; sin hover no se ven.
+- La grilla (12×10) se dibuja en modo edición con líneas finas continuas de 1px a baja opacidad, con `repeating-linear-gradient` sobre el contenedor y solo tokens de color; en reposo no queda rastro. Un borde de 1px al 60% cierra la grilla por la derecha y por abajo (dibujado hacia adentro gracias a `box-sizing: border-box`).
 
 ## Archivos relacionados
 
 - `src/components/dashboard/DashboardView.vue`: composición y render del dashboard (contenedor CSS Grid).
 - `src/components/dashboard/GridItemVue.vue`: item de la grilla, gestos (drag/resize) y animación FLIP.
+- `src/components/dashboard/EditModeActions.vue`: barra de «Guardar» / «Descartar cambios» del modo edición.
+- `src/components/dashboard/ExitEditDialog.vue`: diálogo de salida del modo edición («Guardar y salir» / «Descartar cambios» / «Seguir editando»).
+- `src/components/ui/Toast.vue`: aviso flotante auto-descartable.
 - `src/composables/gridSnap.ts`: conversión px → celdas enteras al soltar un gesto.
 - `src/composables/flip.ts`: animación FLIP transform-only.
 - `src/lib/grid.ts`: constantes `COLS` (12) y `ROWS` (10) y `itemZIndex` (orden de apilado en modo edición).- `src/stores/dashboard.ts`: estado, validación, migración y persistencia del layout.

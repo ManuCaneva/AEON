@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { shallowRef, markRaw } from 'vue'
+import { shallowRef, markRaw, computed } from 'vue'
 import { widgets, getWidgetById } from '@/lib/dashboardWidgets'
 import { saveConfig, loadConfig } from '@/lib/db'
 import { COLS, ROWS } from '@/lib/grid'
@@ -65,6 +65,28 @@ export function findFreePosition(
     }
   }
   return null
+}
+
+function cloneLayout(value: Layout): Layout {
+  return value.map((item) => markRaw({ ...item }))
+}
+
+/**
+ * Comparación profunda de dos layouts por id: misma cantidad de widgets y
+ * misma geometría (x, y, w, h). El orden no importa. Un gesto que termina
+ * donde empezó no cuenta como cambio.
+ */
+export function layoutsEqual(a: Layout, b: Layout): boolean {
+  if (a.length !== b.length) return false
+  const byId = new Map(b.map((item) => [item.i, item]))
+  for (const item of a) {
+    const other = byId.get(item.i)
+    if (!other) return false
+    if (item.x !== other.x || item.y !== other.y || item.w !== other.w || item.h !== other.h) {
+      return false
+    }
+  }
+  return true
 }
 
 const STORAGE_KEY = 'aeon-dashboard-layout'
@@ -213,13 +235,22 @@ function validateLayout(raw: unknown): Layout | null {
 
 export const useDashboardStore = defineStore('dashboard', () => {
   const layout = shallowRef<Layout>(getDefaultLayout())
+  // Último layout persistido: base de la detección de cambios sin guardar.
+  const persistedLayout = shallowRef<Layout>(cloneLayout(layout.value))
+  // Snapshot del layout con el que se entró a la sesión de edición (solo memoria).
+  const editSnapshot = shallowRef<Layout | null>(null)
+
+  function applyLoadedLayout(loaded: Layout) {
+    layout.value = loaded
+    persistedLayout.value = cloneLayout(loaded)
+  }
 
   loadConfig(STORAGE_KEY).then((raw) => {
     if (raw !== null) {
       try {
         const parsed = JSON.parse(raw)
         const validated = validateLayout(parsed)
-        if (validated) layout.value = validated
+        if (validated) applyLoadedLayout(validated)
         return
       } catch {
         // datos corruptos → fallback
@@ -231,7 +262,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         try {
           const parsed = JSON.parse(raw)
           const validated = validateLayout(parsed)
-          if (validated) layout.value = validated
+          if (validated) applyLoadedLayout(validated)
         } catch {
           // datos corruptos → usar default
         }
@@ -240,12 +271,21 @@ export const useDashboardStore = defineStore('dashboard', () => {
   })
 
   function persist() {
+    persistedLayout.value = cloneLayout(layout.value)
     saveConfig(STORAGE_KEY, JSON.stringify(layout.value)).catch(() => {})
+  }
+
+  /**
+   * Persiste solo cuando no hay una sesión de edición activa. En modo edición
+   * las mutaciones viven en memoria hasta que el usuario apriete "Guardar".
+   */
+  function persistIfNotEditing() {
+    if (editSnapshot.value === null) persist()
   }
 
   function updateLayout(newLayout: Layout) {
     layout.value = newLayout.map((item) => markRaw({ ...item }))
-    persist()
+    persistIfNotEditing()
   }
 
   function moveTo(id: string, x: number, y: number) {
@@ -259,23 +299,33 @@ export const useDashboardStore = defineStore('dashboard', () => {
     layout.value = layout.value.map((i) =>
       i.i === id ? markRaw({ ...i, x: clampedX, y: clampedY }) : i
     )
-    persist()
+    persistIfNotEditing()
   }
 
-  function resizeTo(id: string, w: number, h: number) {
+  /**
+   * Redimensiona un item a (w, h) celdas. Si se pasa (x, y) —al tirar desde
+   * arriba o la izquierda— también se mueve la posición, de modo que el borde
+   * opuesto quede anclado. Clampa tamaño y posición y rechaza colisiones reales.
+   */
+  function resizeTo(id: string, w: number, h: number, x?: number, y?: number) {
     const item = layout.value.find((i) => i.i === id)
     if (!item) return
     const minW = item.minW ?? 1
     const minH = item.minH ?? 1
-    const clampedW = clamp(w, minW, COLS - item.x)
-    const clampedH = clamp(h, minH, ROWS - item.y)
-    if (wouldCollide(item.x, item.y, clampedW, clampedH, layout.value, id)) {
+    // Sin nueva posición (tirar de derecha/abajo) el tope lo marca el borde
+    // del contenedor. Con nueva posición (tirar de izquierda/arriba) se
+    // redimensiona y se mueve: se clampa la posición, no el tamaño.
+    const clampedW = x === undefined ? clamp(w, minW, COLS - item.x) : clamp(w, minW, COLS)
+    const clampedH = y === undefined ? clamp(h, minH, ROWS - item.y) : clamp(h, minH, ROWS)
+    const clampedX = clamp(x ?? item.x, 0, COLS - clampedW)
+    const clampedY = clamp(y ?? item.y, 0, ROWS - clampedH)
+    if (wouldCollide(clampedX, clampedY, clampedW, clampedH, layout.value, id)) {
       return
     }
     layout.value = layout.value.map((i) =>
-      i.i === id ? markRaw({ ...i, w: clampedW, h: clampedH }) : i
+      i.i === id ? markRaw({ ...i, x: clampedX, y: clampedY, w: clampedW, h: clampedH }) : i
     )
-    persist()
+    persistIfNotEditing()
   }
 
   function addWidget(widgetId: string) {
@@ -328,21 +378,52 @@ export const useDashboardStore = defineStore('dashboard', () => {
         minH: widget.minH,
       }),
     ]
-    persist()
+    persistIfNotEditing()
   }
 
   function removeWidget(widgetId: string) {
     layout.value = layout.value.filter((item) => item.i !== widgetId)
-    persist()
+    persistIfNotEditing()
   }
 
   function resetLayout() {
     layout.value = getDefaultLayout()
+    persistIfNotEditing()
+  }
+
+  const hasUnsavedChanges = computed(() => {
+    if (editSnapshot.value === null) return false
+    return !layoutsEqual(layout.value, persistedLayout.value)
+  })
+
+  /** Toma el snapshot de entrada: base de "Descartar cambios". Solo memoria. */
+  function beginEdit() {
+    editSnapshot.value = cloneLayout(persistedLayout.value)
+  }
+
+  /** Persiste el layout vivo y lo convierte en la nueva base de la sesión. */
+  function saveEdit() {
     persist()
+  }
+
+  /** Restaura exactamente el layout con el que se entró a la sesión. */
+  function discardEdit() {
+    if (editSnapshot.value === null) return
+    layout.value = cloneLayout(editSnapshot.value)
+  }
+
+  /** Cierra la sesión de edición sin tocar el layout vivo. */
+  function endEdit() {
+    editSnapshot.value = null
   }
 
   return {
     layout,
+    hasUnsavedChanges,
+    beginEdit,
+    saveEdit,
+    discardEdit,
+    endEdit,
     updateLayout,
     moveTo,
     resizeTo,

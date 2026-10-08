@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import * as db from '@/lib/db'
 import { useUiStore } from './ui'
+import { useDashboardStore } from './dashboard'
 
 vi.mock('@/lib/db', () => ({
   loadConfig: vi.fn().mockResolvedValue(null),
@@ -178,5 +179,198 @@ describe('ui store: tamaño de letra', () => {
     localStorage.setItem('aeon.textSize', JSON.stringify('enorme'))
     const ui = useUiStore()
     expect(ui.textSize).toBe('medium')
+  })
+})
+
+describe('ui store: modo edición', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  it('al entrar al modo edición abre una sesión de borrador', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const beginEdit = vi.spyOn(dashboard, 'beginEdit')
+    ui.toggleEditMode()
+    expect(ui.editMode).toBe(true)
+    expect(beginEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it('al salir del modo edición cierra la sesión sin persistir', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const endEdit = vi.spyOn(dashboard, 'endEdit')
+    ui.toggleEditMode()
+    ui.toggleEditMode()
+    expect(ui.editMode).toBe(false)
+    expect(endEdit).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+})
+
+describe('ui store: exclusividad del modo edición', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  it('al navegar sin cambios, el modo edición se apaga', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    ui.setViewMode('settings')
+    expect(ui.viewMode).toBe('settings')
+    expect(ui.editMode).toBe(false)
+    expect(ui.exitDialogOpen).toBe(false)
+  })
+
+  it('al navegar sin cambios, la sesión de borrador se cierra', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const endEdit = vi.spyOn(dashboard, 'endEdit')
+    ui.toggleEditMode()
+    ui.setViewMode('archived')
+    expect(endEdit).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('la edición nunca queda activa con la vista fuera del dashboard', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    for (const mode of ['archived', 'pomodoro', 'settings'] as const) {
+      ui.setViewMode(mode)
+      expect(ui.editMode).toBe(false)
+      ui.toggleEditMode()
+      expect(ui.viewMode).toBe('dashboard')
+      expect(ui.editMode).toBe(true)
+    }
+  })
+
+  it('desde otra vista, el atajo de modo edición lleva al dashboard y lo activa', () => {
+    const ui = useUiStore()
+    ui.setViewMode('pomodoro')
+    ui.toggleEditMode()
+    expect(ui.viewMode).toBe('dashboard')
+    expect(ui.editMode).toBe(true)
+  })
+
+  it('desde otra vista, el atajo abre una sesión de borrador', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const beginEdit = vi.spyOn(dashboard, 'beginEdit')
+    ui.setViewMode('settings')
+    ui.toggleEditMode()
+    expect(beginEdit).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ui store: diálogo de salida', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  /** Entra al modo edición y quita un widget: deja cambios sin guardar. */
+  function enterEditWithChanges() {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    ui.toggleEditMode()
+    dashboard.removeWidget(dashboard.layout[0].i)
+    return { ui, dashboard }
+  }
+
+  it('sin cambios, el toggle de modo edición sale directo', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    ui.toggleEditMode()
+    expect(ui.editMode).toBe(false)
+    expect(ui.exitDialogOpen).toBe(false)
+  })
+
+  it('con cambios, el toggle de modo edición abre el diálogo y no sale', () => {
+    const { ui, dashboard } = enterEditWithChanges()
+    ui.toggleEditMode()
+    expect(ui.exitDialogOpen).toBe(true)
+    expect(ui.pendingView).toBeNull()
+    expect(ui.editMode).toBe(true)
+    expect(dashboard.hasUnsavedChanges).toBe(true)
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('sin cambios, navegar a otra vista es inmediato y sin diálogo', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    ui.setViewMode('settings')
+    expect(ui.viewMode).toBe('settings')
+    expect(ui.exitDialogOpen).toBe(false)
+  })
+
+  it('con cambios, navegar abre el diálogo antes de cambiar de vista', () => {
+    const { ui } = enterEditWithChanges()
+    ui.setViewMode('settings')
+    expect(ui.exitDialogOpen).toBe(true)
+    expect(ui.pendingView).toBe('settings')
+    expect(ui.viewMode).toBe('dashboard')
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('«Guardar y salir» persiste, apaga la edición y navega al destino pendiente', () => {
+    const { ui } = enterEditWithChanges()
+    ui.setViewMode('archived')
+    ui.resolveExitDialog('save')
+    expect(db.saveConfig).toHaveBeenCalledWith('aeon-dashboard-layout', expect.any(String))
+    expect(ui.editMode).toBe(false)
+    expect(ui.exitDialogOpen).toBe(false)
+    expect(ui.pendingView).toBeNull()
+    expect(ui.viewMode).toBe('archived')
+  })
+
+  it('«Guardar y salir» sin destino pendiente no navega', () => {
+    const { ui } = enterEditWithChanges()
+    ui.toggleEditMode()
+    ui.resolveExitDialog('save')
+    expect(ui.editMode).toBe(false)
+    expect(ui.viewMode).toBe('dashboard')
+    expect(db.saveConfig).toHaveBeenCalled()
+  })
+
+  it('«Descartar cambios» restaura el snapshot, apaga la edición y navega', () => {
+    const { ui, dashboard } = enterEditWithChanges()
+    const expected = dashboard.layout.length + 1
+    ui.setViewMode('pomodoro')
+    ui.resolveExitDialog('discard')
+    expect(dashboard.layout.length).toBe(expected)
+    expect(dashboard.hasUnsavedChanges).toBe(false)
+    expect(ui.editMode).toBe(false)
+    expect(ui.exitDialogOpen).toBe(false)
+    expect(ui.viewMode).toBe('pomodoro')
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('«Seguir editando» cierra el diálogo sin persistir, restaurar ni navegar', () => {
+    const { ui, dashboard } = enterEditWithChanges()
+    ui.setViewMode('settings')
+    ui.resolveExitDialog('cancel')
+    expect(ui.exitDialogOpen).toBe(false)
+    expect(ui.pendingView).toBeNull()
+    expect(ui.editMode).toBe(true)
+    expect(ui.viewMode).toBe('dashboard')
+    expect(dashboard.hasUnsavedChanges).toBe(true)
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('cancelExitDialog es equivalente a «Seguir editando»', () => {
+    const { ui } = enterEditWithChanges()
+    ui.toggleEditMode()
+    ui.cancelExitDialog()
+    expect(ui.exitDialogOpen).toBe(false)
+    expect(ui.pendingView).toBeNull()
+    expect(ui.editMode).toBe(true)
   })
 })

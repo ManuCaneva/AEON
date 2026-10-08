@@ -15,7 +15,7 @@ vi.mock('@/composables/useDashDrag', () => ({
       onDragMove: (dx: number, dy: number) => void
       onDragEnd: () => void
       onResizeStart: () => void
-      onResizeMove: (dw: number, dh: number) => void
+      onResizeMove: (dw: number, dh: number, dl?: number, dt?: number) => void
       onResizeEnd: () => void
     }
   ) => {
@@ -36,6 +36,32 @@ vi.mock('@/composables/flip', () => ({
 
 function makeItem(overrides: Partial<LayoutItem> = {}): LayoutItem {
   return { i: 'habits', x: 0, y: 0, w: 6, h: 4, minW: 1, minH: 1, ...overrides }
+}
+
+/**
+ * Monta un item en modo edición con un contenedor de 1200×800 (col=100px,
+ * row=80px) para poder razonar el snap en celdas enteras sin depender de
+ * getBoundingClientRect (que happy-dom devuelve en cero).
+ */
+function mountResizable(item: Partial<LayoutItem> = {}) {
+  const wrapper = mount(GridItemVue, {
+    props: { item: makeItem(item), editMode: true },
+  })
+  const el = wrapper.element as HTMLElement
+  const container = el.parentElement as HTMLElement
+  Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+  Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+  return { wrapper, el }
+}
+
+async function resize(
+  wrapper: ReturnType<typeof mountResizable>['wrapper'],
+  move: [dw: number, dh: number, dl: number, dt: number]
+) {
+  dragCallbacks.onResizeStart?.()
+  dragCallbacks.onResizeMove?.(...move)
+  dragCallbacks.onResizeEnd?.()
+  await wrapper.vm.$nextTick()
 }
 
 describe('GridItemVue', () => {
@@ -122,17 +148,18 @@ describe('GridItemVue', () => {
     Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
 
     dragCallbacks.onDragStart?.()
-    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(100, 60)
     dragCallbacks.onDragEnd?.()
     await wrapper.vm.$nextTick()
 
     const emitted = wrapper.emitted('moved') as unknown[][]
     expect(emitted).toHaveLength(1)
-    // 50px / 100px-per-col = 0.5 → 1 celda; 30px / 60px-per-row = 0.5 → 1 celda
+    // Con el gap de 4px el paso es ~100.33px por col y ~60.4px por fila:
+    // 100px cruza a la col 1 y 60px a la fila 1.
     expect(emitted[0]).toEqual(['habits', 1, 1])
   })
 
-  it('emite resized en enteros tras un resize con snap', async () => {
+  it('emite resized en enteros tras un resize con snap (incluye posición)', async () => {
     const wrapper = mount(GridItemVue, {
       props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
     })
@@ -150,7 +177,374 @@ describe('GridItemVue', () => {
 
     const emitted = wrapper.emitted('resized') as unknown[][]
     expect(emitted).toHaveLength(1)
-    expect(emitted[0]).toEqual(['habits', 8, 5])
+    // x/y intactos: la arista opuesta (izquierda/arriba) queda anclada.
+    // Con gap, el paso es ~100.33×60.4: 6 + 150/100.33 ≈ 7.5 → 7; 4 + 60/60.4 ≈ 5.
+    expect(emitted[0]).toEqual(['habits', 0, 0, 7, 5])
+  })
+
+  it('emite preview con las celdas de destino en vivo durante el drag', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(100, 60)
+    await wrapper.vm.$nextTick()
+
+    const previews = wrapper.emitted('preview') as unknown[][]
+    // El gesto abre con la geometría actual y sigue con la celda redondeada.
+    expect(previews[0]).toEqual(['habits', 0, 0, 6, 4])
+    expect(previews[previews.length - 1]).toEqual(['habits', 1, 1, 6, 4])
+  })
+
+  it('clampa la zona de destino al borde de la grilla', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(1000, 1000)
+    await wrapper.vm.$nextTick()
+
+    const previews = wrapper.emitted('preview') as unknown[][]
+    // Al borde inferior derecho: x+w = 12 y y+h = 10. El snap descuenta el gap,
+    // así que a esa distancia el ítem mapea a 3 celdas de alto anclándose al piso.
+    expect(previews[previews.length - 1]).toEqual(['habits', 6, 7, 6, 3])
+  })
+
+  it('el preview y el movimiento comparten la misma zona (se suelta donde se previsualizó)', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(250, 90)
+    const previews = wrapper.emitted('preview') as unknown[][]
+    const lastPreview = previews[previews.length - 1]
+    dragCallbacks.onDragEnd?.()
+    await wrapper.vm.$nextTick()
+
+    const moved = wrapper.emitted('moved') as unknown[][]
+    expect(moved[0]).toEqual(['habits', lastPreview[1], lastPreview[2]])
+  })
+
+  it('emite preview del fantasma con el tamaño resultante durante el resize', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 3 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 80)
+    await wrapper.vm.$nextTick()
+
+    const previews = wrapper.emitted('preview') as unknown[][]
+    expect(previews[0]).toEqual(['habits', 0, 0, 6, 3])
+    expect(previews[previews.length - 1]).toEqual(['habits', 0, 0, 7, 4])
+  })
+
+  it('el fantasma de resize desde la arista izquierda refleja la nueva posición', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 6, y: 0, w: 4, h: 3 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 0, -100, 0)
+    await wrapper.vm.$nextTick()
+
+    const previews = wrapper.emitted('preview') as unknown[][]
+    expect(previews[previews.length - 1]).toEqual(['habits', 5, 0, 5, 3])
+  })
+
+  it('cierra la previsualización al soltar (drag y resize)', async () => {
+    const dragWrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(10, 10)
+    dragCallbacks.onDragEnd?.()
+    await dragWrapper.vm.$nextTick()
+    expect(dragWrapper.emitted('preview-end')).toHaveLength(1)
+
+    const resizeWrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(10, 10)
+    dragCallbacks.onResizeEnd?.()
+    await resizeWrapper.vm.$nextTick()
+    expect(resizeWrapper.emitted('preview-end')).toHaveLength(1)
+  })
+
+  it('no emite preview en vivo si el contenedor no tiene dimensiones medibles', async () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    dragCallbacks.onDragStart?.()
+    // El start emite la geometría conocida; el move no puede calcular sin contenedor.
+    const before = (wrapper.emitted('preview') as unknown[][]).length
+    dragCallbacks.onDragMove?.(50, 30)
+    const after = wrapper.emitted('preview') as unknown[][]
+    expect(after.length).toBe(before)
+  })
+
+  it('no re-emite preview de drag mientras el puntero sigue en la misma celda y sí al cruzar a otra', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(2, 2)
+    const baseline = (wrapper.emitted('preview') as unknown[][]).length
+
+    // Un segundo movimiento que cae en la misma celda snappeada no re-emite.
+    dragCallbacks.onDragMove?.(2, 2)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBe(baseline)
+
+    // Al cruzar a otra celda la previsualización vuelve a emitirse.
+    dragCallbacks.onDragMove?.(200, 200)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBeGreaterThan(baseline)
+  })
+
+  it('no re-emite preview de resize mientras las celdas no cambian y sí al cruzar', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(2, 2)
+    const baseline = (wrapper.emitted('preview') as unknown[][]).length
+
+    dragCallbacks.onResizeMove?.(2, 2)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBe(baseline)
+
+    dragCallbacks.onResizeMove?.(200, 200)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBeGreaterThan(baseline)
+  })
+
+  it('mide el contenedor una sola vez por gesto de drag (no en cada movimiento)', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    const width = vi.fn(() => 1200)
+    const height = vi.fn(() => 600)
+    Object.defineProperty(container, 'clientWidth', { get: width, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { get: height, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(50, 30)
+
+    expect(width).toHaveBeenCalledTimes(1)
+    expect(height).toHaveBeenCalledTimes(1)
+  })
+
+  it('mide el contenedor una sola vez por gesto de resize (no en cada movimiento)', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    const width = vi.fn(() => 1200)
+    const height = vi.fn(() => 800)
+    Object.defineProperty(container, 'clientWidth', { get: width, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { get: height, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 80)
+    dragCallbacks.onResizeMove?.(100, 80)
+
+    expect(width).toHaveBeenCalledTimes(1)
+    expect(height).toHaveBeenCalledTimes(1)
+  })
+
+  // Cada caso parte de un contenedor 1200×800 (col=100px, row=80px) y mueve
+  // una arista o esquina. El deltaRect de interactjs es per-evento: dw/dh son
+  // el crecimiento y dl/dt el desplazamiento del borde opuesto.
+  const RESIZE_CASES: Array<{
+    name: string
+    item: Partial<LayoutItem>
+    move: [number, number, number, number]
+    expected: [string, number, number, number, number]
+  }> = [
+    {
+      name: 'arista derecha',
+      item: { x: 0, y: 0, w: 6, h: 3 },
+      move: [100, 0, 0, 0],
+      expected: ['habits', 0, 0, 7, 3],
+    },
+    {
+      name: 'arista izquierda',
+      item: { x: 6, y: 0, w: 4, h: 3 },
+      move: [100, 0, -100, 0],
+      expected: ['habits', 5, 0, 5, 3],
+    },
+    {
+      name: 'arista inferior',
+      item: { x: 0, y: 0, w: 6, h: 3 },
+      move: [0, 80, 0, 0],
+      expected: ['habits', 0, 0, 6, 4],
+    },
+    {
+      name: 'arista superior',
+      item: { x: 0, y: 5, w: 6, h: 3 },
+      move: [0, 80, 0, -80],
+      expected: ['habits', 0, 4, 6, 4],
+    },
+    {
+      name: 'esquina inferior derecha',
+      item: { x: 0, y: 0, w: 4, h: 3 },
+      move: [100, 80, 0, 0],
+      expected: ['habits', 0, 0, 5, 4],
+    },
+    {
+      name: 'esquina superior izquierda',
+      item: { x: 6, y: 6, w: 4, h: 3 },
+      move: [100, 80, -100, -80],
+      expected: ['habits', 5, 5, 5, 4],
+    },
+    {
+      name: 'esquina superior derecha',
+      item: { x: 0, y: 6, w: 4, h: 3 },
+      move: [100, 80, 0, -80],
+      expected: ['habits', 0, 5, 5, 4],
+    },
+    {
+      name: 'esquina inferior izquierda',
+      item: { x: 6, y: 0, w: 4, h: 3 },
+      move: [100, 80, -100, 0],
+      expected: ['habits', 5, 0, 5, 4],
+    },
+  ]
+
+  it.each(RESIZE_CASES)(
+    'redimensiona desde la $name con snap y anclaje',
+    async ({ item, move, expected }) => {
+      const { wrapper } = mountResizable(item)
+      await resize(wrapper, move)
+      const emitted = wrapper.emitted('resized') as unknown[][]
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0]).toEqual(expected)
+    }
+  )
+
+  it('achicar desde la izquierda un widget en su mínimo no lo desliza', async () => {
+    // Pomodoro 2×3 en (6,0): tirar la arista izquierda hacia adentro mantiene
+    // x=6 y w=2 (la arista derecha queda anclada); antes se deslizaba a x=7.
+    const { wrapper } = mountResizable({ x: 6, y: 0, w: 2, h: 3, minW: 2, minH: 3 })
+    await resize(wrapper, [-100, 0, 100, 0])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 6, 0, 2, 3])
+  })
+
+  it('achicar desde arriba un widget en su mínimo no lo desliza', async () => {
+    const { wrapper } = mountResizable({ x: 0, y: 3, w: 6, h: 3, minW: 2, minH: 3 })
+    await resize(wrapper, [0, -60, 0, 60])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 0, 3, 6, 3])
+  })
+
+  it('desde la arista izquierda el preview se desplaza con transform (borde opuesto anclado)', () => {
+    const { el } = mountResizable({ x: 6, y: 0, w: 4, h: 3 })
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 0, -100, 0)
+    // La grilla posiciona el item; el preview crece hacia la izquierda vía transform.
+    expect(el.style.left).toBe('')
+    expect(el.style.top).toBe('')
+    // Geometría real: 4 celdas de 1200 son 4*(1204/12) - 4 = 397.33px; +100 del gesto.
+    expect(el.style.width).toBe('497.333333px')
+    expect(el.style.transform).toContain('translate(-100px, 0px)')
+    dragCallbacks.onResizeEnd?.()
+    expect(el.style.transform).toBe('')
+  })
+
+  it('desde la arista superior el preview se desplaza en vertical con transform', () => {
+    const { el } = mountResizable({ x: 0, y: 5, w: 6, h: 3 })
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(0, 80, 0, -80)
+    // Geometría real: 3 filas de 800 son 3*(804/10) - 4 = 237.2px; +80 del gesto.
+    expect(el.style.height).toBe('317.2px')
+    expect(el.style.transform).toContain('translate(0px, -80px)')
+    dragCallbacks.onResizeEnd?.()
+  })
+
+  it('rechaza el crecimiento que se saldría del borde izquierdo clampeando la posición', async () => {
+    // x=1, se tira 200px a la izquierda: el left resultante sería -100 → clamp a 0.
+    const { wrapper } = mountResizable({ x: 1, y: 0, w: 4, h: 3 })
+    await resize(wrapper, [200, 0, -200, 0])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 0, 0, 6, 3])
+  })
+
+  it('en modo edición expone handles de resize con el cursor correspondiente en cada arista y esquina', () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    const expectedCursors: Record<string, string> = {
+      n: 'cursor-ns-resize',
+      s: 'cursor-ns-resize',
+      e: 'cursor-ew-resize',
+      w: 'cursor-ew-resize',
+      ne: 'cursor-nesw-resize',
+      sw: 'cursor-nesw-resize',
+      nw: 'cursor-nwse-resize',
+      se: 'cursor-nwse-resize',
+    }
+    for (const [position, cursor] of Object.entries(expectedCursors)) {
+      const handle = wrapper.find(`[data-testid="resize-handle-${position}"]`)
+      expect(handle.exists()).toBe(true)
+      expect(handle.classes()).toContain(cursor)
+    }
+  })
+
+  it('fuera del modo edición no renderiza handles de resize', () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: false } })
+    expect(wrapper.find('[data-testid="resize-handle-n"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="resize-handle-se"]').exists()).toBe(false)
+  })
+
+  it('en modo edición los grips de esquina aparecen con hover y se van al salir', async () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: true } })
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
+
+    await wrapper.trigger('mouseenter')
+    for (const position of ['nw', 'ne', 'se', 'sw']) {
+      const grip = wrapper.find(`[data-testid="corner-grip-${position}"]`)
+      expect(grip.exists()).toBe(true)
+      // Cada grip son dos líneas (una horizontal y una vertical).
+      expect(grip.findAll('[data-testid="corner-grip-line"]')).toHaveLength(2)
+    }
+
+    await wrapper.trigger('mouseleave')
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
+  })
+
+  it('en reposo no renderiza grips de esquina aunque haya hover', async () => {
+    const wrapper = mount(GridItemVue, { props: { item: makeItem(), editMode: false } })
+    await wrapper.trigger('mouseenter')
+    expect(wrapper.find('[data-testid="corner-grip-nw"]').exists()).toBe(false)
   })
 
   it('agrega clase grid-item--dragging durante el gesto', async () => {
@@ -298,5 +692,44 @@ describe('GridItemVue', () => {
       slots: { default: '<div>contenido</div>' },
     })
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+  })
+
+  it('en modo edición el contenido se desatura, se atenúa y deja de recibir punteros', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: true },
+      slots: { default: '<div>contenido</div>' },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    expect(content.exists()).toBe(true)
+    const style = content.attributes('style') ?? ''
+    expect(style).toContain('grayscale(1)')
+    expect(style).toContain('opacity: 0.6')
+    expect(style).toContain('pointer-events: none')
+  })
+
+  it('en reposo el contenido se ve normal y recibe punteros', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: false },
+      slots: { default: '<div>contenido</div>' },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    expect(content.exists()).toBe(true)
+    const style = content.attributes('style') ?? ''
+    expect(style).not.toContain('grayscale')
+    expect(style).not.toContain('pointer-events')
+  })
+
+  it('los controles de edición viven fuera de la capa desactivada', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: true },
+      slots: {
+        default: '<div>contenido</div>',
+        controls: '<button data-testid="widget-control">quitar</button>',
+      },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    const control = wrapper.find('[data-testid="widget-control"]')
+    expect(control.exists()).toBe(true)
+    expect(content.element.contains(control.element)).toBe(false)
   })
 })
