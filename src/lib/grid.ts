@@ -1,6 +1,9 @@
 export const COLS = 12
 export const ROWS = 10
 
+/** Espacio entre celdas de la grilla del dashboard, en px (ver DashboardView). */
+export const GRID_GAP = 4
+
 /**
  * Orden de apilado de los ítems de la grilla en modo edición: la cruz que
  * sobresale por arriba a la derecha debe quedar pintada por encima de los
