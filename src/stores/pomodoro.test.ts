@@ -243,6 +243,54 @@ describe('pomodoro store', () => {
     expect(store.remainingMs).toBe(35 * 60_000)
   })
 
+  it('el reloj reactivo baja segundo a segundo con el ticker y se congela al pausar', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    store.startTicker()
+    await store.start()
+
+    const inicial = store.remainingMs
+    expect(inicial).toBe(defaultPomodoroSettings.focusMinutes * 60_000)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(store.remainingMs).toBe(inicial - 1_000)
+
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(store.remainingMs).toBe(inicial - 4_000)
+
+    await store.pause()
+    const congelado = store.remainingMs
+    expect(congelado).toBe(inicial - 4_000)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(store.remainingMs).toBe(congelado)
+
+    await store.resume()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(store.remainingMs).toBe(congelado - 2_000)
+
+    store.stopTicker()
+  })
+
+  it('el ticker cambia de fase en el instante en que expira, sin atrasar el aviso', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 1, autoStartBreak: false })
+    store.startTicker()
+    await store.start()
+
+    await vi.advanceTimersByTimeAsync(59_750)
+    expect(store.session.phase).toBe('focus')
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(250)
+    expect(store.session.phase).toBe('shortBreak')
+    expect(store.session.isRunning).toBe(false)
+    expect(playFocusEndChime).toHaveBeenCalledOnce()
+
+    store.stopTicker()
+  })
+
   it('loads a still-running session and computes its current remaining time', async () => {
     vi.mocked(db.loadConfig).mockImplementation(async (key) =>
       key === 'pomodoro-session'

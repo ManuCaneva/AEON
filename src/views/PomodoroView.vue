@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { Pause, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -9,8 +9,6 @@ import { usePomodoroStore } from '@/stores/pomodoro'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
 const pomodoro = usePomodoroStore()
-const clock = ref(0)
-let timer: ReturnType<typeof setInterval> | undefined
 
 const phaseLabel = computed(() => {
   if (pomodoro.session.phase === 'shortBreak') return 'Descanso corto'
@@ -29,17 +27,6 @@ function start() {
   void pomodoro.prepareAudio().catch(() => {})
   void pomodoro.start()
 }
-
-onMounted(async () => {
-  timer = setInterval(() => {
-    clock.value += 1
-    void pomodoro.advanceIfExpired()
-  }, 250)
-})
-
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-})
 </script>
 
 <template>
