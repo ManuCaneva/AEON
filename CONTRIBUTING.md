@@ -48,14 +48,14 @@ Los cambios grandes y complejos se marcan con el label `spec` y se dividen en is
 
 El mantenedor usa estos labels para ordenar el trabajo:
 
-| Label               | Significado                                    |
-| ------------------- | ---------------------------------------------- |
-| `needs-triage`      | Pendiente de evaluación por el mantenedor      |
-| `needs-info`        | Esperando más datos de quien reportó           |
-| `ready-for-agent`   | Especificado por completo, listo para empezar  |
-| `ready-for-human`   | Requiere implementación humana                 |
-| `spec`              | Especificación grande, se desglosa en issues   |
-| `wontfix`           | No se va a trabajar                            |
+| Label             | Significado                                   |
+| ----------------- | --------------------------------------------- |
+| `needs-triage`    | Pendiente de evaluación por el mantenedor     |
+| `needs-info`      | Esperando más datos de quien reportó          |
+| `ready-for-agent` | Especificado por completo, listo para empezar |
+| `ready-for-human` | Requiere implementación humana                |
+| `spec`            | Especificación grande, se desglosa en issues  |
+| `wontfix`         | No se va a trabajar                           |
 
 Si querés colaborar, los issues con `ready-for-human` son un buen punto de partida.
 
