@@ -39,8 +39,6 @@ const { ensureDesktopEntry } = useDesktopEntry()
 
 useTheme()
 
-let pomodoroTicker: ReturnType<typeof setInterval> | undefined
-
 /**
  * Registra el AppImage en el menú de Linux antes de chequear updates. Si movió
  * el binario en este arranque, se omite el chequeo: el updater todavía tiene la
@@ -64,13 +62,11 @@ onMounted(async () => {
   const toDate = today.toISOString().split('T')[0]
   await goals.loadLogsForRange(fromDate, toDate)
   await pomodoro.load()
-  pomodoroTicker = setInterval(() => {
-    void pomodoro.advanceIfExpired()
-  }, 250)
+  pomodoro.startTicker()
 })
 
 onBeforeUnmount(() => {
-  if (pomodoroTicker) clearInterval(pomodoroTicker)
+  pomodoro.stopTicker()
 })
 </script>
 

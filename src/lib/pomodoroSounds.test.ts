@@ -102,6 +102,31 @@ describe('pomodoro sound player', () => {
     vi.useRealTimers()
   })
 
+  it('plays the test chime while muted but keeps regular chimes and zero volume silent', async () => {
+    const audio = createAudioContextMock('running')
+    vi.stubGlobal(
+      'AudioContext',
+      vi.fn(function () {
+        return audio.context
+      })
+    )
+    const player = createPomodoroSoundPlayer()
+    await player.prepareFromUserGesture()
+
+    // the mute toggle must not block the preview
+    expect(player.playTestChime({ ...defaultPomodoroSettings, muted: true })).toBe(true)
+    expect(audio.oscillators).toHaveLength(2)
+    expect(audio.oscillators[0].frequency.setValueAtTime).toHaveBeenCalledWith(880, 10)
+    expect(audio.oscillators[1].frequency.setValueAtTime).toHaveBeenCalledWith(1174.66, 10.16)
+
+    // regular chimes still honor the mute toggle
+    expect(player.playFocusEndChime({ ...defaultPomodoroSettings, muted: true })).toBe(false)
+
+    // zero volume still silences the preview
+    expect(player.playTestChime({ ...defaultPomodoroSettings, volume: 0 })).toBe(false)
+    expect(audio.oscillators).toHaveLength(2)
+  })
+
   it('suspends the context when preparation finds no chime scheduled', async () => {
     vi.useFakeTimers()
     const audio = createAudioContextMock('suspended')

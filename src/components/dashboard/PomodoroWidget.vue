@@ -1,30 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { Pause, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
 import Container from '@/components/ui/Container.vue'
 import Text from '@/components/ui/Text.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
-import {
-  formatRemainingTime,
-  getPhaseDurationMs,
-  getProgressFraction,
-  getRemainingMs,
-} from '@/lib/pomodoro'
+import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
 const pomodoro = usePomodoroStore()
-const clock = ref(0)
-let timer: ReturnType<typeof setInterval> | undefined
 
-const displayedRemainingMs = computed(() => {
-  void clock.value
-  if (pomodoro.session.isRunning && pomodoro.session.endsAt) {
-    return getRemainingMs(pomodoro.session.endsAt)
-  }
-  return pomodoro.remainingMs
-})
 const durationMs = computed(() => getPhaseDurationMs(pomodoro.session.phase, pomodoro.settings))
 const progressPercent = computed(() =>
-  Math.round(getProgressFraction(displayedRemainingMs.value, durationMs.value) * 100)
+  Math.round(getProgressFraction(pomodoro.remainingMs, durationMs.value) * 100)
 )
 const ringToken = computed(() => (pomodoro.session.phase === 'focus' ? 'primary' : 'success'))
 const toggleLabel = computed(() =>
@@ -39,16 +25,6 @@ function toggle() {
   void pomodoro.prepareAudio().catch(() => {})
   void pomodoro.start()
 }
-
-onMounted(() => {
-  timer = setInterval(() => {
-    clock.value += 1
-  }, 250)
-})
-
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-})
 </script>
 
 <template>
@@ -91,7 +67,7 @@ onBeforeUnmount(() => {
             data-testid="pomodoro-widget-countdown"
             class="pomodoro-countdown font-mono font-semibold tracking-tight"
           >
-            {{ formatRemainingTime(displayedRemainingMs) }}
+            {{ formatRemainingTime(pomodoro.remainingMs) }}
           </span>
           <div
             data-testid="pomodoro-widget-controls"

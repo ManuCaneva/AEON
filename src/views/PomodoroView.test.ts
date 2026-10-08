@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { reactive } from 'vue'
 import PomodoroView from './PomodoroView.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 
 function createStore(overrides: Record<string, unknown> = {}) {
-  return {
+  return reactive({
     settings: {
       focusMinutes: 25,
       shortBreakMinutes: 5,
@@ -25,7 +26,7 @@ function createStore(overrides: Record<string, unknown> = {}) {
     prepareAudio: vi.fn(),
     saveSettings: vi.fn(),
     ...overrides,
-  }
+  })
 }
 
 let store = createStore()
@@ -77,6 +78,26 @@ describe('PomodoroView', () => {
     expect(store.pause).toHaveBeenCalled()
     expect(store.skip).toHaveBeenCalled()
     expect(store.reset).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('el texto del tiempo sigue al valor del store', async () => {
+    store = createStore({
+      session: { phase: 'focus', isRunning: true, completedFocusSessions: 0 },
+      remainingMs: 10 * 60_000,
+    })
+    const wrapper = mount(PomodoroView)
+
+    expect(wrapper.get('[data-testid="pomodoro-countdown"]').text()).toBe('10:00')
+
+    ;(store as { remainingMs: number }).remainingMs = 9 * 60_000 + 58_000
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="pomodoro-countdown"]').text()).toBe('09:58')
+
+    ;(store as { remainingMs: number }).remainingMs = 9 * 60_000 + 57_000
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="pomodoro-countdown"]').text()).toBe('09:57')
+    expect(wrapper.get('[data-testid="pomodoro-progress"]').attributes('aria-valuenow')).toBe('60')
     wrapper.unmount()
   })
 
