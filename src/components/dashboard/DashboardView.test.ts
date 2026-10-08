@@ -178,10 +178,14 @@ describe('DashboardView', () => {
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
   })
 
-  it('en modo edición dibuja las líneas de la grilla', () => {
+  it('en modo edición dibuja las líneas de la grilla cerradas por abajo y por la derecha', () => {
     editModeValue = true
     const wrapper = mount(DashboardView)
-    expect(wrapper.find('[data-testid="dashboard-grid-lines"]').exists()).toBe(true)
+    const lines = wrapper.find('[data-testid="dashboard-grid-lines"]')
+    expect(lines.exists()).toBe(true)
+    expect(lines.classes()).toEqual(
+      expect.arrayContaining(['border-r', 'border-b', 'border-hairline/60'])
+    )
   })
 
   it('fuera del modo edición no queda rastro de las líneas de la grilla', () => {
