@@ -15,21 +15,21 @@ import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomod
 export const POMODORO_SETTINGS_KEY = 'pomodoro-settings'
 export const POMODORO_SESSION_KEY = 'pomodoro-session'
 
-const initialSession: ActivePomodoroSession = {
-  phase: 'focus',
-  isRunning: false,
-  endsAt: null,
-  remainingMs: getPhaseDurationMs('focus', defaultPomodoroSettings),
-  completedFocusSessions: 0,
-}
-
-function copyInitialSession(): ActivePomodoroSession {
-  return { ...initialSession }
-}
-
 export const usePomodoroStore = defineStore('pomodoro', () => {
   const settings = ref<PomodoroSettings>({ ...defaultPomodoroSettings })
-  const session = ref<ActivePomodoroSession>(copyInitialSession())
+
+  /** Sesión en reposo calculada con la configuración vigente, no con la de fábrica. */
+  function freshSession(): ActivePomodoroSession {
+    return {
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: getPhaseDurationMs('focus', settings.value),
+      completedFocusSessions: 0,
+    }
+  }
+
+  const session = ref<ActivePomodoroSession>(freshSession())
   const loaded = ref(false)
   const remainingMs = computed(() =>
     session.value.isRunning && session.value.endsAt
@@ -132,8 +132,10 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       try {
         session.value = ActivePomodoroSessionSchema.parse(JSON.parse(rawSession))
       } catch {
-        session.value = copyInitialSession()
+        session.value = freshSession()
       }
+    } else {
+      session.value = freshSession()
     }
     loaded.value = true
     await advanceIfExpired()
@@ -176,7 +178,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function reset(): Promise<void> {
-    session.value = copyInitialSession()
+    session.value = freshSession()
     await persistSession()
   }
 
@@ -185,7 +187,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    * la clave de sesión ya fue eliminada y no debe volver a crearse.
    */
   function resetSession(): void {
-    session.value = copyInitialSession()
+    session.value = freshSession()
   }
 
   async function saveSettings(patch: Partial<PomodoroSettings>): Promise<void> {

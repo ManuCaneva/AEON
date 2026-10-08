@@ -172,6 +172,77 @@ describe('pomodoro store', () => {
     expect(playBreakEndChime).toHaveBeenCalledTimes(1)
   })
 
+  it('inicializa la sesión con la configuración vigente en el momento de crear el store', () => {
+    const factoryFocusMinutes = defaultPomodoroSettings.focusMinutes
+    defaultPomodoroSettings.focusMinutes = 35
+    try {
+      const store = usePomodoroStore()
+      expect(store.session).toEqual({
+        phase: 'focus',
+        isRunning: false,
+        endsAt: null,
+        remainingMs: 35 * 60_000,
+        completedFocusSessions: 0,
+      })
+      expect(store.remainingMs).toBe(35 * 60_000)
+    } finally {
+      defaultPomodoroSettings.focusMinutes = factoryFocusMinutes
+    }
+  })
+
+  it('sin sesión persistida, la carga arma el cronómetro con la configuración guardada', async () => {
+    vi.mocked(db.loadConfig).mockImplementation(async (key) =>
+      key === 'pomodoro-settings' ? JSON.stringify({ focusMinutes: 35 }) : null
+    )
+    const store = usePomodoroStore()
+    await store.load()
+
+    expect(store.settings.focusMinutes).toBe(35)
+    expect(store.session).toEqual({
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: 35 * 60_000,
+      completedFocusSessions: 0,
+    })
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
+  it('«Reiniciar» deja la duración de enfoque configurada, en reposo y en foco', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 35 })
+    await store.start()
+    expect(store.session.isRunning).toBe(true)
+
+    await store.reset()
+
+    expect(store.session).toEqual({
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: 35 * 60_000,
+      completedFocusSessions: 0,
+    })
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
+  it('«Reiniciar» desde una fase de descanso vuelve al enfoque con la duración configurada', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 35, autoStartBreak: false })
+    await store.start()
+    await store.skip()
+    expect(store.session.phase).toBe('shortBreak')
+
+    await store.reset()
+
+    expect(store.session.phase).toBe('focus')
+    expect(store.session.isRunning).toBe(false)
+    expect(store.session.completedFocusSessions).toBe(0)
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
   it('loads a still-running session and computes its current remaining time', async () => {
     vi.mocked(db.loadConfig).mockImplementation(async (key) =>
       key === 'pomodoro-session'

@@ -147,6 +147,8 @@ describe('clearAppData — alcance de borrado', () => {
     expect(pomodoro.session.phase).toBe('focus')
     expect(pomodoro.session.isRunning).toBe(false)
     expect(pomodoro.session.completedFocusSessions).toBe(0)
+    expect(pomodoro.session.remainingMs).toBe(40 * 60_000)
+    expect(pomodoro.remainingMs).toBe(40 * 60_000)
     expect(pomodoro.settings.focusMinutes).toBe(40)
     expect(dbMocks.saveConfig).not.toHaveBeenCalled()
   })
