@@ -49,6 +49,8 @@ vi.mock('@/stores/dashboard', () => ({
     moveTo: vi.fn(),
     resizeTo: vi.fn(),
     removeWidget: mockRemoveWidget,
+    saveEdit: vi.fn(),
+    discardEdit: vi.fn(),
   }),
 }))
 
@@ -106,6 +108,18 @@ describe('DashboardView', () => {
     editModeValue = true
     const wrapper = mount(DashboardView)
     expect(wrapper.find("[data-testid='widget-picker']").exists()).toBe(true)
+  })
+
+  it('renderiza la barra de acciones de edición si editMode es true', () => {
+    editModeValue = true
+    const wrapper = mount(DashboardView)
+    expect(wrapper.find("[data-testid='edit-actions']").exists()).toBe(true)
+  })
+
+  it('no renderiza la barra de acciones de edición si editMode es false', () => {
+    editModeValue = false
+    const wrapper = mount(DashboardView)
+    expect(wrapper.find("[data-testid='edit-actions']").exists()).toBe(false)
   })
 
   it('en modo edición aísla los z-index de los items dentro de la grilla', () => {

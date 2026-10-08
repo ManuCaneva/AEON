@@ -6,6 +6,7 @@ import { useGoalsStore } from '@/stores/goals'
 import { useUiStore } from '@/stores/ui'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import DashboardView from '@/components/dashboard/DashboardView.vue'
+import ExitEditDialog from '@/components/dashboard/ExitEditDialog.vue'
 import ArchivedView from '@/views/ArchivedView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import PomodoroView from '@/views/PomodoroView.vue'
@@ -99,6 +100,8 @@ onBeforeUnmount(() => {
     <TaskFormModal />
     <GoalFormModal />
     <NoteFormModal />
+
+    <ExitEditDialog />
 
     <UpdateModal
       :open="updateStatus !== 'idle'"

@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useDashboardStore, findFreePosition, wouldCollide, COLS, ROWS } from './dashboard'
+import {
+  useDashboardStore,
+  findFreePosition,
+  wouldCollide,
+  layoutsEqual,
+  COLS,
+  ROWS,
+  type Layout,
+} from './dashboard'
 import { loadConfig, saveConfig } from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({
@@ -410,5 +418,143 @@ describe('dashboard store (grilla entera)', () => {
     expect(item).toBeUndefined()
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No se pudo colocar'))
     consoleSpy.mockRestore()
+  })
+
+  describe('borrador de edición (issue #105)', () => {
+    const twoItems: Layout = [
+      { i: 'a', x: 0, y: 0, w: 2, h: 2 },
+      { i: 'b', x: 4, y: 4, w: 2, h: 2 },
+    ]
+
+    async function storeWithTwoItems() {
+      const store = useDashboardStore()
+      await flush()
+      store.updateLayout(twoItems)
+      vi.mocked(saveConfig).mockClear()
+      return store
+    }
+
+    it('layoutsEqual compara por id sin importar el orden', () => {
+      const a: Layout = [
+        { i: 'a', x: 0, y: 0, w: 2, h: 2 },
+        { i: 'b', x: 2, y: 0, w: 2, h: 2 },
+      ]
+      const b: Layout = [
+        { i: 'b', x: 2, y: 0, w: 2, h: 2 },
+        { i: 'a', x: 0, y: 0, w: 2, h: 2 },
+      ]
+      expect(layoutsEqual(a, b)).toBe(true)
+    })
+
+    it('layoutsEqual detecta cambios de geometría, de id y de cantidad', () => {
+      const base: Layout = [{ i: 'a', x: 0, y: 0, w: 2, h: 2 }]
+      expect(layoutsEqual(base, [{ i: 'a', x: 1, y: 0, w: 2, h: 2 }])).toBe(false)
+      expect(layoutsEqual(base, [{ i: 'b', x: 0, y: 0, w: 2, h: 2 }])).toBe(false)
+      expect(
+        layoutsEqual(base, [
+          { i: 'a', x: 0, y: 0, w: 2, h: 2 },
+          { i: 'b', x: 2, y: 0, w: 1, h: 1 },
+        ])
+      ).toBe(false)
+    })
+
+    it('entrar en modo edición toma el snapshot sin marcar cambios', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('mover durante la edición no persiste nada y marca cambios sin guardar', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.moveTo('a', 0, 4)
+      expect(saveConfig).not.toHaveBeenCalled()
+      expect(store.hasUnsavedChanges).toBe(true)
+    })
+
+    it('un gesto sin efecto (soltar donde estaba) no cuenta como cambio', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      const a = store.layout.find((i) => i.i === 'a')!
+      store.moveTo('a', a.x, a.y)
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('redimensionar durante la edición no persiste nada y marca cambios', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.resizeTo('a', 3, 3)
+      expect(saveConfig).not.toHaveBeenCalled()
+      expect(store.hasUnsavedChanges).toBe(true)
+    })
+
+    it('agregar y quitar widgets cuentan como cambios sin guardar', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.addWidget('notes')
+      expect(store.hasUnsavedChanges).toBe(true)
+      store.removeWidget('a')
+      expect(store.hasUnsavedChanges).toBe(true)
+    })
+
+    it('deshacer restaura el layout de entrada, incluidos los widgets quitados', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.moveTo('a', 0, 4)
+      store.resizeTo('b', 4, 4)
+      store.removeWidget('b')
+      store.discardEdit()
+      const byId = Object.fromEntries(store.layout.map((i) => [i.i, i]))
+      expect(Object.keys(byId).sort()).toEqual(['a', 'b'])
+      expect(byId.a).toMatchObject({ x: 0, y: 0, w: 2, h: 2 })
+      expect(byId.b).toMatchObject({ x: 4, y: 4, w: 2, h: 2 })
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('deshacer quita los widgets agregados durante la sesión', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.addWidget('notes')
+      store.discardEdit()
+      expect(store.layout.map((i) => i.i)).toEqual(['a', 'b'])
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('guardar persiste el layout vivo y deja de haber cambios sin guardar', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.resizeTo('a', 3, 3)
+      store.saveEdit()
+      expect(saveConfig).toHaveBeenCalledTimes(1)
+      const saved = JSON.parse(vi.mocked(saveConfig).mock.calls[0][1] as string)
+      expect(saved[0]).toMatchObject({ i: 'a', w: 3, h: 3 })
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('deshacer después de guardar vuelve al layout con el que se entró', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.resizeTo('a', 3, 3)
+      store.saveEdit()
+      store.discardEdit()
+      expect(store.layout.find((i) => i.i === 'a')).toMatchObject({ w: 2, h: 2 })
+      // El layout vivo vuelve a la entrada y ya no coincide con lo persistido.
+      expect(store.hasUnsavedChanges).toBe(true)
+    })
+
+    it('salir del modo edición sin guardar no persiste el borrador', async () => {
+      const store = await storeWithTwoItems()
+      store.beginEdit()
+      store.moveTo('a', 0, 4)
+      store.endEdit()
+      expect(saveConfig).not.toHaveBeenCalled()
+      expect(store.hasUnsavedChanges).toBe(false)
+    })
+
+    it('fuera del modo edición las mutaciones siguen persistiendo', async () => {
+      const store = await storeWithTwoItems()
+      store.moveTo('a', 0, 4)
+      expect(saveConfig).toHaveBeenCalledTimes(1)
+    })
   })
 })

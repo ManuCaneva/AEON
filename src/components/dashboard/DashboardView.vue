@@ -5,6 +5,7 @@ import { getWidgetById } from '@/lib/dashboardWidgets'
 import GridItemVue from './GridItemVue.vue'
 import WidgetPicker from './WidgetPicker.vue'
 import WidgetRemoveButton from './WidgetRemoveButton.vue'
+import EditModeActions from './EditModeActions.vue'
 
 const dashboard = useDashboardStore()
 const ui = useUiStore()
@@ -55,6 +56,7 @@ function onRemoveWidget(id: string) {
       </GridItemVue>
     </div>
     <WidgetPicker />
+    <EditModeActions />
   </div>
 </template>
 
