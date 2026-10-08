@@ -82,13 +82,24 @@ const contentStyle = computed<CSSProperties | undefined>(() =>
   props.editMode ? { filter: 'grayscale(1)', opacity: '0.6', pointerEvents: 'none' } : undefined
 )
 
-function containerSize() {
+/**
+ * Métricas del contenedor cacheadas por gesto. Se miden una sola vez al
+ * iniciar el drag/resize (`measureContainer`) y todos los `move` reutilizan
+ * estos valores, evitando un reflow sincrónico por cada movimiento del puntero.
+ */
+let containerWidth = 0
+let containerHeight = 0
+
+function measureContainer() {
   const container = elRef.value?.parentElement
-  return {
-    containerWidth: container?.clientWidth ?? 0,
-    containerHeight: container?.clientHeight ?? 0,
-  }
+  containerWidth = container?.clientWidth ?? 0
+  containerHeight = container?.clientHeight ?? 0
 }
+
+type Cells = { x: number; y: number; w: number; h: number }
+
+/** Última zona emitida en el gesto; evita re-renderizar si el snap no cambió. */
+let lastPreviewCells: Cells | null = null
 
 const ZERO_RECT: FlipRect = { left: 0, top: 0, width: 0, height: 0 }
 
@@ -141,7 +152,6 @@ function applyResizeOffset() {
  * fin de gesto, así el widget cae exactamente donde se previsualizó.
  */
 function dragCells() {
-  const { containerWidth, containerHeight } = containerSize()
   const colWidth = containerWidth / COLS
   const rowHeight = containerHeight / ROWS
   return pxToCells(
@@ -156,7 +166,6 @@ function dragCells() {
 }
 
 function resizeCells() {
-  const { containerWidth, containerHeight } = containerSize()
   const colWidth = containerWidth / COLS
   const rowHeight = containerHeight / ROWS
   return pxToCells(
@@ -172,26 +181,40 @@ function resizeCells() {
 
 /** Previsualización inicial: la geometría actual del ítem en celdas. */
 function emitItemPreview() {
+  lastPreviewCells = { x: props.item.x, y: props.item.y, w: props.item.w, h: props.item.h }
   emit('preview', props.item.i, props.item.x, props.item.y, props.item.w, props.item.h)
+}
+
+/** Emite la zona de destino sólo si sus celdas cambiaron respecto de la última. */
+function emitPreviewCells(cells: Cells) {
+  const last = lastPreviewCells
+  if (
+    last &&
+    last.x === cells.x &&
+    last.y === cells.y &&
+    last.w === cells.w &&
+    last.h === cells.h
+  ) {
+    return
+  }
+  lastPreviewCells = { x: cells.x, y: cells.y, w: cells.w, h: cells.h }
+  emit('preview', props.item.i, cells.x, cells.y, cells.w, cells.h)
 }
 
 /** Previsualización del destino en vivo; se omite sin contenedor medible. */
 function emitDragPreview() {
-  const { containerWidth, containerHeight } = containerSize()
   if (containerWidth <= 0 || containerHeight <= 0) return
-  const cells = dragCells()
-  emit('preview', props.item.i, cells.x, cells.y, cells.w, cells.h)
+  emitPreviewCells(dragCells())
 }
 
 function emitResizePreview() {
-  const { containerWidth, containerHeight } = containerSize()
   if (containerWidth <= 0 || containerHeight <= 0) return
-  const cells = resizeCells()
-  emit('preview', props.item.i, cells.x, cells.y, cells.w, cells.h)
+  emitPreviewCells(resizeCells())
 }
 
 useDashDrag(elRef, editModeRef, {
   onDragStart() {
+    measureContainer()
     isDragging.value = true
     dragAccumX = 0
     dragAccumY = 0
@@ -231,6 +254,7 @@ useDashDrag(elRef, editModeRef, {
     }
   },
   onResizeStart() {
+    measureContainer()
     isDragging.value = true
     dragAccumX = 0
     dragAccumY = 0
@@ -246,7 +270,6 @@ useDashDrag(elRef, editModeRef, {
         resizeBaseW = rect.width
         resizeBaseH = rect.height
       } else {
-        const { containerWidth, containerHeight } = containerSize()
         resizeBaseW = (props.item.w / COLS) * containerWidth
         resizeBaseH = (props.item.h / ROWS) * containerHeight
       }

@@ -298,6 +298,87 @@ describe('GridItemVue', () => {
     expect(after.length).toBe(before)
   })
 
+  it('no re-emite preview de drag mientras el puntero sigue en la misma celda y sí al cruzar a otra', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(2, 2)
+    const baseline = (wrapper.emitted('preview') as unknown[][]).length
+
+    // Un segundo movimiento que cae en la misma celda snappeada no re-emite.
+    dragCallbacks.onDragMove?.(2, 2)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBe(baseline)
+
+    // Al cruzar a otra celda la previsualización vuelve a emitirse.
+    dragCallbacks.onDragMove?.(200, 200)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBeGreaterThan(baseline)
+  })
+
+  it('no re-emite preview de resize mientras las celdas no cambian y sí al cruzar', async () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    Object.defineProperty(container, 'clientWidth', { value: 1200, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: 800, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(2, 2)
+    const baseline = (wrapper.emitted('preview') as unknown[][]).length
+
+    dragCallbacks.onResizeMove?.(2, 2)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBe(baseline)
+
+    dragCallbacks.onResizeMove?.(200, 200)
+    expect((wrapper.emitted('preview') as unknown[][]).length).toBeGreaterThan(baseline)
+  })
+
+  it('mide el contenedor una sola vez por gesto de drag (no en cada movimiento)', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    const width = vi.fn(() => 1200)
+    const height = vi.fn(() => 600)
+    Object.defineProperty(container, 'clientWidth', { get: width, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { get: height, configurable: true })
+
+    dragCallbacks.onDragStart?.()
+    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(50, 30)
+
+    expect(width).toHaveBeenCalledTimes(1)
+    expect(height).toHaveBeenCalledTimes(1)
+  })
+
+  it('mide el contenedor una sola vez por gesto de resize (no en cada movimiento)', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem({ x: 0, y: 0, w: 6, h: 4 }), editMode: true },
+    })
+    const el = wrapper.element as HTMLElement
+    const container = el.parentElement as HTMLElement
+    const width = vi.fn(() => 1200)
+    const height = vi.fn(() => 800)
+    Object.defineProperty(container, 'clientWidth', { get: width, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { get: height, configurable: true })
+
+    dragCallbacks.onResizeStart?.()
+    dragCallbacks.onResizeMove?.(100, 80)
+    dragCallbacks.onResizeMove?.(100, 80)
+
+    expect(width).toHaveBeenCalledTimes(1)
+    expect(height).toHaveBeenCalledTimes(1)
+  })
+
   // Cada caso parte de un contenedor 1200×800 (col=100px, row=80px) y mueve
   // una arista o esquina. El deltaRect de interactjs es per-evento: dw/dh son
   // el crecimiento y dl/dt el desplazamiento del borde opuesto.
