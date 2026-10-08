@@ -50,6 +50,10 @@ src-tauri/gen/schemas/
 .cache/
 test-results/
 
+# ── Agent skills (herramientas locales del agente) ───────────
+.agents/
+skills-lock.json
+
 # ── Issue tracker local (migrado a GitHub Issues) ────────────
 .scratch/
 
