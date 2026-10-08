@@ -34,6 +34,12 @@ function onRemoveWidget(id: string) {
         gap: 4px;
       "
     >
+      <div
+        v-if="ui.editMode"
+        data-testid="dashboard-grid-lines"
+        aria-hidden="true"
+        class="dashboard-grid-lines pointer-events-none absolute inset-0 z-0"
+      />
       <GridItemVue
         v-for="item in dashboard.layout"
         :key="item.i"
@@ -43,9 +49,31 @@ function onRemoveWidget(id: string) {
         @resized="onResized"
       >
         <component :is="getWidgetById(item.i)?.component" :item="item" />
-        <WidgetRemoveButton v-if="ui.editMode" :widget-id="item.i" @remove="onRemoveWidget" />
+        <template #controls>
+          <WidgetRemoveButton v-if="ui.editMode" :widget-id="item.i" @remove="onRemoveWidget" />
+        </template>
       </GridItemVue>
     </div>
     <WidgetPicker />
   </div>
 </template>
+
+<style scoped>
+.dashboard-grid-lines {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgb(var(--color-hairline) / 0.6) 0,
+      rgb(var(--color-hairline) / 0.6) 1px,
+      transparent 1px,
+      transparent calc((100% + 4px) / 12)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgb(var(--color-hairline) / 0.6) 0,
+      rgb(var(--color-hairline) / 0.6) 1px,
+      transparent 1px,
+      transparent calc((100% + 4px) / 10)
+    );
+}
+</style>

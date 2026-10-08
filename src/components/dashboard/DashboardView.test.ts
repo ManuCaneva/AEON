@@ -154,6 +154,18 @@ describe('DashboardView', () => {
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
   })
 
+  it('en modo edición dibuja las líneas de la grilla', () => {
+    editModeValue = true
+    const wrapper = mount(DashboardView)
+    expect(wrapper.find('[data-testid="dashboard-grid-lines"]').exists()).toBe(true)
+  })
+
+  it('fuera del modo edición no queda rastro de las líneas de la grilla', () => {
+    editModeValue = false
+    const wrapper = mount(DashboardView)
+    expect(wrapper.find('[data-testid="dashboard-grid-lines"]').exists()).toBe(false)
+  })
+
   it('al remover un widget, llama removeWidget del store', async () => {
     editModeValue = true
     const wrapper = mount(DashboardView)

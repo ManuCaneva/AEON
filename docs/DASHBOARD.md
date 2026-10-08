@@ -85,6 +85,8 @@ Los widgets se adaptan al tamaño de su celda sin desbordar el panel:
 - Mientras se arrastra o redimensiona, el ítem activo sube al tope de la grilla (`DRAGGING_Z_INDEX`) para no quedar debajo de un vecino con mayor `z` de celda.
 - La grilla lleva `isolate` en modo edición: los `z-index` de los ítems quedan contenidos bajo el `WidgetPicker` y los modales, que siguen por encima (`z-50`).
 - En modo edición el root del dashboard suelta su `overflow-hidden` para que la mitad de la cruz que sobresale no se recorte contra el borde de la vista; el `p-4` del panel da el aire necesario. En reposo conserva `overflow-hidden` y los widgets miden exactamente igual en ambos modos (sin padding extra).
+- El contenido de cada widget se desatura (`filter: grayscale(1)`), se atenúa (`opacity: 0.6`) y deja de recibir punteros (`pointer-events: none`) mientras dura la edición, para no disparar acciones por accidente. El arrastre, el redimensionado y la cruz viven fuera de esa capa y siguen operativos.
+- La grilla (12×10) se dibuja en modo edición con líneas finas continuas de 1px a baja opacidad, con `repeating-linear-gradient` sobre el contenedor y solo tokens de color; en reposo no queda rastro.
 
 ## Archivos relacionados
 

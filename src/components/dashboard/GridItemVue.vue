@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, type CSSProperties } from 'vue'
 import type { LayoutItem } from '@/stores/dashboard'
 import { pxToCells } from '@/composables/gridSnap'
 import {
@@ -42,6 +42,15 @@ const itemStyle = computed(() => {
 })
 
 const editModeRef = computed(() => props.editMode)
+
+/**
+ * Capa de contenido del widget. En modo edición se desatura, se atenúa y deja
+ * de recibir punteros para evitar disparar acciones por accidente; el arrastre,
+ * el redimensionado y el control de quitar viven fuera de esta capa.
+ */
+const contentStyle = computed<CSSProperties | undefined>(() =>
+  props.editMode ? { filter: 'grayscale(1)', opacity: '0.6', pointerEvents: 'none' } : undefined
+)
 
 function containerSize() {
   const container = elRef.value?.parentElement
@@ -207,7 +216,15 @@ useDashDrag(elRef, editModeRef, {
       isFlipping && 'grid-item--flip',
     ]"
   >
-    <slot />
+    <div
+      data-testid="widget-content"
+      class="h-full min-h-0 min-w-0"
+      :style="contentStyle"
+      :aria-disabled="editMode ? 'true' : undefined"
+    >
+      <slot />
+    </div>
+    <slot name="controls" />
   </div>
 </template>
 

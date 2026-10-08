@@ -299,4 +299,43 @@ describe('GridItemVue', () => {
     })
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
   })
+
+  it('en modo edición el contenido se desatura, se atenúa y deja de recibir punteros', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: true },
+      slots: { default: '<div>contenido</div>' },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    expect(content.exists()).toBe(true)
+    const style = content.attributes('style') ?? ''
+    expect(style).toContain('grayscale(1)')
+    expect(style).toContain('opacity: 0.6')
+    expect(style).toContain('pointer-events: none')
+  })
+
+  it('en reposo el contenido se ve normal y recibe punteros', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: false },
+      slots: { default: '<div>contenido</div>' },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    expect(content.exists()).toBe(true)
+    const style = content.attributes('style') ?? ''
+    expect(style).not.toContain('grayscale')
+    expect(style).not.toContain('pointer-events')
+  })
+
+  it('los controles de edición viven fuera de la capa desactivada', () => {
+    const wrapper = mount(GridItemVue, {
+      props: { item: makeItem(), editMode: true },
+      slots: {
+        default: '<div>contenido</div>',
+        controls: '<button data-testid="widget-control">quitar</button>',
+      },
+    })
+    const content = wrapper.find('[data-testid="widget-content"]')
+    const control = wrapper.find('[data-testid="widget-control"]')
+    expect(control.exists()).toBe(true)
+    expect(content.element.contains(control.element)).toBe(false)
+  })
 })
