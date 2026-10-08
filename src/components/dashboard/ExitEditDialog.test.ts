@@ -59,6 +59,26 @@ describe('ExitEditDialog', () => {
     expect(ui.resolveExitDialog).not.toHaveBeenCalled()
   })
 
+  it('muestra las tres acciones en una sola fila sin wrap', () => {
+    factory()
+    const actions = document.body.querySelector<HTMLElement>("[data-testid='exit-dialog-actions']")
+    expect(actions).not.toBeNull()
+    expect(actions!.classList.contains('flex')).toBe(true)
+    expect(actions!.classList.contains('flex-wrap')).toBe(false)
+  })
+
+  it('usa un ancho medio para que las tres acciones entren juntas', () => {
+    factory()
+    const panel = document.body.querySelector<HTMLElement>("[role='dialog']")
+    expect(panel).not.toBeNull()
+    expect(panel!.classList.contains('max-w-md')).toBe(true)
+  })
+
+  it('marca «Descartar cambios» como acción destructiva', () => {
+    factory()
+    expect(findButton('Descartar cambios').className).toContain('bg-accent-red-tint')
+  })
+
   it('«Guardar y salir» resuelve con save', async () => {
     factory()
     await findButton('Guardar y salir').click()

@@ -8,13 +8,13 @@ const ui = useUiStore()
 </script>
 
 <template>
-  <Modal :open="ui.exitDialogOpen" size="sm" @close="ui.cancelExitDialog()">
+  <Modal :open="ui.exitDialogOpen" size="md" @close="ui.cancelExitDialog()">
     <div data-testid="exit-edit-dialog" class="flex flex-col gap-4 p-5">
       <Heading>Cambios sin guardar</Heading>
       <p class="text-body text-ink-muted">
         Tenés cambios sin guardar en el dashboard. ¿Querés guardarlos antes de salir?
       </p>
-      <div class="flex flex-wrap justify-end gap-2">
+      <div data-testid="exit-dialog-actions" class="flex justify-end gap-2">
         <Button
           data-testid="exit-keep-editing"
           variant="ghost"
@@ -24,7 +24,7 @@ const ui = useUiStore()
         </Button>
         <Button
           data-testid="exit-discard"
-          variant="secondary"
+          variant="danger"
           @click="ui.resolveExitDialog('discard')"
         >
           Descartar cambios
