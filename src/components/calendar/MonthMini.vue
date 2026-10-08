@@ -107,12 +107,6 @@ function overflowCount(date: string | null): number {
         >
           <template v-if="cell.date">
             <span
-              v-if="isToday(cell.date)"
-              class="day-cell__today-number font-bold text-accent-purple"
-              data-testid="today-number"
-              >{{ cell.dayOfMonth }}</span
-            >
-            <span
               v-for="evt in visibleDots(cell.date)"
               :key="evt.id"
               class="event-dot"
@@ -214,10 +208,5 @@ function overflowCount(date: string | null): number {
   font-size: calc(var(--cell-size) * 0.44);
   line-height: 1;
   color: rgb(var(--color-ink-tertiary));
-}
-
-.day-cell__today-number {
-  font-size: calc(var(--cell-size, 14px) * 0.5);
-  line-height: 1;
 }
 </style>

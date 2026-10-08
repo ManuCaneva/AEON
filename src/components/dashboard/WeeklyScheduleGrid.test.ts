@@ -552,7 +552,7 @@ describe('WeeklyScheduleGrid', () => {
       mockStore.settings.granularity_minutes = 30 // 8 filas de 30' sobre 600px → 2.5 px/min
     })
 
-    it('cruza toda la grilla con un marker sobre la columna de hoy', async () => {
+    it('cruza toda la grilla de días con una sola línea, sin marker', async () => {
       const wrapper = await mountMeasured(600, 0, { now: MONDAY_9AM })
 
       const line = wrapper.find('[data-testid="schedule-now-line"]')
@@ -563,14 +563,9 @@ describe('WeeklyScheduleGrid', () => {
       expect(line.classes()).toContain('inset-x-0')
       expect(stylePx(line, 'top')).toBeCloseTo((540 - 480) * 2.5, 5)
 
-      const marker = wrapper.find('[data-testid="schedule-now-marker"]')
-      expect(marker.exists()).toBe(true)
-      expect(marker.classes()).toContain('rounded-full')
-      // El marker vive dentro de la columna de hoy y comparte la línea
-      expect(marker.element.parentElement?.getAttribute('data-testid')).toBe(
-        'schedule-today-column'
-      )
-      expect(stylePx(marker, 'top')).toBeCloseTo(stylePx(line, 'top'), 5)
+      // Solo la línea: el marker sobre la columna de hoy no existe
+      expect(wrapper.findAll('[data-testid="schedule-now-line"]')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="schedule-now-marker"]').exists()).toBe(false)
 
       expect(hasRawPaletteColor(wrapper.html())).toBe(false)
       wrapper.unmount()
@@ -579,12 +574,10 @@ describe('WeeklyScheduleGrid', () => {
     it('no se dibuja cuando la hora actual queda fuera de la Ventana visible', async () => {
       const antes = await mountMeasured(600, 0, { now: new Date(2026, 0, 5, 7, 59) }) // 07:59
       expect(antes.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
-      expect(antes.find('[data-testid="schedule-now-marker"]').exists()).toBe(false)
       antes.unmount()
 
       const despues = await mountMeasured(600, 0, { now: new Date(2026, 0, 5, 12, 0) }) // 12:00
       expect(despues.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
-      expect(despues.find('[data-testid="schedule-now-marker"]').exists()).toBe(false)
       despues.unmount()
     })
 
@@ -629,7 +622,6 @@ describe('WeeklyScheduleGrid', () => {
       mockStore.visibleWindow = { start_minutes: 600, end_minutes: 720 }
       await wrapper.vm.$nextTick()
       expect(wrapper.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
-      expect(wrapper.find('[data-testid="schedule-now-marker"]').exists()).toBe(false)
       wrapper.unmount()
     })
   })

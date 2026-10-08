@@ -261,14 +261,6 @@ function slotsForDay(day: number): VisibleSlot[] {
               }"
               @click="emit('edit', vs.block)"
             />
-
-            <!-- Marker de la hora actual sobre la columna de hoy -->
-            <div
-              v-if="dayIndex === todayIndex && nowLineTop !== null"
-              class="absolute left-1/2 z-20 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-purple"
-              :style="{ top: nowLineTop + 'px' }"
-              data-testid="schedule-now-marker"
-            />
           </div>
 
           <!-- Línea fina de la hora actual: cruza toda la grilla de días -->

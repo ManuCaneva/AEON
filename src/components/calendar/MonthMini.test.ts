@@ -191,14 +191,12 @@ describe('MonthMini', () => {
     expect(febrero.findAll('.day-cell--today')).toHaveLength(0)
   })
 
-  it('muestra el número del día en negrita en la celda marcada', () => {
+  it('no muestra un número dentro de la celda marcada', () => {
     const wrapper = mount(MonthMini, {
       props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
     })
     const cell = wrapper.get('.day-cell--today')
-    const number = cell.get("[data-testid='today-number']")
-    expect(number.text()).toBe('15')
-    expect(number.classes()).toContain('font-bold')
+    expect(cell.find("[data-testid='today-number']").exists()).toBe(false)
   })
 
   it('usa la fecha del sistema cuando no se inyecta today', () => {
@@ -229,14 +227,11 @@ describe('MonthMini', () => {
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
 
     const cell = wrapper.get('.day-cell--today')
-    const number = cell.get("[data-testid='today-number']")
-    // tint (fondo) y solid (borde y número) del acento: los tokens se definen
+    // tint (fondo) y solid (borde) del acento: los tokens se definen
     // por tema, así que el marcaje se distingue en claro y en oscuro
     expect(cell.classes()).toEqual(
       expect.arrayContaining(['bg-accent-purple-tint', 'ring-accent-purple'])
     )
-    expect(number.classes()).toContain('text-accent-purple')
     expect(cell.attributes('style')).toBeUndefined()
-    expect(number.attributes('style')).toBeUndefined()
   })
 })
