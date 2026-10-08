@@ -6,11 +6,17 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 
 const mockSaveEdit = vi.fn()
 const mockDiscardEdit = vi.fn()
+const mockExitEditMode = vi.fn()
+
+let hasUnsavedChangesValue = true
 
 vi.mock('@/stores/dashboard', () => ({
   useDashboardStore: () => ({
     saveEdit: mockSaveEdit,
     discardEdit: mockDiscardEdit,
+    get hasUnsavedChanges() {
+      return hasUnsavedChangesValue
+    },
   }),
 }))
 
@@ -21,6 +27,7 @@ vi.mock('@/stores/ui', () => ({
     get editMode() {
       return editModeValue
     },
+    exitEditMode: mockExitEditMode,
   }),
 }))
 
@@ -47,7 +54,9 @@ describe('EditModeActions', () => {
     setActivePinia(createPinia())
     mockSaveEdit.mockClear()
     mockDiscardEdit.mockClear()
+    mockExitEditMode.mockClear()
     editModeValue = true
+    hasUnsavedChangesValue = true
   })
 
   it('no renderiza la barra fuera del modo edición', () => {
@@ -56,25 +65,48 @@ describe('EditModeActions', () => {
     expect(w.find("[data-testid='edit-actions']").exists()).toBe(false)
   })
 
-  it('renderiza los botones Guardar y Deshacer cambios en modo edición', () => {
+  it('renderiza los botones Guardar y Descartar cambios en modo edición', () => {
     const w = factory()
     const bar = w.find("[data-testid='edit-actions']")
     expect(bar.exists()).toBe(true)
     expect(bar.text()).toContain('Guardar')
-    expect(bar.text()).toContain('Deshacer cambios')
+    expect(bar.text()).toContain('Descartar cambios')
   })
 
-  it('al clickear Deshacer cambios llama a discardEdit', async () => {
+  it('al clickear Descartar cambios restaura y cierra el modo edición, mostrando el aviso', async () => {
     const w = factory()
     await w.find("[data-testid='edit-discard']").trigger('click')
     expect(mockDiscardEdit).toHaveBeenCalledOnce()
+    expect(mockExitEditMode).toHaveBeenCalledOnce()
+    expect(mockDiscardEdit.mock.invocationCallOrder[0]).toBeLessThan(
+      mockExitEditMode.mock.invocationCallOrder[0]
+    )
+    expect(toastEl()?.textContent).toContain('Cambios descartados')
   })
 
-  it('al clickear Guardar persiste y muestra el aviso', async () => {
+  it('al clickear Guardar persiste, cierra el modo edición y muestra el aviso', async () => {
     const w = factory()
     await w.find("[data-testid='edit-save']").trigger('click')
     expect(mockSaveEdit).toHaveBeenCalledOnce()
+    expect(mockExitEditMode).toHaveBeenCalledOnce()
+    expect(mockSaveEdit.mock.invocationCallOrder[0]).toBeLessThan(
+      mockExitEditMode.mock.invocationCallOrder[0]
+    )
     expect(toastEl()?.textContent).toContain('Cambios guardados')
+  })
+
+  it('deshabilita ambos botones cuando no hay cambios pendientes', () => {
+    hasUnsavedChangesValue = false
+    const w = factory()
+    expect(w.find("[data-testid='edit-save']").attributes('disabled')).toBeDefined()
+    expect(w.find("[data-testid='edit-discard']").attributes('disabled')).toBeDefined()
+  })
+
+  it('habilita ambos botones cuando hay cambios pendientes', () => {
+    hasUnsavedChangesValue = true
+    const w = factory()
+    expect(w.find("[data-testid='edit-save']").attributes('disabled')).toBeUndefined()
+    expect(w.find("[data-testid='edit-discard']").attributes('disabled')).toBeUndefined()
   })
 
   it('no muestra el aviso antes de guardar', () => {
