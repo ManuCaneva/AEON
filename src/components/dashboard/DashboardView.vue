@@ -66,7 +66,7 @@ function onRemoveWidget(id: string) {
         v-if="ui.editMode"
         data-testid="dashboard-grid-lines"
         aria-hidden="true"
-        class="dashboard-grid-lines pointer-events-none absolute inset-0 z-0"
+        class="dashboard-grid-lines pointer-events-none absolute inset-0 z-0 border-b border-r border-hairline/60"
       />
       <DropZonePreview
         v-if="ui.editMode && preview"
