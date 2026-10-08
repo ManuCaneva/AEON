@@ -5,10 +5,11 @@ import { minutesToHHMM } from '@/stores/weeklySchedule'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import { dayIndexOfWeek } from '@/lib/calendarDates'
+import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
 import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
 
 const props = defineProps<{
-  /** Fecha de referencia para marcar el día de hoy (inyectable para tests). */
+  /** Fecha de referencia para el día de hoy y la hora actual (inyectable para tests). */
   now?: Date
 }>()
 
@@ -34,8 +35,8 @@ function refreshToday() {
 
 let todayTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
-  // Recalcula el día de hoy cada minuto: al cruzar la medianoche la marca
-  // se mueve de columna sin recargar la app.
+  // Refresca la hora y el día cada minuto: la línea de la hora actual avanza
+  // sola y, al cruzar la medianoche, la marca se mueve de columna sin recargar.
   todayTimer = setInterval(refreshToday, 60_000)
   document.addEventListener('visibilitychange', refreshToday)
 })
@@ -133,6 +134,12 @@ const rowHeightPx = computed(() => {
 
 const minuteHeightPx = computed(() => rowHeightPx.value / store.settings.granularity_minutes)
 const windowStart = computed(() => store.visibleWindow.start_minutes)
+
+// Línea de la hora actual: depende de nowRef (tick cada 60 s) y de la Ventana
+// visible, así recalcula sola cuando cambia la ventana o pasa el minuto.
+const nowLineTop = computed(() =>
+  nowLineTopPx(minutesSinceMidnight(nowRef.value), store.visibleWindow, minuteHeightPx.value)
+)
 
 const hourLabels = computed(() => {
   const out: { minute: number; label: string }[] = []
@@ -254,7 +261,23 @@ function slotsForDay(day: number): VisibleSlot[] {
               }"
               @click="emit('edit', vs.block)"
             />
+
+            <!-- Marker de la hora actual sobre la columna de hoy -->
+            <div
+              v-if="dayIndex === todayIndex && nowLineTop !== null"
+              class="absolute left-1/2 z-20 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-purple"
+              :style="{ top: nowLineTop + 'px' }"
+              data-testid="schedule-now-marker"
+            />
           </div>
+
+          <!-- Línea fina de la hora actual: cruza toda la grilla de días -->
+          <div
+            v-if="nowLineTop !== null"
+            class="pointer-events-none absolute inset-x-0 z-20 h-px bg-accent-purple/40"
+            :style="{ top: nowLineTop + 'px' }"
+            data-testid="schedule-now-line"
+          />
         </div>
       </div>
     </div>
