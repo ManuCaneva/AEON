@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PomodoroSettingsPanel from './PomodoroSettingsPanel.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
@@ -12,6 +12,12 @@ vi.mock('@/stores/pomodoro', () => ({
     playTestSound: mockPlayTestSound,
   }),
 }))
+
+afterEach(() => {
+  mockPrepareAudio.mockClear()
+  mockPlayTestSound.mockClear()
+  mockPlayTestSound.mockReturnValue(true)
+})
 
 const settings = {
   focusMinutes: 25,
@@ -68,28 +74,23 @@ describe('PomodoroSettingsPanel', () => {
     expect(wrapper.emitted('update:settings')).toBeUndefined()
   })
 
-  it('plays a test sound on demand: prepares audio first, then chimes', async () => {
-    const wrapper = mount(PomodoroSettingsPanel, { props: { settings } })
+  it.each([true, false])(
+    'plays a test sound on demand without rendering diagnostics (muted=%s)',
+    async (muted) => {
+      mockPlayTestSound.mockReturnValue(false)
+      const wrapper = mount(PomodoroSettingsPanel, {
+        props: { settings: { ...settings, muted } },
+      })
 
-    await wrapper.get('[data-testid="setting-test-sound"]').trigger('click')
-    await new Promise((r) => setTimeout(r, 0))
+      await wrapper.get('[data-testid="setting-test-sound"]').trigger('click')
+      await new Promise((r) => setTimeout(r, 0))
 
-    expect(mockPrepareAudio).toHaveBeenCalledOnce()
-    expect(mockPlayTestSound).toHaveBeenCalledOnce()
-    expect(wrapper.find('[data-testid="setting-test-sound-status"]').exists()).toBe(false)
-  })
-
-  it('shows an inline message when the test sound cannot play', async () => {
-    mockPlayTestSound.mockReturnValueOnce(false)
-    const wrapper = mount(PomodoroSettingsPanel, { props: { settings } })
-
-    await wrapper.get('[data-testid="setting-test-sound"]').trigger('click')
-    await new Promise((r) => setTimeout(r, 0))
-
-    const status = wrapper.get('[data-testid="setting-test-sound-status"]')
-    expect(status.text()).toContain('Audio no disponible')
-    expect(status.classes().join(' ')).toContain('text-')
-  })
+      expect(mockPrepareAudio).toHaveBeenCalledOnce()
+      expect(mockPlayTestSound).toHaveBeenCalledOnce()
+      expect(wrapper.find('[data-testid="setting-test-sound-status"]').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Audio no disponible')
+    }
+  )
 
   it('no usa colores de paleta cruda de Tailwind', () => {
     const wrapper = mount(PomodoroSettingsPanel, { props: { settings } })

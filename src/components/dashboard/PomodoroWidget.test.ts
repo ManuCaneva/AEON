@@ -40,6 +40,9 @@ let pomodoroState = createPomodoroState()
 vi.mock('@/stores/pomodoro', () => ({
   usePomodoroStore: () => ({
     ...pomodoroState,
+    get remainingMs() {
+      return pomodoroState.remainingMs
+    },
     prepareAudio: mockPrepareAudio,
     start: mockStart,
     pause: mockPause,
@@ -236,6 +239,25 @@ describe('PomodoroWidget', () => {
     expect(mockPrepareAudio).toHaveBeenCalledOnce()
     await new Promise((r) => setTimeout(r, 0))
     expect(mockStart).toHaveBeenCalledOnce()
+  })
+
+  it('el countdown sigue al valor del store, sin reloj propio', async () => {
+    const session = pomodoroState.session as unknown as {
+      isRunning: boolean
+      endsAt: string | null
+    }
+    session.isRunning = true
+    session.endsAt = new Date(Date.now() + 25 * 60_000).toISOString()
+    pomodoroState.remainingMs = 24 * 60_000 + 58_000
+
+    const wrapper = mount(PomodoroWidget)
+    expect(wrapper.get('[data-testid="pomodoro-widget-countdown"]').text()).toBe('24:58')
+
+    pomodoroState.remainingMs = 24 * 60_000 + 57_000
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="pomodoro-widget-countdown"]').text()).toBe('24:57')
+
+    wrapper.unmount()
   })
 
   it('limita el círculo por ancho y alto del widget y escala su contenido', () => {

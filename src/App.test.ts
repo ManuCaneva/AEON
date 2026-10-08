@@ -40,7 +40,11 @@ vi.mock('@/stores/ui', () => ({
 }))
 
 vi.mock('@/stores/pomodoro', () => ({
-  usePomodoroStore: () => ({ load: vi.fn(), advanceIfExpired: vi.fn() }),
+  usePomodoroStore: () => ({
+    load: vi.fn(),
+    startTicker: vi.fn(),
+    stopTicker: vi.fn(),
+  }),
 }))
 
 vi.mock('@/components/dashboard/DashboardView.vue', () => ({

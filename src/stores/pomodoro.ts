@@ -15,27 +15,61 @@ import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomod
 export const POMODORO_SETTINGS_KEY = 'pomodoro-settings'
 export const POMODORO_SESSION_KEY = 'pomodoro-session'
 
-const initialSession: ActivePomodoroSession = {
-  phase: 'focus',
-  isRunning: false,
-  endsAt: null,
-  remainingMs: getPhaseDurationMs('focus', defaultPomodoroSettings),
-  completedFocusSessions: 0,
-}
-
-function copyInitialSession(): ActivePomodoroSession {
-  return { ...initialSession }
-}
+/** Cadencia del chequeo de expiración de fase. */
+const TICK_INTERVAL_MS = 250
 
 export const usePomodoroStore = defineStore('pomodoro', () => {
   const settings = ref<PomodoroSettings>({ ...defaultPomodoroSettings })
-  const session = ref<ActivePomodoroSession>(copyInitialSession())
+
+  /** Sesión en reposo calculada con la configuración vigente, no con la de fábrica. */
+  function freshSession(): ActivePomodoroSession {
+    return {
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: getPhaseDurationMs('focus', settings.value),
+      completedFocusSessions: 0,
+    }
+  }
+
+  const session = ref<ActivePomodoroSession>(freshSession())
   const loaded = ref(false)
-  const remainingMs = computed(() =>
-    session.value.isRunning && session.value.endsAt
-      ? getRemainingMs(session.value.endsAt)
-      : (session.value.remainingMs ?? 0)
-  )
+
+  /**
+   * Único reloj reactivo de la app. El tiempo restante se deriva de él, así que
+   * las superficies solo leen y quedan sincronizadas por diseño.
+   */
+  const clock = ref(Date.now())
+  const remainingMs = computed(() => {
+    if (session.value.isRunning && session.value.endsAt) {
+      return getRemainingMs(session.value.endsAt, new Date(clock.value))
+    }
+    return session.value.remainingMs ?? 0
+  })
+
+  let ticker: ReturnType<typeof setInterval> | undefined
+
+  /**
+   * Un solo tick para toda la app: chequea la expiración cada 250 ms y muta el
+   * reloj solo cuando cambia el segundo entero, para repintar una vez por segundo.
+   */
+  function tick(): void {
+    void advanceIfExpired()
+    const now = Date.now()
+    if (Math.floor(now / 1000) !== Math.floor(clock.value / 1000)) {
+      clock.value = now
+    }
+  }
+
+  function startTicker(): void {
+    if (ticker) return
+    ticker = setInterval(tick, TICK_INTERVAL_MS)
+  }
+
+  function stopTicker(): void {
+    if (ticker !== undefined) clearInterval(ticker)
+    ticker = undefined
+  }
 
   let soundPlayer: PomodoroSoundPlayer | undefined
 
@@ -56,6 +90,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     isRunning: boolean,
     startsAt = Date.now()
   ): void {
+    if (isRunning) clock.value = startsAt
     session.value = isRunning
       ? {
           ...session.value,
@@ -112,7 +147,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   function playTestSound(): boolean {
-    return player().playFocusEndChime(settings.value)
+    return player().playTestChime(settings.value)
   }
 
   async function load(): Promise<void> {
@@ -132,10 +167,13 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       try {
         session.value = ActivePomodoroSessionSchema.parse(JSON.parse(rawSession))
       } catch {
-        session.value = copyInitialSession()
+        session.value = freshSession()
       }
+    } else {
+      session.value = freshSession()
     }
     loaded.value = true
+    clock.value = Date.now()
     await advanceIfExpired()
   }
 
@@ -144,10 +182,12 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     if (session.value.isRunning) return
     const remaining =
       session.value.remainingMs ?? getPhaseDurationMs(session.value.phase, settings.value)
+    const now = Date.now()
+    clock.value = now
     session.value = {
       ...session.value,
       isRunning: true,
-      endsAt: new Date(Date.now() + remaining).toISOString(),
+      endsAt: new Date(now + remaining).toISOString(),
       remainingMs: null,
     }
     await persistSession()
@@ -176,7 +216,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function reset(): Promise<void> {
-    session.value = copyInitialSession()
+    session.value = freshSession()
     await persistSession()
   }
 
@@ -185,7 +225,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    * la clave de sesión ya fue eliminada y no debe volver a crearse.
    */
   function resetSession(): void {
-    session.value = copyInitialSession()
+    session.value = freshSession()
   }
 
   async function saveSettings(patch: Partial<PomodoroSettings>): Promise<void> {
@@ -213,5 +253,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     playTestSound,
     advanceIfExpired,
     prepareAudio,
+    startTicker,
+    stopTicker,
   }
 })

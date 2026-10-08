@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { homeDir } from '@tauri-apps/api/path'
 import { mkdir, remove, rename, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import tileIconUrl from '@/assets/logo/logo-tile-256.png'
 import { useDesktopEntry } from './useDesktopEntry'
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
@@ -64,6 +65,12 @@ describe('useDesktopEntry', () => {
       expect.stringContaining(`Exec=${STABLE}`)
     )
     expect(writeFile).toHaveBeenCalledWith(ICON_FILE, expect.any(Uint8Array))
+  })
+
+  it('consume el icono oficial de tile blanco, no la marca transparente', async () => {
+    const { ensureDesktopEntry } = useDesktopEntry(true)
+    await ensureDesktopEntry()
+    expect(fetch).toHaveBeenCalledWith(tileIconUrl)
   })
 
   it('no renombra si ya está en la ruta estable', async () => {
