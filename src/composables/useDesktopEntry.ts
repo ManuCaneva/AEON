@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { homeDir } from '@tauri-apps/api/path'
 import { mkdir, remove, rename, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import iconUrl from '@/assets/logo/logo-mark-256.png'
+import iconUrl from '@/assets/logo/logo-tile-256.png'
 import {
   buildDesktopEntryContent,
   desktopEntryDir,
