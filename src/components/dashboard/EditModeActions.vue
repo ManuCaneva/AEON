@@ -8,15 +8,18 @@ import Toast from '@/components/ui/Toast.vue'
 const dashboard = useDashboardStore()
 const ui = useUiStore()
 
-const showSaved = ref(false)
+const message = ref<string | null>(null)
 
 function onSave() {
   dashboard.saveEdit()
-  showSaved.value = true
+  ui.exitEditMode()
+  message.value = 'Cambios guardados'
 }
 
 function onDiscard() {
   dashboard.discardEdit()
+  ui.exitEditMode()
+  message.value = 'Cambios descartados'
 }
 </script>
 
@@ -29,11 +32,24 @@ function onDiscard() {
     <div
       class="glass-strong pointer-events-auto flex items-center gap-1 rounded-full p-1.5 pl-3 shadow-xl"
     >
-      <Button data-testid="edit-discard" variant="ghost" size="sm" @click="onDiscard">
-        Deshacer cambios
+      <Button
+        data-testid="edit-discard"
+        variant="ghost"
+        size="sm"
+        :disabled="!dashboard.hasUnsavedChanges"
+        @click="onDiscard"
+      >
+        Descartar cambios
       </Button>
-      <Button data-testid="edit-save" variant="primary" size="sm" @click="onSave">Guardar</Button>
+      <Button
+        data-testid="edit-save"
+        variant="primary"
+        size="sm"
+        :disabled="!dashboard.hasUnsavedChanges"
+        @click="onSave"
+        >Guardar</Button
+      >
     </div>
   </div>
-  <Toast v-model:open="showSaved" message="Cambios guardados" />
+  <Toast :open="message !== null" :message="message ?? ''" @update:open="message = null" />
 </template>
