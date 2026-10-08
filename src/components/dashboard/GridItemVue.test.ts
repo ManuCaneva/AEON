@@ -148,13 +148,14 @@ describe('GridItemVue', () => {
     Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
 
     dragCallbacks.onDragStart?.()
-    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(100, 60)
     dragCallbacks.onDragEnd?.()
     await wrapper.vm.$nextTick()
 
     const emitted = wrapper.emitted('moved') as unknown[][]
     expect(emitted).toHaveLength(1)
-    // 50px / 100px-per-col = 0.5 → 1 celda; 30px / 60px-per-row = 0.5 → 1 celda
+    // Con el gap de 4px el paso es ~100.33px por col y ~60.4px por fila:
+    // 100px cruza a la col 1 y 60px a la fila 1.
     expect(emitted[0]).toEqual(['habits', 1, 1])
   })
 
@@ -177,7 +178,8 @@ describe('GridItemVue', () => {
     const emitted = wrapper.emitted('resized') as unknown[][]
     expect(emitted).toHaveLength(1)
     // x/y intactos: la arista opuesta (izquierda/arriba) queda anclada.
-    expect(emitted[0]).toEqual(['habits', 0, 0, 8, 5])
+    // Con gap, el paso es ~100.33×60.4: 6 + 150/100.33 ≈ 7.5 → 7; 4 + 60/60.4 ≈ 5.
+    expect(emitted[0]).toEqual(['habits', 0, 0, 7, 5])
   })
 
   it('emite preview con las celdas de destino en vivo durante el drag', async () => {
@@ -190,7 +192,7 @@ describe('GridItemVue', () => {
     Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
 
     dragCallbacks.onDragStart?.()
-    dragCallbacks.onDragMove?.(50, 30)
+    dragCallbacks.onDragMove?.(100, 60)
     await wrapper.vm.$nextTick()
 
     const previews = wrapper.emitted('preview') as unknown[][]
@@ -448,6 +450,22 @@ describe('GridItemVue', () => {
       expect(emitted[0]).toEqual(expected)
     }
   )
+
+  it('achicar desde la izquierda un widget en su mínimo no lo desliza', async () => {
+    // Pomodoro 2×3 en (6,0): tirar la arista izquierda hacia adentro mantiene
+    // x=6 y w=2 (la arista derecha queda anclada); antes se deslizaba a x=7.
+    const { wrapper } = mountResizable({ x: 6, y: 0, w: 2, h: 3, minW: 2, minH: 3 })
+    await resize(wrapper, [-100, 0, 100, 0])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 6, 0, 2, 3])
+  })
+
+  it('achicar desde arriba un widget en su mínimo no lo desliza', async () => {
+    const { wrapper } = mountResizable({ x: 0, y: 3, w: 6, h: 3, minW: 2, minH: 3 })
+    await resize(wrapper, [0, -60, 0, 60])
+    const emitted = wrapper.emitted('resized') as unknown[][]
+    expect(emitted[0]).toEqual(['habits', 0, 3, 6, 3])
+  })
 
   it('desde la arista izquierda el preview se desplaza con transform (borde opuesto anclado)', () => {
     const { el } = mountResizable({ x: 6, y: 0, w: 4, h: 3 })

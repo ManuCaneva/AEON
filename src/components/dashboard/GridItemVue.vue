@@ -10,7 +10,7 @@ import {
   type FlipRect,
 } from '@/composables/flip'
 import { useDashDrag } from '@/composables/useDashDrag'
-import { COLS, ROWS, itemZIndex, DRAGGING_Z_INDEX } from '@/lib/grid'
+import { COLS, ROWS, GRID_GAP, itemZIndex, DRAGGING_Z_INDEX } from '@/lib/grid'
 
 const props = defineProps<{
   item: LayoutItem
@@ -136,6 +136,20 @@ let resizeAccumTop = 0
 let resizeBaseW = 0
 let resizeBaseH = 0
 
+/**
+ * Aristas ancladas del gesto de resize. Al tirar de la izquierda/arriba se ancla
+ * la arista opuesta (derecha/abajo) para que el widget se encoja de verdad en
+ * lugar de deslizarse al llegar al mínimo. Se detecta por el delta del borde que
+ * interactjs mueve (dl/dt distintos de cero).
+ */
+let resizeAnchorX: 'start' | 'end' = 'start'
+let resizeAnchorY: 'start' | 'end' = 'start'
+
+/** Paso de la grilla (celda útil + gap), el que mapea píxeles a bordes de celda. */
+function gridStep(containerPx: number, count: number) {
+  return (containerPx + GRID_GAP) / count
+}
+
 function applyResizeOffset() {
   const el = elRef.value
   if (!el) return
@@ -152,30 +166,36 @@ function applyResizeOffset() {
  * fin de gesto, así el widget cae exactamente donde se previsualizó.
  */
 function dragCells() {
-  const colWidth = containerWidth / COLS
-  const rowHeight = containerHeight / ROWS
+  const stepW = gridStep(containerWidth, COLS)
+  const stepH = gridStep(containerHeight, ROWS)
   return pxToCells(
-    props.item.x * colWidth + dragAccumX,
-    props.item.y * rowHeight + dragAccumY,
-    props.item.w * colWidth,
-    props.item.h * rowHeight,
+    props.item.x * stepW + dragAccumX,
+    props.item.y * stepH + dragAccumY,
+    props.item.w * stepW,
+    props.item.h * stepH,
     containerWidth,
     containerHeight,
-    { minW: props.item.minW, minH: props.item.minH }
+    { minW: props.item.minW, minH: props.item.minH, gap: GRID_GAP }
   )
 }
 
 function resizeCells() {
-  const colWidth = containerWidth / COLS
-  const rowHeight = containerHeight / ROWS
+  const stepW = gridStep(containerWidth, COLS)
+  const stepH = gridStep(containerHeight, ROWS)
   return pxToCells(
-    props.item.x * colWidth + resizeAccumLeft,
-    props.item.y * rowHeight + resizeAccumTop,
-    props.item.w * colWidth + resizeAccumW,
-    props.item.h * rowHeight + resizeAccumH,
+    props.item.x * stepW + resizeAccumLeft,
+    props.item.y * stepH + resizeAccumTop,
+    props.item.w * stepW + resizeAccumW,
+    props.item.h * stepH + resizeAccumH,
     containerWidth,
     containerHeight,
-    { minW: props.item.minW, minH: props.item.minH }
+    {
+      minW: props.item.minW,
+      minH: props.item.minH,
+      gap: GRID_GAP,
+      anchorX: resizeAnchorX,
+      anchorY: resizeAnchorY,
+    }
   )
 }
 
@@ -262,6 +282,8 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumH = 0
     resizeAccumLeft = 0
     resizeAccumTop = 0
+    resizeAnchorX = 'start'
+    resizeAnchorY = 'start'
     const el = elRef.value
     if (el) {
       const rect = el.getBoundingClientRect()
@@ -282,6 +304,9 @@ useDashDrag(elRef, editModeRef, {
     resizeAccumH += dh
     resizeAccumLeft += dl
     resizeAccumTop += dt
+    // El borde que interactjs mueve marca qué arista opuesta queda anclada.
+    if (dl !== 0) resizeAnchorX = 'end'
+    if (dt !== 0) resizeAnchorY = 'end'
     applyResizeOffset()
     emitResizePreview()
   },
