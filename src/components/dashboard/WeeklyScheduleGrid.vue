@@ -4,13 +4,46 @@ import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import { dayIndexOfWeek } from '@/lib/calendarDates'
 import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
+
+const props = defineProps<{
+  /** Fecha de referencia para marcar el día de hoy (inyectable para tests). */
+  now?: Date
+}>()
 
 const store = useWeeklyScheduleStore()
 const emit = defineEmits<{ edit: [block: ScheduleBlockWithSlots] }>()
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const enabledDays = computed(() => store.enabledDays)
+
+const nowRef = ref(props.now ?? new Date())
+const todayIndex = computed(() => dayIndexOfWeek(nowRef.value))
+
+watch(
+  () => props.now,
+  (value) => {
+    if (value) nowRef.value = value
+  }
+)
+
+function refreshToday() {
+  nowRef.value = new Date()
+}
+
+let todayTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  // Recalcula el día de hoy cada minuto: al cruzar la medianoche la marca
+  // se mueve de columna sin recargar la app.
+  todayTimer = setInterval(refreshToday, 60_000)
+  document.addEventListener('visibilitychange', refreshToday)
+})
+onUnmounted(() => {
+  if (todayTimer !== null) clearInterval(todayTimer)
+  todayTimer = null
+  document.removeEventListener('visibilitychange', refreshToday)
+})
 const dayGridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${Math.max(1, enabledDays.value.length)}, minmax(0, 1fr))`,
 }))
@@ -163,7 +196,13 @@ function slotsForDay(day: number): VisibleSlot[] {
           <div
             v-for="dayIndex in enabledDays"
             :key="dayIndex"
-            class="schedule-day-label border-r border-hairline bg-surface-2 py-2 text-center text-caption text-xs font-semibold text-ink-muted"
+            class="schedule-day-label border-r border-hairline py-2 text-center text-caption text-xs font-semibold"
+            :class="
+              dayIndex === todayIndex
+                ? 'bg-accent-purple-tint text-accent-purple'
+                : 'bg-surface-2 text-ink-muted'
+            "
+            :data-testid="dayIndex === todayIndex ? 'schedule-today-header' : undefined"
           >
             {{ DAYS[dayIndex] }}
           </div>
@@ -190,6 +229,8 @@ function slotsForDay(day: number): VisibleSlot[] {
             v-for="dayIndex in enabledDays"
             :key="dayIndex"
             class="relative border-r border-hairline"
+            :class="dayIndex === todayIndex ? 'bg-accent-purple-tint/40' : undefined"
+            :data-testid="dayIndex === todayIndex ? 'schedule-today-column' : undefined"
           >
             <div
               v-for="hl in hourLabels"
@@ -203,6 +244,7 @@ function slotsForDay(day: number): VisibleSlot[] {
               :key="vs.slot.id"
               :title="vs.block.title"
               :color="vs.block.color"
+              :today="dayIndex === todayIndex"
               class="absolute z-10 shadow-sm"
               :style="{
                 top: slotTopPx(vs) + 'px',

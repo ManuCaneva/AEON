@@ -3,18 +3,22 @@ import { computed } from 'vue'
 import { blockColorTint } from '@/lib/scheduleColors'
 import type { BlockColorToken } from '@/schemas/weeklySchedule'
 
-const props = defineProps<{
-  title: string
-  color: BlockColorToken
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    color: BlockColorToken
+    today?: boolean
+  }>(),
+  { today: false }
+)
 
 const emit = defineEmits<{
   click: []
 }>()
 
 const blockStyle = computed(() => ({
-  backgroundColor: blockColorTint(props.color, 0.16),
-  borderColor: blockColorTint(props.color, 0.8),
+  backgroundColor: blockColorTint(props.color, props.today ? 0.26 : 0.16),
+  borderColor: blockColorTint(props.color, props.today ? 1 : 0.8),
   color: 'var(--color-ink)',
 }))
 </script>

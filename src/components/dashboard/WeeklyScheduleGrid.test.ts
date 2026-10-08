@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import WeeklyScheduleGrid from './WeeklyScheduleGrid.vue'
+import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 
@@ -110,6 +111,7 @@ describe('WeeklyScheduleGrid', () => {
     mockStore.blocksWithSlots = defaultBlocksWithSlots()
     mockStore.settings = defaultSettings()
     mockStore.visibleWindow = { start_minutes: 360, end_minutes: 1380 }
+    mockStore.enabledDays = [0, 1, 2, 3, 4, 5, 6]
   })
 
   afterEach(() => {
@@ -430,5 +432,107 @@ describe('WeeklyScheduleGrid', () => {
     expect(stylePx(crossesTop, 'top')).toBe(0)
     expect(stylePx(crossesTop, 'height')).toBe(insideHeight)
     wrapper.unmount()
+  })
+
+  describe('marca de hoy', () => {
+    const TUESDAY = new Date(2026, 0, 6) // martes → índice 1
+
+    function blocksOnDays(days: number[]) {
+      return [
+        {
+          id: '333e8400-e29b-41d4-a716-446655440000',
+          title: 'Bloque',
+          color: 'lavender',
+          sort_order: 0,
+          created_at: '2026-07-12T19:00:00.000Z',
+          updated_at: '2026-07-12T19:00:00.000Z',
+          slots: days.map((day, i) => ({
+            id: `550e8400-e29b-41d4-a716-44665544000${i}`,
+            block_id: '333e8400-e29b-41d4-a716-446655440000',
+            day_of_week: day,
+            start_minutes: 600,
+            end_minutes: 660,
+            created_at: '2026-07-12T19:00:00.000Z',
+            updated_at: '2026-07-12T19:00:00.000Z',
+          })),
+        },
+      ]
+    }
+
+    it('marca header, columna y bloques solo del día de hoy con fecha inyectada', () => {
+      mockStore.blocksWithSlots = blocksOnDays([0, 1])
+      const wrapper = mount(WeeklyScheduleGrid, { props: { now: TUESDAY } })
+
+      // (1) Header de hoy resaltado con accent tint; los demás, sin marcar
+      const headers = wrapper.findAll('.schedule-day-label')
+      expect(headers).toHaveLength(7)
+      expect(wrapper.findAll('[data-testid="schedule-today-header"]')).toHaveLength(1)
+      expect(headers[1].classes()).toContain('bg-accent-purple-tint')
+      expect(headers[1].classes()).toContain('text-accent-purple')
+      headers.forEach((h, i) => {
+        if (i !== 1) expect(h.classes()).not.toContain('bg-accent-purple-tint')
+      })
+
+      // (2) Columna de hoy con fondo diferenciado; solo una marcada
+      const todayCols = wrapper.findAll('[data-testid="schedule-today-column"]')
+      expect(todayCols).toHaveLength(1)
+      expect(todayCols[0].classes()).toContain('bg-accent-purple-tint/40')
+      wrapper.findAll('.relative.border-r.border-hairline').forEach((col) => {
+        if (!col.attributes('data-testid')) {
+          expect(col.classes()).not.toContain('bg-accent-purple-tint/40')
+        }
+      })
+
+      // (3) Los bloques de hoy reciben la prop today (hairline firme)
+      const blocks = wrapper.findAllComponents(WeeklyScheduleBlock)
+      expect(blocks).toHaveLength(2)
+      const inToday = (b: (typeof blocks)[number]) =>
+        b.element?.closest('[data-testid="schedule-today-column"]') !== null
+      const todayBlock = blocks.find(inToday)!
+      const otherBlock = blocks.find((b) => !inToday(b))!
+      expect(todayBlock.props('today')).toBe(true)
+      expect(otherBlock.props('today')).toBe(false)
+
+      expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('no marca nada cuando el día de hoy está deshabilitado', () => {
+      mockStore.enabledDays = [0, 1, 2, 3, 4] // sin fin de semana
+      const wrapper = mount(WeeklyScheduleGrid, { props: { now: new Date(2026, 0, 10) } }) // sábado
+
+      expect(wrapper.findAll('.schedule-day-label')).toHaveLength(5)
+      expect(wrapper.findAll('[data-testid="schedule-today-header"]')).toHaveLength(0)
+      expect(wrapper.findAll('[data-testid="schedule-today-column"]')).toHaveLength(0)
+      wrapper.findAll('.schedule-day-label').forEach((h) => {
+        expect(h.classes()).not.toContain('bg-accent-purple-tint')
+      })
+      wrapper.unmount()
+      mockStore.enabledDays = [0, 1, 2, 3, 4, 5, 6]
+    })
+
+    it('recalcula el marcaje al cambiar de día sin recargar la app', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+      try {
+        vi.setSystemTime(new Date(2026, 0, 5, 23, 59)) // lunes 23:59
+        const wrapper = mount(WeeklyScheduleGrid)
+        expect(wrapper.findAll('[data-testid="schedule-today-header"]')[0]).toBeDefined()
+        expect(wrapper.findAll('.schedule-day-label')[0].classes()).toContain(
+          'bg-accent-purple-tint'
+        )
+
+        // Pasa la medianoche: el tick del intervalo actualiza el día marcado
+        vi.advanceTimersByTime(60_000)
+        await wrapper.vm.$nextTick()
+
+        const headers = wrapper.findAll('.schedule-day-label')
+        expect(headers[1].classes()).toContain('bg-accent-purple-tint')
+        expect(headers[0].classes()).not.toContain('bg-accent-purple-tint')
+        expect(wrapper.findAll('[data-testid="schedule-today-column"]')).toHaveLength(1)
+        wrapper.unmount()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 })
