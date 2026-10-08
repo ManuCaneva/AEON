@@ -1,0 +1,181 @@
+name: Notify
+
+# Avisa por Telegram cómo terminó una corrida de CI/Release.
+#
+# Vive separado de ci.yml y release.yml a propósito: un solo lugar escucha el
+# resultado de ambos workflows en vez de duplicar un paso de aviso en cada job.
+# Además, workflow_run corre en el contexto del repo base, así que los secrets
+# están disponibles incluso para PRs que vienen de un fork.
+#
+# Importante: workflow_run solo dispara si este archivo está en la rama default
+# (main). El PR que lo introduce no se auto-notifica: arranca con el siguiente.
+
+on:
+  workflow_run:
+    workflows: [CI, Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID de la corrida a avisar (el número de la URL .../actions/runs/<id>)'
+        required: true
+
+permissions:
+  actions: read # leer corridas y jobs
+  contents: read # leer la versión de tauri.conf.json
+  pull-requests: read # asociar la corrida con su PR
+
+jobs:
+  telegram:
+    name: Avisar por Telegram
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Armar el mensaje
+        id: msg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.inputs.run_id || github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          html_escape() {
+            sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+          }
+
+          # Junta los argumentos en un mensaje de varias líneas. Se arma con una
+          # función y no con strings multilínea dentro del script porque esas
+          # romperían la indentación del bloque YAML.
+          join_lines() {
+            local out='' line
+            for line in "$@"; do
+              out+="$line"$'\n'
+            done
+            printf '%s' "${out%$'\n'}"
+          }
+
+          RUN=$(gh api "repos/$REPO/actions/runs/$RUN_ID")
+          WF=$(jq -r '.name' <<<"$RUN")
+          EVENT=$(jq -r '.event' <<<"$RUN")
+          CONCLUSION=$(jq -r '.conclusion' <<<"$RUN")
+          RUN_URL=$(jq -r '.html_url' <<<"$RUN")
+          HEAD_SHA=$(jq -r '.head_sha' <<<"$RUN")
+          ACTOR=$(jq -r '.actor.login' <<<"$RUN")
+
+          SECS=$(( $(date -d "$(jq -r '.updated_at' <<<"$RUN")" +%s) - $(date -d "$(jq -r '.run_started_at' <<<"$RUN")" +%s) ))
+          DURACION="$((SECS / 60))m $((SECS % 60))s"
+
+          # El CI cancela la corrida anterior cuando llega un push nuevo, así que
+          # una cancelación casi siempre es descarte propio, no una señal útil.
+          if [ "$CONCLUSION" = "cancelled" ] || [ "$CONCLUSION" = "skipped" ]; then
+            echo "Conclusión '$CONCLUSION': no se avisa."
+            exit 0
+          fi
+
+          failed_jobs() {
+            gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+              --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure") | .name] | join(" · ")'
+          }
+
+          if [ "$WF" = "CI" ]; then
+            # Solo interesan los checks de los PRs dirigidos a main. Los pushes a
+            # main quedan cubiertos por el workflow Release, que re-corre tests:
+            # avisar en los dos sería duplicar el mensaje de cada merge.
+            if [ "$EVENT" != "pull_request" ]; then
+              echo "CI por '$EVENT': no se avisa."
+              exit 0
+            fi
+
+            # El endpoint de PRs de una corrida no existe; el camino documentado
+            # es buscar los PRs asociados al commit de la corrida.
+            PR=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+              --jq 'map(select(.base.ref == "main")) | .[0] // empty')
+            if [ -z "$PR" ]; then
+              echo "El PR asociado no apunta a main: no se avisa."
+              exit 0
+            fi
+
+            PR_NUM=$(jq -r '.number' <<<"$PR")
+            PR_TITLE=$(jq -r '.title' <<<"$PR" | html_escape)
+            PR_URL=$(jq -r '.html_url' <<<"$PR")
+
+            if [ "$CONCLUSION" = "success" ]; then
+              LINEAS=(
+                "✅ <b>CI en verde</b> — PR #$PR_NUM «$PR_TITLE»"
+                "Destino: <code>main</code> · $ACTOR · $DURACION"
+                "Listo para mergear."
+                "$PR_URL"
+              )
+            else
+              LINEAS=(
+                "❌ <b>CI falló</b> — PR #$PR_NUM «$PR_TITLE»"
+                "Destino: <code>main</code> · $ACTOR · $DURACION"
+              )
+              FAILED=$(failed_jobs | html_escape)
+              if [ -n "$FAILED" ]; then
+                LINEAS+=("Jobs con error: <b>$FAILED</b>")
+              fi
+              LINEAS+=("$PR_URL")
+            fi
+          elif [ "$WF" = "Release" ]; then
+            VERSION=$(gh api "repos/$REPO/contents/src-tauri/tauri.conf.json?ref=$HEAD_SHA" \
+              --jq '.content' | base64 -d | jq -r '.version')
+
+            if [ "$CONCLUSION" = "success" ]; then
+              LINEAS=(
+                "🚀 <b>AEON v$VERSION publicada</b>"
+                "Nueva versión en <code>main</code>: ya podés actualizar desde la app."
+                "https://github.com/$REPO/releases/tag/v$VERSION"
+              )
+            else
+              LINEAS=(
+                "💥 <b>Release falló</b> — no se publicó v$VERSION"
+                "Lo nuevo ya está en <code>main</code>, pero la app sigue sin update disponible."
+              )
+              FAILED=$(failed_jobs | html_escape)
+              if [ -n "$FAILED" ]; then
+                LINEAS+=("Jobs con error: <b>$FAILED</b>")
+              fi
+              LINEAS+=("$RUN_URL")
+            fi
+          else
+            echo "Workflow '$WF' no reconocido: no se avisa."
+            exit 0
+          fi
+
+          MSG=$(join_lines "${LINEAS[@]}")
+
+          {
+            echo 'send=true'
+            echo 'text<<NOTIFY_EOF'
+            echo "$MSG"
+            echo 'NOTIFY_EOF'
+          } >>"$GITHUB_OUTPUT"
+
+          echo "Mensaje armado:"
+          echo "$MSG"
+
+      - name: Enviar a Telegram
+        if: steps.msg.outputs.send == 'true'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEXT: ${{ steps.msg.outputs.text }}
+        run: |
+          set -euo pipefail
+
+          jq -n --arg chat "$CHAT_ID" --arg text "$TEXT" \
+            '{chat_id: $chat, text: $text, parse_mode: "HTML", disable_web_page_preview: true}' \
+            >payload.json
+
+          RESPONSE=$(curl -fsS -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            -H 'Content-Type: application/json' --data @payload.json)
+
+          # Telegram responde 200 incluso cuando falla: el error viene en el body.
+          if ! jq -e '.ok' <<<"$RESPONSE" >/dev/null; then
+            echo "::error::Telegram rechazó el mensaje: $RESPONSE"
+            exit 1
+          fi
+
+          echo "Aviso enviado al chat $CHAT_ID."

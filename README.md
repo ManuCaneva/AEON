@@ -60,6 +60,8 @@ En ese primer arranque la app se registra sola: se mueve a `~/Applications/aeon.
 
 No hace falta moverlo a mano. Si borrás el acceso o movés el archivo, al próximo arranque se vuelve a armar. Dejalo dentro de tu carpeta personal y no en `/usr/bin`: en una ruta del sistema no tiene permisos para reescribirse, y si queda en otro sistema de archivos no puede moverse solo a `~/Applications`.
 
+> **Nota de rendimiento en Linux.** La app usa composición por GPU por defecto. Si en tu equipo ves bordes fantasma al mover widgets (caso conocido: NVIDIA + Wayland), podés forzar el render por software con `WEBKIT_DISABLE_DMABUF_RENDERER=1 ~/Applications/aeon.AppImage`. Hacelo solo en ese caso: el modo software desactiva la aceleración y toda la app se vuelve más lenta.
+
 ### Actualizaciones
 
 La app chequea sola si hay una versión nueva al abrirse y ofrece actualizar con un botón. En el AppImage y en Windows la actualización se aplica sola, sin bajar nada a mano.
