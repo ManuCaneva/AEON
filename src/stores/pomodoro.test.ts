@@ -9,17 +9,21 @@ vi.mock('@/lib/db', () => ({
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }))
 
-const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime } = vi.hoisted(() => ({
-  prepareFromUserGesture: vi.fn().mockResolvedValue({ available: true, state: 'running' }),
-  playFocusEndChime: vi.fn(() => true),
-  playBreakEndChime: vi.fn(() => true),
-}))
+const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } = vi.hoisted(
+  () => ({
+    prepareFromUserGesture: vi.fn().mockResolvedValue({ available: true, state: 'running' }),
+    playFocusEndChime: vi.fn(() => true),
+    playBreakEndChime: vi.fn(() => true),
+    playTestChime: vi.fn(() => true),
+  })
+)
 
 vi.mock('@/lib/pomodoroSounds', () => ({
   createPomodoroSoundPlayer: () => ({
     prepareFromUserGesture,
     playFocusEndChime,
     playBreakEndChime,
+    playTestChime,
   }),
 }))
 
@@ -148,16 +152,17 @@ describe('pomodoro store', () => {
     await store.saveSettings({ autoStartBreak: false, autoStartFocus: false })
 
     expect(store.playTestSound()).toBe(true)
-    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
-    expect(playFocusEndChime).toHaveBeenCalledWith(store.settings)
+    expect(playTestChime).toHaveBeenCalledTimes(1)
+    expect(playTestChime).toHaveBeenCalledWith(store.settings)
+    expect(playFocusEndChime).not.toHaveBeenCalled()
 
-    playFocusEndChime.mockReturnValueOnce(false)
+    playTestChime.mockReturnValueOnce(false)
     expect(store.playTestSound()).toBe(false)
 
     await store.start()
     vi.setSystemTime(new Date('2026-09-01T12:25:00.000Z'))
     await store.advanceIfExpired()
-    expect(playFocusEndChime).toHaveBeenCalledTimes(3)
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
     expect(playBreakEndChime).not.toHaveBeenCalled()
 
     await store.start()
@@ -168,8 +173,20 @@ describe('pomodoro store', () => {
     await store.reset()
     await store.start()
     await store.skip()
-    expect(playFocusEndChime).toHaveBeenCalledTimes(3)
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
     expect(playBreakEndChime).toHaveBeenCalledTimes(1)
+  })
+
+  it('previews the focus chime through playTestSound even when muted', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ muted: true })
+
+    expect(store.settings.muted).toBe(true)
+    expect(store.playTestSound()).toBe(true)
+    expect(playTestChime).toHaveBeenCalledTimes(1)
+    expect(playTestChime).toHaveBeenCalledWith(store.settings)
+    expect(playFocusEndChime).not.toHaveBeenCalled()
   })
 
   it('inicializa la sesión con la configuración vigente en el momento de crear el store', () => {

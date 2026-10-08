@@ -16,6 +16,7 @@ vi.mock('@/lib/pomodoroSounds', () => ({
     prepareFromUserGesture: vi.fn().mockResolvedValue(undefined),
     playFocusEndChime: vi.fn(() => true),
     playBreakEndChime: vi.fn(() => true),
+    playTestChime: vi.fn(() => true),
   }),
 }))
 

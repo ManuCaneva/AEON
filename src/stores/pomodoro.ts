@@ -147,7 +147,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   function playTestSound(): boolean {
-    return player().playFocusEndChime(settings.value)
+    return player().playTestChime(settings.value)
   }
 
   async function load(): Promise<void> {
