@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { monthGrid, DAY_LABELS } from '@/lib/calendarDates'
+import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
 import type { CalendarEvent } from '@/schemas/calendar'
 
 const props = withDefaults(
@@ -10,6 +10,7 @@ const props = withDefaults(
     eventsByDate: Map<string, CalendarEvent[]>
     monthName?: string
     showHeader?: boolean
+    today?: string
   }>(),
   {
     monthName: '',
@@ -24,6 +25,14 @@ const emit = defineEmits<{
 const MAX_DOTS = 4
 
 const grid = computed(() => monthGrid(props.year, props.month, 0))
+
+// Marca de hoy por fecha exacta: la fecha se inyecta vía prop (tests) o,
+// por defecto, se toma del sistema.
+const todayDate = computed(() => props.today ?? formatYyyyMmDd(new Date()))
+
+function isToday(date: string | null): boolean {
+  return date !== null && date === todayDate.value
+}
 
 const MONTHS = [
   'Enero',
@@ -88,12 +97,21 @@ function overflowCount(date: string | null): number {
             {
               'day-cell--empty': !cell.date,
               'cursor-pointer transition-colors duration-150': cell.date,
+              'day-cell--today bg-accent-purple-tint ring-2 ring-inset ring-accent-purple': isToday(
+                cell.date
+              ),
             },
           ]"
           :title="cell.date ? formatTooltipDate(cell.date) : undefined"
           @click="cell.date && emit('select-day', cell.date)"
         >
           <template v-if="cell.date">
+            <span
+              v-if="isToday(cell.date)"
+              class="day-cell__today-number font-bold text-accent-purple"
+              data-testid="today-number"
+              >{{ cell.dayOfMonth }}</span
+            >
             <span
               v-for="evt in visibleDots(cell.date)"
               :key="evt.id"
@@ -181,7 +199,7 @@ function overflowCount(date: string | null): number {
   background: transparent;
 }
 
-.month-mini__grid .day-cell:not(.day-cell--empty):hover {
+.month-mini__grid .day-cell:not(.day-cell--empty):not(.day-cell--today):hover {
   background: rgb(var(--color-surface-4));
 }
 
@@ -196,5 +214,10 @@ function overflowCount(date: string | null): number {
   font-size: calc(var(--cell-size) * 0.44);
   line-height: 1;
   color: rgb(var(--color-ink-tertiary));
+}
+
+.day-cell__today-number {
+  font-size: calc(var(--cell-size, 14px) * 0.5);
+  line-height: 1;
 }
 </style>
