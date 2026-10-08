@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useDashboardStore, wouldCollide } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { getWidgetById } from '@/lib/dashboardWidgets'
+import { GRID_GAP } from '@/lib/grid'
 import GridItemVue from './GridItemVue.vue'
 import WidgetPicker from './WidgetPicker.vue'
 import WidgetRemoveButton from './WidgetRemoveButton.vue'
@@ -55,11 +56,11 @@ function onRemoveWidget(id: string) {
     <div
       class="dashboard-grid relative h-full"
       :class="ui.editMode && 'isolate'"
+      :style="{ gap: `${GRID_GAP}px`, '--grid-gap': `${GRID_GAP}px` }"
       style="
         display: grid;
         grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-rows: repeat(10, minmax(0, 1fr));
-        gap: 4px;
       "
     >
       <div
@@ -105,14 +106,14 @@ function onRemoveWidget(id: string) {
       rgb(var(--color-hairline) / 0.6) 0,
       rgb(var(--color-hairline) / 0.6) 1px,
       transparent 1px,
-      transparent calc((100% + 4px) / 12)
+      transparent calc((100% + var(--grid-gap, 4px)) / 12)
     ),
     repeating-linear-gradient(
       to bottom,
       rgb(var(--color-hairline) / 0.6) 0,
       rgb(var(--color-hairline) / 0.6) 1px,
       transparent 1px,
-      transparent calc((100% + 4px) / 10)
+      transparent calc((100% + var(--grid-gap, 4px)) / 10)
     );
 }
 </style>

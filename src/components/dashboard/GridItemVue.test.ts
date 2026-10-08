@@ -215,8 +215,9 @@ describe('GridItemVue', () => {
     await wrapper.vm.$nextTick()
 
     const previews = wrapper.emitted('preview') as unknown[][]
-    // COLS - w = 12 - 6 = 6; ROWS - h = 10 - 4 = 6.
-    expect(previews[previews.length - 1]).toEqual(['habits', 6, 6, 6, 4])
+    // Al borde inferior derecho: x+w = 12 y y+h = 10. El snap descuenta el gap,
+    // así que a esa distancia el ítem mapea a 3 celdas de alto anclándose al piso.
+    expect(previews[previews.length - 1]).toEqual(['habits', 6, 7, 6, 3])
   })
 
   it('el preview y el movimiento comparten la misma zona (se suelta donde se previsualizó)', async () => {
@@ -474,7 +475,8 @@ describe('GridItemVue', () => {
     // La grilla posiciona el item; el preview crece hacia la izquierda vía transform.
     expect(el.style.left).toBe('')
     expect(el.style.top).toBe('')
-    expect(el.style.width).toBe('500px')
+    // Geometría real: 4 celdas de 1200 son 4*(1204/12) - 4 = 397.33px; +100 del gesto.
+    expect(el.style.width).toBe('497.333333px')
     expect(el.style.transform).toContain('translate(-100px, 0px)')
     dragCallbacks.onResizeEnd?.()
     expect(el.style.transform).toBe('')
@@ -484,7 +486,8 @@ describe('GridItemVue', () => {
     const { el } = mountResizable({ x: 0, y: 5, w: 6, h: 3 })
     dragCallbacks.onResizeStart?.()
     dragCallbacks.onResizeMove?.(0, 80, 0, -80)
-    expect(el.style.height).toBe('320px')
+    // Geometría real: 3 filas de 800 son 3*(804/10) - 4 = 237.2px; +80 del gesto.
+    expect(el.style.height).toBe('317.2px')
     expect(el.style.transform).toContain('translate(0px, -80px)')
     dragCallbacks.onResizeEnd?.()
   })

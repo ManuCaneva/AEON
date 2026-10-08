@@ -1,5 +1,21 @@
 import { COLS, ROWS } from '@/lib/grid'
 
+/** Zona de la grilla en celdas enteras. */
+export interface Cells {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/**
+ * Paso de la grilla: celda útil + gap. Es la distancia entre inicios de celdas
+ * contiguas y el factor que mapea píxeles a bordes de celda.
+ */
+export function gridStep(containerPx: number, count: number, gap: number): number {
+  return (containerPx + gap) / count
+}
+
 export interface SnapOptions {
   minW?: number
   minH?: number
@@ -37,7 +53,7 @@ function snapAxis(
 ): { pos: number; size: number } {
   // Distancia entre inicios de celdas contiguas: celda útil + gap. Es el paso
   // real de la grilla y el que mapea píxeles a bordes de celda.
-  const step = (containerPx + gap) / count
+  const step = gridStep(containerPx, count, gap)
   if (!(step > 0)) return { pos: 0, size: minCells }
 
   const lowEdge = Math.round(startPx / step)
@@ -66,7 +82,7 @@ export function pxToCells(
   containerWidth: number,
   containerHeight: number,
   opts?: SnapOptions
-): { x: number; y: number; w: number; h: number } {
+): Cells {
   const gap = opts?.gap ?? 0
   const minW = opts?.minW ?? 1
   const minH = opts?.minH ?? 1

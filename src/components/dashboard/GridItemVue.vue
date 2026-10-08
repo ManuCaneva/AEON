@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, type CSSProperties } from 'vue'
 import type { LayoutItem } from '@/stores/dashboard'
-import { pxToCells } from '@/composables/gridSnap'
+import { pxToCells, gridStep, type Cells } from '@/composables/gridSnap'
 import {
   flipTransform,
   flipNeedsAnimation,
@@ -96,8 +96,6 @@ function measureContainer() {
   containerHeight = container?.clientHeight ?? 0
 }
 
-type Cells = { x: number; y: number; w: number; h: number }
-
 /** Última zona emitida en el gesto; evita re-renderizar si el snap no cambió. */
 let lastPreviewCells: Cells | null = null
 
@@ -145,11 +143,6 @@ let resizeBaseH = 0
 let resizeAnchorX: 'start' | 'end' = 'start'
 let resizeAnchorY: 'start' | 'end' = 'start'
 
-/** Paso de la grilla (celda útil + gap), el que mapea píxeles a bordes de celda. */
-function gridStep(containerPx: number, count: number) {
-  return (containerPx + GRID_GAP) / count
-}
-
 function applyResizeOffset() {
   const el = elRef.value
   if (!el) return
@@ -166,13 +159,13 @@ function applyResizeOffset() {
  * fin de gesto, así el widget cae exactamente donde se previsualizó.
  */
 function dragCells() {
-  const stepW = gridStep(containerWidth, COLS)
-  const stepH = gridStep(containerHeight, ROWS)
+  const stepW = gridStep(containerWidth, COLS, GRID_GAP)
+  const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
   return pxToCells(
     props.item.x * stepW + dragAccumX,
     props.item.y * stepH + dragAccumY,
-    props.item.w * stepW,
-    props.item.h * stepH,
+    props.item.w * stepW - GRID_GAP,
+    props.item.h * stepH - GRID_GAP,
     containerWidth,
     containerHeight,
     { minW: props.item.minW, minH: props.item.minH, gap: GRID_GAP }
@@ -180,13 +173,13 @@ function dragCells() {
 }
 
 function resizeCells() {
-  const stepW = gridStep(containerWidth, COLS)
-  const stepH = gridStep(containerHeight, ROWS)
+  const stepW = gridStep(containerWidth, COLS, GRID_GAP)
+  const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
   return pxToCells(
     props.item.x * stepW + resizeAccumLeft,
     props.item.y * stepH + resizeAccumTop,
-    props.item.w * stepW + resizeAccumW,
-    props.item.h * stepH + resizeAccumH,
+    props.item.w * stepW - GRID_GAP + resizeAccumW,
+    props.item.h * stepH - GRID_GAP + resizeAccumH,
     containerWidth,
     containerHeight,
     {
@@ -292,8 +285,10 @@ useDashDrag(elRef, editModeRef, {
         resizeBaseW = rect.width
         resizeBaseH = rect.height
       } else {
-        resizeBaseW = (props.item.w / COLS) * containerWidth
-        resizeBaseH = (props.item.h / ROWS) * containerHeight
+        const stepW = gridStep(containerWidth, COLS, GRID_GAP)
+        const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
+        resizeBaseW = props.item.w * stepW - GRID_GAP
+        resizeBaseH = props.item.h * stepH - GRID_GAP
       }
     }
     applyResizeOffset()
