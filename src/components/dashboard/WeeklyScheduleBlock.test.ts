@@ -17,6 +17,7 @@ vi.mock('@/lib/scheduleColors', async (importOriginal) => {
 describe('WeeklyScheduleBlock', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.mocked(blockColorTint).mockClear()
   })
 
   it('renderiza el título y aplica el color de borde atenuado', () => {
@@ -70,6 +71,29 @@ describe('WeeklyScheduleBlock', () => {
     expect(wrapper.classes()).toContain('justify-center')
     expect(wrapper.classes()).toContain('text-center')
     expect(wrapper.classes()).not.toContain('text-left')
+  })
+
+  it('bloque de hoy: fondo más opaco y hairline más firme que el normal', () => {
+    const wrapper = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', today: true },
+    })
+
+    expect(blockColorTint).toHaveBeenCalledWith('lavender', 1)
+    expect(blockColorTint).toHaveBeenCalledWith('lavender', 0.26)
+    expect(blockColorTint).not.toHaveBeenCalledWith('lavender', 0.16)
+    expect(blockColorTint).not.toHaveBeenCalledWith('lavender', 0.8)
+    expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+  })
+
+  it('sin la prop today el estilo queda en los valores por defecto', () => {
+    mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender' },
+    })
+
+    expect(blockColorTint).toHaveBeenCalledWith('lavender', 0.16)
+    expect(blockColorTint).toHaveBeenCalledWith('lavender', 0.8)
+    expect(blockColorTint).not.toHaveBeenCalledWith('lavender', 1)
+    expect(blockColorTint).not.toHaveBeenCalledWith('lavender', 0.26)
   })
 
   it('emite click cuando el usuario hace click en el bloque', async () => {

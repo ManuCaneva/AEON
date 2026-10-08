@@ -12,6 +12,11 @@ export function formatYyyyMmDd(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/** Índice de día con semana iniciada en lunes: 0 = lunes … 6 = domingo. */
+export function dayIndexOfWeek(date: Date): number {
+  return (date.getDay() + 6) % 7
+}
+
 export function yearBounds(year: number): { start: string; end: string } {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
