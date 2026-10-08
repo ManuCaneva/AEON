@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { Volume2 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -18,13 +17,10 @@ const emit = defineEmits<{
 }>()
 
 const pomodoro = usePomodoroStore()
-const testSoundFailed = ref(false)
 
 async function playTestSound(): Promise<void> {
-  testSoundFailed.value = false
   await pomodoro.prepareAudio().catch(() => {})
-  const played = pomodoro.playTestSound()
-  if (!played) testSoundFailed.value = true
+  pomodoro.playTestSound()
 }
 
 function saveNumber(
@@ -135,14 +131,6 @@ function saveVolume(value: string) {
         <template #icon-left><Volume2 :size="14" /></template>
         Probar sonido
       </Button>
-      <Text
-        v-if="testSoundFailed"
-        data-testid="setting-test-sound-status"
-        variant="body-sm"
-        class="text-danger"
-      >
-        Audio no disponible — revisá la consola para más detalle
-      </Text>
     </div>
   </Card>
 </template>
