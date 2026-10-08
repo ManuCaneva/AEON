@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { monthGrid, formatYyyyMmDd, yearBounds, DAY_LABELS } from './calendarDates'
+import { monthGrid, formatYyyyMmDd, yearBounds, DAY_LABELS, dayIndexOfWeek } from './calendarDates'
 
 describe('calendarDates', () => {
   describe('DAY_LABELS', () => {
@@ -21,6 +21,25 @@ describe('calendarDates', () => {
       const { start, end } = yearBounds(2026)
       expect(start).toMatch(/^2026-01-01/)
       expect(end).toMatch(/^2027-01-01/)
+    })
+  })
+
+  describe('dayIndexOfWeek', () => {
+    it('retorna 0 para lunes y 6 para domingo (week_starts_monday)', () => {
+      expect(dayIndexOfWeek(new Date(2026, 0, 5))).toBe(0) // lunes
+      expect(dayIndexOfWeek(new Date(2026, 0, 6))).toBe(1) // martes
+      expect(dayIndexOfWeek(new Date(2026, 0, 10))).toBe(5) // sábado
+      expect(dayIndexOfWeek(new Date(2026, 0, 11))).toBe(6) // domingo
+    })
+
+    it('cubre los 7 días de la semana con el mismo orden que DAYS del grid', () => {
+      const labels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+      // 2026-01-05 es lunes: recorre la semana completa
+      for (let i = 0; i < 7; i++) {
+        const index = dayIndexOfWeek(new Date(2026, 0, 5 + i))
+        expect(index).toBe(i)
+        expect(labels[index]).toBeDefined()
+      }
     })
   })
 

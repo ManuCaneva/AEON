@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import WeeklyScheduleGrid from './WeeklyScheduleGrid.vue'
+import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 
@@ -35,12 +37,14 @@ const defaultSettings = () => ({
   enabled_days: [0, 1, 2, 3, 4, 5, 6],
 })
 
-const mockStore = {
+// Reactivo para que los tests puedan cambiar la Ventana visible con el
+// componente montado y verificar el recálculo en vivo.
+const mockStore = reactive({
   blocksWithSlots: defaultBlocksWithSlots(),
   settings: defaultSettings(),
   enabledDays: [0, 1, 2, 3, 4, 5, 6],
   visibleWindow: { start_minutes: 360, end_minutes: 1380 },
-}
+})
 
 function stylePx(el: { attributes: (n: string) => string | undefined }, prop: string): number {
   const style = el.attributes('style') ?? ''
@@ -70,9 +74,13 @@ function stubResizeObserver() {
   return () => resizeCallback?.()
 }
 
-async function mountMeasured(containerHeight: number, headerHeight = 0) {
+async function mountMeasured(
+  containerHeight: number,
+  headerHeight = 0,
+  props: { now?: Date } = {}
+) {
   const triggerResize = stubResizeObserver()
-  const wrapper = mount(WeeklyScheduleGrid, { attachTo: document.body })
+  const wrapper = mount(WeeklyScheduleGrid, { attachTo: document.body, props })
   const container = wrapper.element as HTMLElement
   vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
     height: containerHeight,
@@ -110,6 +118,7 @@ describe('WeeklyScheduleGrid', () => {
     mockStore.blocksWithSlots = defaultBlocksWithSlots()
     mockStore.settings = defaultSettings()
     mockStore.visibleWindow = { start_minutes: 360, end_minutes: 1380 }
+    mockStore.enabledDays = [0, 1, 2, 3, 4, 5, 6]
   })
 
   afterEach(() => {
@@ -430,5 +439,190 @@ describe('WeeklyScheduleGrid', () => {
     expect(stylePx(crossesTop, 'top')).toBe(0)
     expect(stylePx(crossesTop, 'height')).toBe(insideHeight)
     wrapper.unmount()
+  })
+
+  describe('marca de hoy', () => {
+    const TUESDAY = new Date(2026, 0, 6) // martes → índice 1
+
+    function blocksOnDays(days: number[]) {
+      return [
+        {
+          id: '333e8400-e29b-41d4-a716-446655440000',
+          title: 'Bloque',
+          color: 'lavender',
+          sort_order: 0,
+          created_at: '2026-07-12T19:00:00.000Z',
+          updated_at: '2026-07-12T19:00:00.000Z',
+          slots: days.map((day, i) => ({
+            id: `550e8400-e29b-41d4-a716-44665544000${i}`,
+            block_id: '333e8400-e29b-41d4-a716-446655440000',
+            day_of_week: day,
+            start_minutes: 600,
+            end_minutes: 660,
+            created_at: '2026-07-12T19:00:00.000Z',
+            updated_at: '2026-07-12T19:00:00.000Z',
+          })),
+        },
+      ]
+    }
+
+    it('marca header, columna y bloques solo del día de hoy con fecha inyectada', () => {
+      mockStore.blocksWithSlots = blocksOnDays([0, 1])
+      const wrapper = mount(WeeklyScheduleGrid, { props: { now: TUESDAY } })
+
+      // (1) Header de hoy resaltado con accent tint; los demás, sin marcar
+      const headers = wrapper.findAll('.schedule-day-label')
+      expect(headers).toHaveLength(7)
+      expect(wrapper.findAll('[data-testid="schedule-today-header"]')).toHaveLength(1)
+      expect(headers[1].classes()).toContain('bg-accent-purple-tint')
+      expect(headers[1].classes()).toContain('text-accent-purple')
+      headers.forEach((h, i) => {
+        if (i !== 1) expect(h.classes()).not.toContain('bg-accent-purple-tint')
+      })
+
+      // (2) Columna de hoy con fondo diferenciado; solo una marcada
+      const todayCols = wrapper.findAll('[data-testid="schedule-today-column"]')
+      expect(todayCols).toHaveLength(1)
+      expect(todayCols[0].classes()).toContain('bg-accent-purple-tint/40')
+      wrapper.findAll('.relative.border-r.border-hairline').forEach((col) => {
+        if (!col.attributes('data-testid')) {
+          expect(col.classes()).not.toContain('bg-accent-purple-tint/40')
+        }
+      })
+
+      // (3) Los bloques de hoy reciben la prop today (hairline firme)
+      const blocks = wrapper.findAllComponents(WeeklyScheduleBlock)
+      expect(blocks).toHaveLength(2)
+      const inToday = (b: (typeof blocks)[number]) =>
+        b.element?.closest('[data-testid="schedule-today-column"]') !== null
+      const todayBlock = blocks.find(inToday)!
+      const otherBlock = blocks.find((b) => !inToday(b))!
+      expect(todayBlock.props('today')).toBe(true)
+      expect(otherBlock.props('today')).toBe(false)
+
+      expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('no marca nada cuando el día de hoy está deshabilitado', () => {
+      mockStore.enabledDays = [0, 1, 2, 3, 4] // sin fin de semana
+      const wrapper = mount(WeeklyScheduleGrid, { props: { now: new Date(2026, 0, 10) } }) // sábado
+
+      expect(wrapper.findAll('.schedule-day-label')).toHaveLength(5)
+      expect(wrapper.findAll('[data-testid="schedule-today-header"]')).toHaveLength(0)
+      expect(wrapper.findAll('[data-testid="schedule-today-column"]')).toHaveLength(0)
+      wrapper.findAll('.schedule-day-label').forEach((h) => {
+        expect(h.classes()).not.toContain('bg-accent-purple-tint')
+      })
+      wrapper.unmount()
+      mockStore.enabledDays = [0, 1, 2, 3, 4, 5, 6]
+    })
+
+    it('recalcula el marcaje al cambiar de día sin recargar la app', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+      try {
+        vi.setSystemTime(new Date(2026, 0, 5, 23, 59)) // lunes 23:59
+        const wrapper = mount(WeeklyScheduleGrid)
+        expect(wrapper.findAll('[data-testid="schedule-today-header"]')[0]).toBeDefined()
+        expect(wrapper.findAll('.schedule-day-label')[0].classes()).toContain(
+          'bg-accent-purple-tint'
+        )
+
+        // Pasa la medianoche: el tick del intervalo actualiza el día marcado
+        vi.advanceTimersByTime(60_000)
+        await wrapper.vm.$nextTick()
+
+        const headers = wrapper.findAll('.schedule-day-label')
+        expect(headers[1].classes()).toContain('bg-accent-purple-tint')
+        expect(headers[0].classes()).not.toContain('bg-accent-purple-tint')
+        expect(wrapper.findAll('[data-testid="schedule-today-column"]')).toHaveLength(1)
+        wrapper.unmount()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe('línea de la hora actual', () => {
+    const MORNING_WINDOW = { start_minutes: 480, end_minutes: 720 } // 08:00–12:00
+    const MONDAY_9AM = new Date(2026, 0, 5, 9, 0) // lunes 09:00 → 540'
+
+    beforeEach(() => {
+      mockStore.visibleWindow = { ...MORNING_WINDOW }
+      mockStore.settings.granularity_minutes = 30 // 8 filas de 30' sobre 600px → 2.5 px/min
+    })
+
+    it('cruza toda la grilla de días con una sola línea, sin marker', async () => {
+      const wrapper = await mountMeasured(600, 0, { now: MONDAY_9AM })
+
+      const line = wrapper.find('[data-testid="schedule-now-line"]')
+      expect(line.exists()).toBe(true)
+      expect(line.classes()).toContain('h-px')
+      expect(line.classes()).toContain('bg-accent-purple/40')
+      // De lado a lado: pegada a los bordes del contenedor de columnas
+      expect(line.classes()).toContain('inset-x-0')
+      expect(stylePx(line, 'top')).toBeCloseTo((540 - 480) * 2.5, 5)
+
+      // Solo la línea: el marker sobre la columna de hoy no existe
+      expect(wrapper.findAll('[data-testid="schedule-now-line"]')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="schedule-now-marker"]').exists()).toBe(false)
+
+      expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('no se dibuja cuando la hora actual queda fuera de la Ventana visible', async () => {
+      const antes = await mountMeasured(600, 0, { now: new Date(2026, 0, 5, 7, 59) }) // 07:59
+      expect(antes.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
+      antes.unmount()
+
+      const despues = await mountMeasured(600, 0, { now: new Date(2026, 0, 5, 12, 0) }) // 12:00
+      expect(despues.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
+      despues.unmount()
+    })
+
+    it('se dibuja en el borde superior cuando la hora es el inicio de la ventana', async () => {
+      const wrapper = await mountMeasured(600, 0, { now: new Date(2026, 0, 5, 8, 0) }) // 08:00
+      const line = wrapper.find('[data-testid="schedule-now-line"]')
+      expect(line.exists()).toBe(true)
+      expect(stylePx(line, 'top')).toBe(0)
+      wrapper.unmount()
+    })
+
+    it('avanza sola cada 60 segundos sin interacción del usuario', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+      try {
+        vi.setSystemTime(new Date(2026, 0, 5, 9, 0)) // lunes 09:00
+        const wrapper = await mountMeasured(600, 0)
+        const line = wrapper.find('[data-testid="schedule-now-line"]')
+        expect(stylePx(line, 'top')).toBeCloseTo(150, 5)
+
+        // El tick de 60 s refresca la hora y la línea desciende un minuto
+        vi.advanceTimersByTime(60_000)
+        await wrapper.vm.$nextTick()
+
+        expect(stylePx(line, 'top')).toBeCloseTo(152.5, 5) // 09:01 → 61' × 2.5 px
+        wrapper.unmount()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('recalcula la posición al cambiar la Ventana visible', async () => {
+      const wrapper = await mountMeasured(600, 0, { now: MONDAY_9AM })
+      const line = wrapper.find('[data-testid="schedule-now-line"]')
+      expect(stylePx(line, 'top')).toBeCloseTo(150, 5)
+
+      // 08:00–10:00: 4 filas de 30' sobre 600px → 5 px/min
+      mockStore.visibleWindow = { start_minutes: 480, end_minutes: 600 }
+      await wrapper.vm.$nextTick()
+      expect(stylePx(line, 'top')).toBeCloseTo(300, 5) // 60' × 5 px
+
+      // La hora queda fuera de la nueva ventana: la línea se oculta
+      mockStore.visibleWindow = { start_minutes: 600, end_minutes: 720 }
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-testid="schedule-now-line"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
   })
 })
