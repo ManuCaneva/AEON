@@ -143,9 +143,13 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function setViewMode(mode: ViewMode) {
-    if (editMode.value && mode !== 'dashboard' && useDashboardStore().hasUnsavedChanges) {
-      openExitDialog(mode)
-      return
+    if (editMode.value && mode !== 'dashboard') {
+      if (useDashboardStore().hasUnsavedChanges) {
+        openExitDialog(mode)
+        return
+      }
+      // El modo edición es exclusivo del dashboard: navegar a otra vista lo apaga.
+      exitEditMode()
     }
     applyViewMode(mode)
   }
@@ -156,6 +160,9 @@ export const useUiStore = defineStore('ui', () => {
 
   function toggleEditMode() {
     if (!editMode.value) {
+      // El atajo de edición siempre entra por el dashboard: desde otra vista
+      // primero navega, para que la edición nunca quede activa fuera de él.
+      if (viewMode.value !== 'dashboard') applyViewMode('dashboard')
       enterEditMode()
       return
     }

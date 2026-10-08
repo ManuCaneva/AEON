@@ -211,6 +211,63 @@ describe('ui store: modo edición', () => {
   })
 })
 
+describe('ui store: exclusividad del modo edición', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  it('al navegar sin cambios, el modo edición se apaga', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    ui.setViewMode('settings')
+    expect(ui.viewMode).toBe('settings')
+    expect(ui.editMode).toBe(false)
+    expect(ui.exitDialogOpen).toBe(false)
+  })
+
+  it('al navegar sin cambios, la sesión de borrador se cierra', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const endEdit = vi.spyOn(dashboard, 'endEdit')
+    ui.toggleEditMode()
+    ui.setViewMode('archived')
+    expect(endEdit).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('la edición nunca queda activa con la vista fuera del dashboard', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    for (const mode of ['archived', 'pomodoro', 'settings'] as const) {
+      ui.setViewMode(mode)
+      expect(ui.editMode).toBe(false)
+      ui.toggleEditMode()
+      expect(ui.viewMode).toBe('dashboard')
+      expect(ui.editMode).toBe(true)
+    }
+  })
+
+  it('desde otra vista, el atajo de modo edición lleva al dashboard y lo activa', () => {
+    const ui = useUiStore()
+    ui.setViewMode('pomodoro')
+    ui.toggleEditMode()
+    expect(ui.viewMode).toBe('dashboard')
+    expect(ui.editMode).toBe(true)
+  })
+
+  it('desde otra vista, el atajo abre una sesión de borrador', () => {
+    const ui = useUiStore()
+    const dashboard = useDashboardStore()
+    const beginEdit = vi.spyOn(dashboard, 'beginEdit')
+    ui.setViewMode('settings')
+    ui.toggleEditMode()
+    expect(beginEdit).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ui store: diálogo de salida', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
