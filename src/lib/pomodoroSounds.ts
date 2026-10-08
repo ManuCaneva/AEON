@@ -20,6 +20,8 @@ export interface PomodoroSoundPlayer {
   prepareFromUserGesture(): Promise<{ available: boolean; state: string }>
   playFocusEndChime(settings: PomodoroSettings): boolean
   playBreakEndChime(settings: PomodoroSettings): boolean
+  /** Preview de la configuración: el toggle «Silenciar» no lo bloquea. */
+  playTestChime(settings: PomodoroSettings): boolean
 }
 
 export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
@@ -60,8 +62,12 @@ export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
     return { available: true, state: context.state }
   }
 
-  function play(chime: Chime, settings: PomodoroSettings): boolean {
-    if (settings.muted || settings.volume <= 0) return false
+  function play(
+    chime: Chime,
+    settings: PomodoroSettings,
+    options: { ignoreMuted?: boolean } = {}
+  ): boolean {
+    if ((settings.muted && !options.ignoreMuted) || settings.volume <= 0) return false
     if (context === null) return false
 
     const schedule = (): boolean => {
@@ -117,5 +123,6 @@ export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
     prepareFromUserGesture,
     playFocusEndChime: (settings) => play(focusEndChime, settings),
     playBreakEndChime: (settings) => play(breakEndChime, settings),
+    playTestChime: (settings) => play(focusEndChime, settings, { ignoreMuted: true }),
   }
 }

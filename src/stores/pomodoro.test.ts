@@ -9,17 +9,21 @@ vi.mock('@/lib/db', () => ({
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }))
 
-const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime } = vi.hoisted(() => ({
-  prepareFromUserGesture: vi.fn().mockResolvedValue({ available: true, state: 'running' }),
-  playFocusEndChime: vi.fn(() => true),
-  playBreakEndChime: vi.fn(() => true),
-}))
+const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } = vi.hoisted(
+  () => ({
+    prepareFromUserGesture: vi.fn().mockResolvedValue({ available: true, state: 'running' }),
+    playFocusEndChime: vi.fn(() => true),
+    playBreakEndChime: vi.fn(() => true),
+    playTestChime: vi.fn(() => true),
+  })
+)
 
 vi.mock('@/lib/pomodoroSounds', () => ({
   createPomodoroSoundPlayer: () => ({
     prepareFromUserGesture,
     playFocusEndChime,
     playBreakEndChime,
+    playTestChime,
   }),
 }))
 
@@ -148,16 +152,17 @@ describe('pomodoro store', () => {
     await store.saveSettings({ autoStartBreak: false, autoStartFocus: false })
 
     expect(store.playTestSound()).toBe(true)
-    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
-    expect(playFocusEndChime).toHaveBeenCalledWith(store.settings)
+    expect(playTestChime).toHaveBeenCalledTimes(1)
+    expect(playTestChime).toHaveBeenCalledWith(store.settings)
+    expect(playFocusEndChime).not.toHaveBeenCalled()
 
-    playFocusEndChime.mockReturnValueOnce(false)
+    playTestChime.mockReturnValueOnce(false)
     expect(store.playTestSound()).toBe(false)
 
     await store.start()
     vi.setSystemTime(new Date('2026-09-01T12:25:00.000Z'))
     await store.advanceIfExpired()
-    expect(playFocusEndChime).toHaveBeenCalledTimes(3)
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
     expect(playBreakEndChime).not.toHaveBeenCalled()
 
     await store.start()
@@ -168,8 +173,139 @@ describe('pomodoro store', () => {
     await store.reset()
     await store.start()
     await store.skip()
-    expect(playFocusEndChime).toHaveBeenCalledTimes(3)
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
     expect(playBreakEndChime).toHaveBeenCalledTimes(1)
+  })
+
+  it('previews the focus chime through playTestSound even when muted', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ muted: true })
+
+    expect(store.settings.muted).toBe(true)
+    expect(store.playTestSound()).toBe(true)
+    expect(playTestChime).toHaveBeenCalledTimes(1)
+    expect(playTestChime).toHaveBeenCalledWith(store.settings)
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+  })
+
+  it('inicializa la sesión con la configuración vigente en el momento de crear el store', () => {
+    const factoryFocusMinutes = defaultPomodoroSettings.focusMinutes
+    defaultPomodoroSettings.focusMinutes = 35
+    try {
+      const store = usePomodoroStore()
+      expect(store.session).toEqual({
+        phase: 'focus',
+        isRunning: false,
+        endsAt: null,
+        remainingMs: 35 * 60_000,
+        completedFocusSessions: 0,
+      })
+      expect(store.remainingMs).toBe(35 * 60_000)
+    } finally {
+      defaultPomodoroSettings.focusMinutes = factoryFocusMinutes
+    }
+  })
+
+  it('sin sesión persistida, la carga arma el cronómetro con la configuración guardada', async () => {
+    vi.mocked(db.loadConfig).mockImplementation(async (key) =>
+      key === 'pomodoro-settings' ? JSON.stringify({ focusMinutes: 35 }) : null
+    )
+    const store = usePomodoroStore()
+    await store.load()
+
+    expect(store.settings.focusMinutes).toBe(35)
+    expect(store.session).toEqual({
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: 35 * 60_000,
+      completedFocusSessions: 0,
+    })
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
+  it('«Reiniciar» deja la duración de enfoque configurada, en reposo y en foco', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 35 })
+    await store.start()
+    expect(store.session.isRunning).toBe(true)
+
+    await store.reset()
+
+    expect(store.session).toEqual({
+      phase: 'focus',
+      isRunning: false,
+      endsAt: null,
+      remainingMs: 35 * 60_000,
+      completedFocusSessions: 0,
+    })
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
+  it('«Reiniciar» desde una fase de descanso vuelve al enfoque con la duración configurada', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 35, autoStartBreak: false })
+    await store.start()
+    await store.skip()
+    expect(store.session.phase).toBe('shortBreak')
+
+    await store.reset()
+
+    expect(store.session.phase).toBe('focus')
+    expect(store.session.isRunning).toBe(false)
+    expect(store.session.completedFocusSessions).toBe(0)
+    expect(store.remainingMs).toBe(35 * 60_000)
+  })
+
+  it('el reloj reactivo baja segundo a segundo con el ticker y se congela al pausar', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    store.startTicker()
+    await store.start()
+
+    const inicial = store.remainingMs
+    expect(inicial).toBe(defaultPomodoroSettings.focusMinutes * 60_000)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(store.remainingMs).toBe(inicial - 1_000)
+
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(store.remainingMs).toBe(inicial - 4_000)
+
+    await store.pause()
+    const congelado = store.remainingMs
+    expect(congelado).toBe(inicial - 4_000)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(store.remainingMs).toBe(congelado)
+
+    await store.resume()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(store.remainingMs).toBe(congelado - 2_000)
+
+    store.stopTicker()
+  })
+
+  it('el ticker cambia de fase en el instante en que expira, sin atrasar el aviso', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 1, autoStartBreak: false })
+    store.startTicker()
+    await store.start()
+
+    await vi.advanceTimersByTimeAsync(59_750)
+    expect(store.session.phase).toBe('focus')
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(250)
+    expect(store.session.phase).toBe('shortBreak')
+    expect(store.session.isRunning).toBe(false)
+    expect(playFocusEndChime).toHaveBeenCalledOnce()
+
+    store.stopTicker()
   })
 
   it('loads a still-running session and computes its current remaining time', async () => {

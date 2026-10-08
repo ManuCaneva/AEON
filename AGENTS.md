@@ -144,17 +144,3 @@ Antes de considerar una tarea completa:
 ## Antes de pedir review
 
 Si el cambio es más de 50 líneas, o toca la arquitectura, o agrega una dependencia nueva, abrí un PR con descripción y screenshot. Cambios chicos (typo, fix de bug puntual) van directo a main.
-
-## Agent skills
-
-### Issue tracker
-
-Issues y specs viven como GitHub issues en `ManuCaneva/AEON` (CLI `gh`). See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Cinco roles canónicos de triage (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-single-context: `CONTEXT.md` en la raíz + `docs/adr/`. See `docs/agents/domain.md`.

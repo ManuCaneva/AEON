@@ -6,6 +6,7 @@ import { useGoalsStore } from '@/stores/goals'
 import { useUiStore } from '@/stores/ui'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import DashboardView from '@/components/dashboard/DashboardView.vue'
+import ExitEditDialog from '@/components/dashboard/ExitEditDialog.vue'
 import ArchivedView from '@/views/ArchivedView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import PomodoroView from '@/views/PomodoroView.vue'
@@ -39,8 +40,6 @@ const { ensureDesktopEntry } = useDesktopEntry()
 
 useTheme()
 
-let pomodoroTicker: ReturnType<typeof setInterval> | undefined
-
 /**
  * Registra el AppImage en el menú de Linux antes de chequear updates. Si movió
  * el binario en este arranque, se omite el chequeo: el updater todavía tiene la
@@ -64,13 +63,11 @@ onMounted(async () => {
   const toDate = today.toISOString().split('T')[0]
   await goals.loadLogsForRange(fromDate, toDate)
   await pomodoro.load()
-  pomodoroTicker = setInterval(() => {
-    void pomodoro.advanceIfExpired()
-  }, 250)
+  pomodoro.startTicker()
 })
 
 onBeforeUnmount(() => {
-  if (pomodoroTicker) clearInterval(pomodoroTicker)
+  pomodoro.stopTicker()
 })
 </script>
 
@@ -99,6 +96,8 @@ onBeforeUnmount(() => {
     <TaskFormModal />
     <GoalFormModal />
     <NoteFormModal />
+
+    <ExitEditDialog />
 
     <UpdateModal
       :open="updateStatus !== 'idle'"

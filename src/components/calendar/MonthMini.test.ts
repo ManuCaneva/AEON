@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MonthMini from './MonthMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
@@ -29,6 +29,11 @@ const eventsByDate = new Map<string, CalendarEvent[]>()
 eventsByDate.set('2026-01-15', dummyEvents)
 
 describe('MonthMini', () => {
+  afterEach(() => {
+    // El test de fecha por defecto usa timers fake: nunca se filtran al resto
+    vi.useRealTimers()
+  })
+
   it('renderiza 42 celdas (6 semanas × 7 días), pero solo las reales tienen data-testid', () => {
     const wrapper = mount(MonthMini, {
       props: { year: 2026, month: 0, eventsByDate },
@@ -145,5 +150,88 @@ describe('MonthMini', () => {
       props: { year: 2026, month: 0, eventsByDate, showHeader: true },
     })
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+  })
+
+  it('marca con halo la celda de la fecha exacta inyectada como hoy', () => {
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
+    })
+
+    const todayCells = wrapper.findAll('.day-cell--today')
+    expect(todayCells).toHaveLength(1)
+    // El marcaje cae en la celda cuya fecha es exactamente la de hoy
+    expect(todayCells[0].attributes('title')).toBe('15 de Enero')
+    // Halo: fondo tint del acento + borde fino del acento (1–2px)
+    expect(todayCells[0].classes()).toContain('bg-accent-purple-tint')
+    expect(todayCells[0].classes()).toContain('ring-2')
+    expect(todayCells[0].classes()).toContain('ring-inset')
+    expect(todayCells[0].classes()).toContain('ring-accent-purple')
+  })
+
+  it('no marca el mismo día de la semana ni el mismo número en otros meses (fecha exacta contra día de la semana)', () => {
+    const enero = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
+    })
+    // Solo la celda del 15 de enero se marca: ni el mismo día de la semana
+    // (jueves 22), ni las celdas de padding (febrero visto como relleno)
+    const marked = enero.findAll('.day-cell--today')
+    expect(marked).toHaveLength(1)
+    expect(marked[0].attributes('title')).toBe('15 de Enero')
+    for (const cell of enero.findAll('.day-cell')) {
+      if (cell.attributes('title') !== '15 de Enero') {
+        expect(cell.classes()).not.toContain('day-cell--today')
+      }
+    }
+
+    // Febrero 2026 tiene un día 15 y varios jueves (5, 12, 19, 26): ninguno
+    // se marca porque hoy sigue siendo el 15 de enero
+    const febrero = mount(MonthMini, {
+      props: { year: 2026, month: 1, eventsByDate, today: '2026-01-15' },
+    })
+    expect(febrero.findAll('.day-cell--today')).toHaveLength(0)
+  })
+
+  it('no muestra un número dentro de la celda marcada', () => {
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
+    })
+    const cell = wrapper.get('.day-cell--today')
+    expect(cell.find("[data-testid='today-number']").exists()).toBe(false)
+  })
+
+  it('usa la fecha del sistema cuando no se inyecta today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 15, 9, 30, 0))
+
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate },
+    })
+
+    const marked = wrapper.findAll('.day-cell--today')
+    expect(marked).toHaveLength(1)
+    expect(marked[0].attributes('title')).toBe('15 de Enero')
+  })
+
+  it('los puntos de eventos del día siguen visibles en la celda marcada', () => {
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
+    })
+    const cell = wrapper.get('.day-cell--today')
+    expect(cell.findAll("[data-testid='event-dot']")).toHaveLength(2)
+  })
+
+  it('el marcaje usa tokens del design system, sin colores inline ni de la paleta cruda', () => {
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 0, eventsByDate, today: '2026-01-15' },
+    })
+    expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+
+    const cell = wrapper.get('.day-cell--today')
+    // tint (fondo) y solid (borde) del acento: los tokens se definen
+    // por tema, así que el marcaje se distingue en claro y en oscuro
+    expect(cell.classes()).toEqual(
+      expect.arrayContaining(['bg-accent-purple-tint', 'ring-accent-purple'])
+    )
+    expect(cell.attributes('style')).toBeUndefined()
   })
 })

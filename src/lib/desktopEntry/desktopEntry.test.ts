@@ -68,6 +68,12 @@ describe('desktopEntry', () => {
       const content = buildDesktopEntryContent('/home/ana/Mis Apps/aeon.AppImage')
       expect(content).toContain('Exec="/home/ana/Mis Apps/aeon.AppImage"')
     })
+
+    it('usa la descripción oficial de la app en el menú', () => {
+      const content = buildDesktopEntryContent('/home/ana/Applications/aeon.AppImage')
+      expect(content).toContain('Comment=Made for Productivity')
+      expect(content).not.toContain('AEON productivity dashboard')
+    })
   })
 
   describe('isSamePath', () => {

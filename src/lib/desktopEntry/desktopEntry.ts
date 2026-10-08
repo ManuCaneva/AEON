@@ -100,7 +100,7 @@ export function buildDesktopEntryContent(execPath: string): string {
     '[Desktop Entry]',
     'Type=Application',
     'Name=AEON',
-    'Comment=AEON productivity dashboard',
+    'Comment=Made for Productivity',
     `Exec=${escapeExecArgument(execPath)}`,
     'Icon=aeon',
     'Terminal=false',
