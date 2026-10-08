@@ -396,7 +396,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return !layoutsEqual(layout.value, persistedLayout.value)
   })
 
-  /** Toma el snapshot de entrada: base de "Deshacer cambios". Solo memoria. */
+  /** Toma el snapshot de entrada: base de "Descartar cambios". Solo memoria. */
   function beginEdit() {
     editSnapshot.value = cloneLayout(persistedLayout.value)
   }
