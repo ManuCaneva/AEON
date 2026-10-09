@@ -9,6 +9,20 @@ vi.mock('@/lib/db', () => ({
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@/lib/presetWallpapers', () => {
+  const presets = [
+    { id: 'fondo-01', label: 'Fondo 1', url: '/preset/fondo-01.jpg' },
+    { id: 'fondo-02', label: 'Fondo 2', url: '/preset/fondo-02.jpg' },
+  ]
+  const byId = new Map(presets.map((p) => [p.id, p]))
+  return {
+    PRESET_WALLPAPERS: presets,
+    isPresetWallpaperId: (id: unknown): boolean => typeof id === 'string' && byId.has(id),
+    presetWallpaperUrl: (id: string | null | undefined): string | null =>
+      typeof id === 'string' ? (byId.get(id)?.url ?? null) : null,
+  }
+})
+
 const PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
@@ -53,7 +67,7 @@ describe('ui store: wallpaper', () => {
     await ui.setWallpaper(PNG_DATA_URL)
     expect(db.saveConfig).toHaveBeenCalledWith(
       'wallpaper-settings',
-      JSON.stringify({ dataUrl: PNG_DATA_URL, widgetGlassAlpha: 0.8 })
+      JSON.stringify({ dataUrl: PNG_DATA_URL, presetId: null, widgetGlassAlpha: 0.8 })
     )
     expect(ui.wallpaperUrl).toBe(PNG_DATA_URL)
   })
@@ -65,7 +79,7 @@ describe('ui store: wallpaper', () => {
     await ui.setWallpaper(PNG_DATA_URL)
     expect(db.saveConfig).toHaveBeenCalledWith(
       'wallpaper-settings',
-      JSON.stringify({ dataUrl: PNG_DATA_URL, widgetGlassAlpha: 0.6 })
+      JSON.stringify({ dataUrl: PNG_DATA_URL, presetId: null, widgetGlassAlpha: 0.6 })
     )
   })
 
@@ -76,7 +90,7 @@ describe('ui store: wallpaper', () => {
     await ui.removeWallpaper()
     expect(db.saveConfig).toHaveBeenCalledWith(
       'wallpaper-settings',
-      JSON.stringify({ dataUrl: null, widgetGlassAlpha: 0.8 })
+      JSON.stringify({ dataUrl: null, presetId: null, widgetGlassAlpha: 0.8 })
     )
     expect(ui.wallpaperUrl).toBeNull()
   })
@@ -109,7 +123,7 @@ describe('ui store: wallpaper', () => {
     await ui.setWidgetGlassAlpha(0.7)
     expect(db.saveConfig).toHaveBeenCalledWith(
       'wallpaper-settings',
-      JSON.stringify({ dataUrl: null, widgetGlassAlpha: 0.7 })
+      JSON.stringify({ dataUrl: null, presetId: null, widgetGlassAlpha: 0.7 })
     )
     expect(ui.widgetGlassAlpha).toBe(0.7)
     expect(document.documentElement.style.getPropertyValue('--glass-widget-alpha')).toBe('0.7')
@@ -127,6 +141,110 @@ describe('ui store: wallpaper', () => {
     await expect(ui.setWallpaper('https://ejemplo.com/foto.png')).rejects.toThrow()
     expect(db.saveConfig).not.toHaveBeenCalled()
     expect(ui.wallpaperUrl).toBeNull()
+  })
+})
+
+describe('ui store: presets de fondo', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  it('arranca sin preset seleccionado', () => {
+    const ui = useUiStore()
+    expect(ui.wallpaperPresetId).toBeNull()
+  })
+
+  it('setWallpaperPreset persiste el preset y resuelve wallpaperUrl', async () => {
+    const ui = useUiStore()
+    await ui.setWallpaperPreset('fondo-01')
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'wallpaper-settings',
+      JSON.stringify({ dataUrl: null, presetId: 'fondo-01', widgetGlassAlpha: 0.8 })
+    )
+    expect(ui.wallpaperPresetId).toBe('fondo-01')
+    expect(ui.wallpaperUrl).toBe('/preset/fondo-01.jpg')
+  })
+
+  it('setWallpaperPreset preserva el alpha configurado', async () => {
+    const ui = useUiStore()
+    await ui.setWidgetGlassAlpha(0.6)
+    vi.mocked(db.saveConfig).mockClear()
+    await ui.setWallpaperPreset('fondo-02')
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'wallpaper-settings',
+      JSON.stringify({ dataUrl: null, presetId: 'fondo-02', widgetGlassAlpha: 0.6 })
+    )
+    expect(ui.wallpaperUrl).toBe('/preset/fondo-02.jpg')
+  })
+
+  it('setWallpaperPreset rechaza un id desconocido y no persiste', async () => {
+    const ui = useUiStore()
+    await expect(ui.setWallpaperPreset('no-existe')).rejects.toThrow()
+    expect(db.saveConfig).not.toHaveBeenCalled()
+    expect(ui.wallpaperPresetId).toBeNull()
+    expect(ui.wallpaperUrl).toBeNull()
+  })
+
+  it('setWallpaper custom limpia el preset seleccionado', async () => {
+    const ui = useUiStore()
+    await ui.setWallpaperPreset('fondo-01')
+    vi.mocked(db.saveConfig).mockClear()
+    await ui.setWallpaper(PNG_DATA_URL)
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'wallpaper-settings',
+      JSON.stringify({ dataUrl: PNG_DATA_URL, presetId: null, widgetGlassAlpha: 0.8 })
+    )
+    expect(ui.wallpaperPresetId).toBeNull()
+    expect(ui.wallpaperUrl).toBe(PNG_DATA_URL)
+  })
+
+  it('removeWallpaper limpia preset y custom', async () => {
+    const ui = useUiStore()
+    await ui.setWallpaperPreset('fondo-01')
+    vi.mocked(db.saveConfig).mockClear()
+    await ui.removeWallpaper()
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'wallpaper-settings',
+      JSON.stringify({ dataUrl: null, presetId: null, widgetGlassAlpha: 0.8 })
+    )
+    expect(ui.wallpaperPresetId).toBeNull()
+    expect(ui.wallpaperUrl).toBeNull()
+  })
+
+  it('loadWallpaper restaura el preset persistido', async () => {
+    vi.mocked(db.loadConfig).mockResolvedValue(
+      JSON.stringify({ dataUrl: null, presetId: 'fondo-02', widgetGlassAlpha: 0.8 })
+    )
+    const ui = useUiStore()
+    await ui.loadWallpaper()
+    expect(ui.wallpaperPresetId).toBe('fondo-02')
+    expect(ui.wallpaperUrl).toBe('/preset/fondo-02.jpg')
+  })
+
+  it('loadWallpaper cae a null con presetId desconocido, sin lanzar', async () => {
+    vi.mocked(db.loadConfig).mockResolvedValue(
+      JSON.stringify({ dataUrl: null, presetId: 'fondo-99', widgetGlassAlpha: 0.8 })
+    )
+    const ui = useUiStore()
+    await expect(ui.loadWallpaper()).resolves.not.toThrow()
+    expect(ui.wallpaperPresetId).toBeNull()
+    expect(ui.wallpaperUrl).toBeNull()
+    expect(ui.widgetGlassAlpha).toBe(0.8)
+  })
+
+  it('setWidgetGlassAlpha preserva el preset seleccionado', async () => {
+    const ui = useUiStore()
+    await ui.setWallpaperPreset('fondo-01')
+    vi.mocked(db.saveConfig).mockClear()
+    await ui.setWidgetGlassAlpha(0.7)
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'wallpaper-settings',
+      JSON.stringify({ dataUrl: null, presetId: 'fondo-01', widgetGlassAlpha: 0.7 })
+    )
+    expect(ui.wallpaperUrl).toBe('/preset/fondo-01.jpg')
   })
 })
 
