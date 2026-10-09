@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useDashboardStore, wouldCollide } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { getWidgetById } from '@/lib/dashboardWidgets'
+import { COLS, ROWS } from '@/lib/grid'
 import GridItemVue from './GridItemVue.vue'
 import WidgetPicker from './WidgetPicker.vue'
 import WidgetRemoveButton from './WidgetRemoveButton.vue'
@@ -37,6 +38,21 @@ const previewOccupied = computed(() => {
   return wouldCollide(zone.x, zone.y, zone.w, zone.h, dashboard.layout, zone.id)
 })
 
+/**
+ * Template compartido por el contenedor y la capa de líneas: ambas usan el
+ * mismo motor de layout, así las líneas caen sobre los bordes reales de
+ * celda aunque el ancho no sea divisible por COLS (un gradiente con
+ * calc(100%/12) se desvía progresivamente hacia la derecha).
+ */
+const gridTemplateStyle = computed(() => ({
+  display: 'grid',
+  gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`,
+  gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))`,
+}))
+
+/** Celdas de la capa de líneas: cada una dibuja su borde izquierdo y superior. */
+const lineCellCount = COLS * ROWS
+
 function onMoved(id: string, x: number, y: number) {
   dashboard.moveTo(id, x, y)
 }
@@ -55,18 +71,22 @@ function onRemoveWidget(id: string) {
     <div
       class="dashboard-grid relative h-full"
       :class="ui.editMode && 'isolate'"
-      style="
-        display: grid;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        grid-template-rows: repeat(10, minmax(0, 1fr));
-      "
+      :style="gridTemplateStyle"
     >
       <div
         v-if="ui.editMode"
         data-testid="dashboard-grid-lines"
         aria-hidden="true"
-        class="dashboard-grid-lines pointer-events-none absolute inset-0 z-0 border-b border-r border-hairline/60"
-      />
+        class="pointer-events-none absolute inset-0 z-0 border-b border-r border-hairline/60"
+        :style="gridTemplateStyle"
+      >
+        <div
+          v-for="n in lineCellCount"
+          :key="n"
+          data-testid="dashboard-grid-cell"
+          class="border-l border-t border-hairline/60"
+        />
+      </div>
       <DropZonePreview
         v-if="ui.editMode && preview"
         :x="preview.x"
@@ -95,26 +115,3 @@ function onRemoveWidget(id: string) {
     <EditModeActions />
   </div>
 </template>
-
-<style scoped>
-/* Sin gap CSS el paso es container/12 (× container/10): cada celda ocupa un
-   doceavo (décimo) exacto y el aire lo aporta el inset uniforme de cada item
-   (ver GRID_ITEM_INSET en lib/grid.ts). */
-.dashboard-grid-lines {
-  background-image:
-    repeating-linear-gradient(
-      to right,
-      rgb(var(--color-hairline) / 0.6) 0,
-      rgb(var(--color-hairline) / 0.6) 1px,
-      transparent 1px,
-      transparent calc(100% / 12)
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      rgb(var(--color-hairline) / 0.6) 0,
-      rgb(var(--color-hairline) / 0.6) 1px,
-      transparent 1px,
-      transparent calc(100% / 10)
-    );
-}
-</style>

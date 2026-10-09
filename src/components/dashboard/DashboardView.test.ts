@@ -191,6 +191,24 @@ describe('DashboardView', () => {
     )
   })
 
+  it('las líneas usan la misma grilla que los widgets para calzar exacto con los bordes de celda', () => {
+    editModeValue = true
+    const wrapper = mount(DashboardView)
+    const lines = wrapper.find('[data-testid="dashboard-grid-lines"]')
+    const linesStyle = lines.attributes('style') ?? ''
+    // Mismo motor de layout y mismo template que el contenedor: así las
+    // líneas caen sobre los bordes reales de celda aunque el ancho no sea
+    // divisible por 12 (un gradiente con calc(100%/12) se desvía).
+    expect(linesStyle).toContain('display: grid')
+    expect(linesStyle).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))')
+    expect(linesStyle).toContain('grid-template-rows: repeat(10, minmax(0, 1fr))')
+    const cells = lines.findAll('[data-testid="dashboard-grid-cell"]')
+    expect(cells.length).toBe(120)
+    for (const cell of cells) {
+      expect(cell.classes()).toEqual(expect.arrayContaining(['border-l', 'border-t']))
+    }
+  })
+
   it('fuera del modo edición no queda rastro de las líneas de la grilla', () => {
     editModeValue = false
     const wrapper = mount(DashboardView)
