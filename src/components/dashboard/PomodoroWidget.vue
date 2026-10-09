@@ -71,13 +71,13 @@ function toggle() {
           </span>
           <div
             data-testid="pomodoro-widget-controls"
-            class="flex items-center justify-center gap-1"
+            class="pomodoro-controls flex items-center justify-center"
           >
             <button
               data-testid="pomodoro-widget-reset"
               type="button"
               aria-label="Reiniciar Pomodoro"
-              class="flex h-7 w-7 items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              class="pomodoro-btn flex items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               @click="pomodoro.reset()"
             >
               <RotateCcw :size="14" aria-hidden="true" />
@@ -85,7 +85,7 @@ function toggle() {
             <button
               data-testid="pomodoro-widget-toggle"
               type="button"
-              class="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-ink transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              class="pomodoro-btn flex items-center justify-center rounded-full bg-surface-2 text-ink transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               :aria-label="toggleLabel"
               @click="toggle"
             >
@@ -96,7 +96,7 @@ function toggle() {
               data-testid="pomodoro-widget-skip"
               type="button"
               aria-label="Saltar Pomodoro"
-              class="flex h-7 w-7 items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              class="pomodoro-btn flex items-center justify-center rounded-full text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               @click="pomodoro.skip()"
             >
               <SkipForward :size="14" aria-hidden="true" />

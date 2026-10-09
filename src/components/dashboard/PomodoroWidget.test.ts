@@ -276,15 +276,16 @@ describe('PomodoroWidget', () => {
 
     // Las reglas viven en tailwind.css (jsdom no parsea unidades cq* inline)
     const css = readFileSync('src/styles/tailwind.css', 'utf-8')
-    expect(css).toMatch(
-      /\.container-widget \.pomodoro-circle\s*\{[^}]*min\(100cqw, 100cqh, 11rem\)/
-    )
+    // El círculo crece con el widget sin tope fijo: se limita por ambas
+    // dimensiones del área disponible.
+    expect(css).toMatch(/\.container-widget \.pomodoro-circle\s*\{[^}]*min\(100cqw, 100cqh\)/)
+    expect(css).not.toMatch(/\.container-widget \.pomodoro-circle\s*\{[^}]*11rem/)
     expect(css).toMatch(/\.container-widget \.pomodoro-disc\s*\{[^}]*cqmin/)
-    // La cuenta regresiva queda fija según Configuración (no escala con el widget).
-    expect(css).toMatch(
-      /\.container-widget \.pomodoro-countdown\s*\{[^}]*calc\(1\.6875rem \* var\(--text-scale\)\)/
-    )
-    expect(css).not.toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*cq/)
+    // La cuenta regresiva escala con el widget (piso según Configuración).
+    expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*cqmin/)
+    expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*var\(--text-scale\)/)
+    // Los controles escalan con el widget.
+    expect(css).toMatch(/\.container-widget \.pomodoro-btn\s*\{[^}]*cqmin/)
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {

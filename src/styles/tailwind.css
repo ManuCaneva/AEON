@@ -323,16 +323,31 @@
   padding-right: max(0.25rem, 0.6cqw);
 }
 
-/* Pomodoro widget - el círculo se achica con ambas dimensiones del widget */
+/* Pomodoro widget - el círculo crece proporcionalmente con el widget,
+   limitado por ambas dimensiones del área disponible */
 .container-widget .pomodoro-circle {
-  width: min(100cqw, 100cqh, 11rem);
+  width: min(100cqw, 100cqh);
+  max-width: 100cqw;
+  max-height: 100cqh;
 }
 .container-widget .pomodoro-disc {
   width: calc(100% - max(8px, 4cqmin));
   height: calc(100% - max(8px, 4cqmin));
+  gap: max(0.375rem, 2cqmin);
 }
 .container-widget .pomodoro-countdown {
-  font-size: calc(1.6875rem * var(--text-scale));
+  font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
+}
+.container-widget .pomodoro-controls {
+  gap: max(0.25rem, 2cqmin);
+}
+.container-widget .pomodoro-btn {
+  width: max(1.75rem, 8cqmin);
+  height: max(1.75rem, 8cqmin);
+}
+.container-widget .pomodoro-btn svg {
+  width: 45%;
+  height: 45%;
 }
 
 /* Schedule widget header - proportional scaling */

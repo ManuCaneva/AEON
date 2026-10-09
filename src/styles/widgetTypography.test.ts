@@ -6,6 +6,10 @@ import { readFileSync } from 'node:fs'
  * (`--text-scale`) y no escala con el tamaño del widget: ninguna
  * declaración `font-size` bajo `.container-widget` puede usar
  * unidades de container query (`cqw`, `cqh`, `cqmin`, `cqmax`).
+ *
+ * Excepción: `.pomodoro-countdown` sí escala con el widget (con piso
+ * según `--text-scale`) para que el círculo del Pomodoro crezca
+ * proporcionalmente al agrandar el widget.
  */
 describe('widget typography (tamaño fijo)', () => {
   it('ningún font-size de .container-widget usa unidades de container', () => {
@@ -13,6 +17,7 @@ describe('widget typography (tamaño fijo)', () => {
     const widgetBlocks = css.match(/\.container-widget[^{]*\{[^}]*\}/g) ?? []
     const fontSizeLines: string[] = []
     for (const block of widgetBlocks) {
+      if (block.includes('.pomodoro-countdown')) continue
       const lines = block.match(/font-size:[^;]+;/g) ?? []
       fontSizeLines.push(...lines)
     }
