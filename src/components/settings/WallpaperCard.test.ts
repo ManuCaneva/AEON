@@ -113,9 +113,16 @@ describe('WallpaperCard', () => {
     const w = mount(WallpaperCard)
     const preview = w.find("[data-testid='wallpaper-preview']")
     expect(preview.exists()).toBe(true)
-    expect((preview.element as HTMLElement).style.backgroundImage).toContain(PNG_DATA_URL)
-    // el preview lleva el mismo tratamiento blur+scrim que la capa de fondo
-    expect(preview.classes()).toContain('wallpaper-image-blur')
+    // el marco delimita la previa: borde visible + esquinas redondeadas
+    expect(preview.classes()).toContain('border-hairline-strong')
+    expect(preview.classes()).toContain('rounded-md')
+    // la imagen de fondo lleva el blur en su propia capa, igual que WallpaperLayer;
+    // el mock del esqueleto queda nítido por encima
+    const image = w.find("[data-testid='wallpaper-preview-image']")
+    expect(image.exists()).toBe(true)
+    expect((image.element as HTMLElement).style.backgroundImage).toContain(PNG_DATA_URL)
+    expect(image.classes()).toContain('wallpaper-image-blur')
+    expect(preview.classes()).not.toContain('wallpaper-image-blur')
     expect(preview.find('.wallpaper-scrim').exists()).toBe(true)
     expect(w.find("[data-testid='wallpaper-remove-btn']").exists()).toBe(true)
     await w.find("[data-testid='wallpaper-remove-btn']").trigger('click')

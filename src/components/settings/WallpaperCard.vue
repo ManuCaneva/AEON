@@ -79,10 +79,14 @@ function onAlphaChange(event: Event) {
       <div class="grid grid-cols-[1fr_auto] items-start gap-3">
         <div
           data-testid="wallpaper-preview"
-          class="wallpaper-image-blur relative h-28 overflow-hidden rounded-md border border-hairline bg-cover bg-center"
-          :class="!ui.wallpaperUrl && 'wallpaper-fallback'"
-          :style="ui.wallpaperUrl ? `background-image: url('${ui.wallpaperUrl}')` : undefined"
+          class="relative h-28 overflow-hidden rounded-md border border-hairline-strong bg-surface-2"
         >
+          <div
+            data-testid="wallpaper-preview-image"
+            class="absolute inset-0 bg-cover bg-center"
+            :class="ui.wallpaperUrl ? 'wallpaper-image-blur' : 'wallpaper-fallback'"
+            :style="ui.wallpaperUrl ? `background-image: url('${ui.wallpaperUrl}')` : undefined"
+          />
           <div class="wallpaper-scrim absolute inset-0" />
           <div
             data-testid="wallpaper-preview-mock"
