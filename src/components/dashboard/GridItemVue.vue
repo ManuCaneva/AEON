@@ -10,7 +10,7 @@ import {
   type FlipRect,
 } from '@/composables/flip'
 import { useDashDrag } from '@/composables/useDashDrag'
-import { COLS, ROWS, GRID_GAP, itemZIndex, DRAGGING_Z_INDEX } from '@/lib/grid'
+import { COLS, ROWS, GRID_ITEM_INSET, itemZIndex, DRAGGING_Z_INDEX } from '@/lib/grid'
 
 const props = defineProps<{
   item: LayoutItem
@@ -48,19 +48,31 @@ const RESIZE_HANDLES: Array<{ position: string; classes: string }> = [
 ]
 
 /**
- * Grips de esquina: dos líneas en forma de L que aparecen al hacer hover en
- * modo edición. El ancla define en qué vértice del widget se dibujan.
+ * Gap para el snap (pxToCells/gridStep): la grilla CSS no usa gap (ver
+ * DashboardView), el aire lo aporta el inset uniforme de cada item.
  */
-const CORNER_GRIPS: Array<{ corner: string; anchor: string }> = [
-  { corner: 'nw', anchor: 'left-0 top-0' },
-  { corner: 'ne', anchor: 'right-0 top-0' },
-  { corner: 'sw', anchor: 'left-0 bottom-0' },
-  { corner: 'se', anchor: 'right-0 bottom-0' },
+const SNAP_GAP = 0
+
+/**
+ * Grips de esquina: dos líneas en forma de L que aparecen al hacer hover en
+ * modo edición. El box se desplaza GRID_ITEM_INSET (2px) hacia adentro para
+ * abrazar la esquina de la card; las líneas internas quedan a ras del box.
+ * Las clases van como literales para que el escáner de Tailwind las
+ * encuentre.
+ */
+const CORNER_GRIPS: Array<{ corner: string; box: string; inner: string }> = [
+  { corner: 'nw', box: 'left-[2px] top-[2px]', inner: 'left-0 top-0' },
+  { corner: 'ne', box: 'right-[2px] top-[2px]', inner: 'right-0 top-0' },
+  { corner: 'sw', box: 'left-[2px] bottom-[2px]', inner: 'left-0 bottom-0' },
+  { corner: 'se', box: 'right-[2px] bottom-[2px]', inner: 'right-0 bottom-0' },
 ]
 
 const gridStyle = computed(() => ({
   gridColumn: `${props.item.x + 1} / span ${props.item.w}`,
   gridRow: `${props.item.y + 1} / span ${props.item.h}`,
+  // Inset uniforme en las 4 direcciones: centra la card en su celda con el
+  // mismo padding arriba/abajo/izquierda/derecha (ver GRID_ITEM_INSET).
+  padding: `${GRID_ITEM_INSET}px`,
 }))
 
 const itemStyle = computed(() => {
@@ -159,33 +171,33 @@ function applyResizeOffset() {
  * fin de gesto, así el widget cae exactamente donde se previsualizó.
  */
 function dragCells() {
-  const stepW = gridStep(containerWidth, COLS, GRID_GAP)
-  const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
+  const stepW = gridStep(containerWidth, COLS, SNAP_GAP)
+  const stepH = gridStep(containerHeight, ROWS, SNAP_GAP)
   return pxToCells(
     props.item.x * stepW + dragAccumX,
     props.item.y * stepH + dragAccumY,
-    props.item.w * stepW - GRID_GAP,
-    props.item.h * stepH - GRID_GAP,
+    props.item.w * stepW - SNAP_GAP,
+    props.item.h * stepH - SNAP_GAP,
     containerWidth,
     containerHeight,
-    { minW: props.item.minW, minH: props.item.minH, gap: GRID_GAP }
+    { minW: props.item.minW, minH: props.item.minH, gap: SNAP_GAP }
   )
 }
 
 function resizeCells() {
-  const stepW = gridStep(containerWidth, COLS, GRID_GAP)
-  const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
+  const stepW = gridStep(containerWidth, COLS, SNAP_GAP)
+  const stepH = gridStep(containerHeight, ROWS, SNAP_GAP)
   return pxToCells(
     props.item.x * stepW + resizeAccumLeft,
     props.item.y * stepH + resizeAccumTop,
-    props.item.w * stepW - GRID_GAP + resizeAccumW,
-    props.item.h * stepH - GRID_GAP + resizeAccumH,
+    props.item.w * stepW - SNAP_GAP + resizeAccumW,
+    props.item.h * stepH - SNAP_GAP + resizeAccumH,
     containerWidth,
     containerHeight,
     {
       minW: props.item.minW,
       minH: props.item.minH,
-      gap: GRID_GAP,
+      gap: SNAP_GAP,
       anchorX: resizeAnchorX,
       anchorY: resizeAnchorY,
     }
@@ -285,10 +297,10 @@ useDashDrag(elRef, editModeRef, {
         resizeBaseW = rect.width
         resizeBaseH = rect.height
       } else {
-        const stepW = gridStep(containerWidth, COLS, GRID_GAP)
-        const stepH = gridStep(containerHeight, ROWS, GRID_GAP)
-        resizeBaseW = props.item.w * stepW - GRID_GAP
-        resizeBaseH = props.item.h * stepH - GRID_GAP
+        const stepW = gridStep(containerWidth, COLS, SNAP_GAP)
+        const stepH = gridStep(containerHeight, ROWS, SNAP_GAP)
+        resizeBaseW = props.item.w * stepW - SNAP_GAP
+        resizeBaseH = props.item.h * stepH - SNAP_GAP
       }
     }
     applyResizeOffset()
@@ -366,17 +378,17 @@ useDashDrag(elRef, editModeRef, {
           :key="grip.corner"
           :data-testid="`corner-grip-${grip.corner}`"
           class="pointer-events-none absolute z-10 h-3 w-3"
-          :class="grip.anchor"
+          :class="grip.box"
         >
           <span
             data-testid="corner-grip-line"
             class="absolute h-px w-3 bg-hairline-strong"
-            :class="grip.anchor"
+            :class="grip.inner"
           />
           <span
             data-testid="corner-grip-line"
             class="absolute h-3 w-px bg-hairline-strong"
-            :class="grip.anchor"
+            :class="grip.inner"
           />
         </div>
       </template>

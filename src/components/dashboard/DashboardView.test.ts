@@ -76,14 +76,17 @@ describe('DashboardView', () => {
     expect(wrapper.find("[data-testid='dashboard-view']").exists()).toBe(true)
   })
 
-  it('el contenedor de la grilla usa display: grid con 12 columnas y 10 filas sin mínimo implícito', () => {
+  it('el contenedor de la grilla usa display: grid con 12 columnas y 10 filas sin gap CSS', () => {
     const wrapper = mount(DashboardView)
     const grid = wrapper.find('.dashboard-grid')
     const style = grid.attributes('style') ?? ''
     expect(style).toContain('display: grid')
     expect(style).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))')
     expect(style).toContain('grid-template-rows: repeat(10, minmax(0, 1fr))')
-    expect(style).toContain('gap: 4px')
+    // El aire entre widgets lo aporta el inset uniforme de cada item
+    // (GRID_ITEM_INSET por lado), no un gap: así la card queda centrada en
+    // su celda con el mismo padding en las 4 direcciones.
+    expect(style).not.toContain('gap')
   })
 
   it('renderiza GridItemVue para cada item del layout sin prop dims', () => {

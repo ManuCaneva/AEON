@@ -1,8 +1,16 @@
 export const COLS = 12
 export const ROWS = 10
 
-/** Espacio entre celdas de la grilla del dashboard, en px (ver DashboardView). */
+/** Espaciado visual entre widgets vecinos, en px (ver DashboardView). */
 export const GRID_GAP = 4
+
+/**
+ * Inset uniforme de cada item respecto de los bordes de su celda, en px
+ * (GRID_GAP/2 por lado). La grilla CSS no usa `gap`: el aire lo aporta este
+ * inset, así la card queda centrada en su celda con el mismo padding en las
+ * 4 direcciones y la distancia entre widgets vecinos sigue siendo GRID_GAP.
+ */
+export const GRID_ITEM_INSET = GRID_GAP / 2
 
 /**
  * Orden de apilado de los ítems de la grilla en modo edición: la cruz que

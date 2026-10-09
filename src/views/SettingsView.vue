@@ -96,8 +96,8 @@ async function confirmClearData() {
     class="scrollbar-gutter-stable mx-auto flex h-full max-w-2xl flex-col gap-8 overflow-y-auto px-6 py-12"
   >
     <header class="flex flex-col gap-1">
-      <Text variant="eyebrow" color="subtle">Configuración</Text>
-      <Heading>Settings</Heading>
+      <Text variant="eyebrow" color="subtle">Sistema</Text>
+      <Heading>Configuración</Heading>
     </header>
 
     <section class="flex flex-col gap-3">

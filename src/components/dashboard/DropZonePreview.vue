@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, type CSSProperties } from 'vue'
-import { DROP_ZONE_Z_INDEX } from '@/lib/grid'
+import { DROP_ZONE_Z_INDEX, GRID_ITEM_INSET } from '@/lib/grid'
 
 const props = defineProps<{
   x: number
@@ -14,10 +14,12 @@ const props = defineProps<{
  * La zona se coloca sobre la misma grilla nativa que los widgets: las celdas
  * enteras de destino se expresan como grid-column/grid-row, así el resalte
  * coincide exactamente con dónde caería el gesture sin hacer cuentas en px.
+ * Lleva el mismo inset que los items para coincidir con la card final.
  */
 const style = computed<CSSProperties>(() => ({
   gridColumn: `${props.x + 1} / span ${props.w}`,
   gridRow: `${props.y + 1} / span ${props.h}`,
+  margin: `${GRID_ITEM_INSET}px`,
   zIndex: DROP_ZONE_Z_INDEX,
 }))
 </script>
