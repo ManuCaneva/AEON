@@ -134,6 +134,19 @@ describe('WeeklyScheduleGrid', () => {
     wrapper.unmount()
   })
 
+  it('el fondo de la grilla deja ver el glass del widget (sin fondos opacos)', () => {
+    const wrapper = mount(WeeklyScheduleGrid)
+    const html = wrapper.html()
+    // El contenedor de la grilla no tapa el glass-soft del Container:
+    // sin bg-canvas ni surfaces sólidas (solo transparencias/tints/bordes).
+    expect(html).not.toContain('bg-canvas')
+    const opaque = ['bg-surface-1 ', 'bg-surface-2 ', 'bg-surface-1"', 'bg-surface-2"']
+    for (const cls of opaque) {
+      expect(html).not.toContain(cls)
+    }
+    wrapper.unmount()
+  })
+
   it('renderiza las columnas de los días de la semana', () => {
     const wrapper = mount(WeeklyScheduleGrid)
     expect(wrapper.text()).toContain('Lun')
