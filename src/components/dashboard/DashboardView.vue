@@ -50,7 +50,13 @@ const gridTemplateStyle = computed(() => ({
   gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))`,
 }))
 
-/** Celdas de la capa de líneas: cada una dibuja su borde izquierdo y superior. */
+/**
+ * Celdas de la capa de líneas: cada una dibuja su borde completo. Cada borde
+ * interior lo pintan las dos celdas vecinas con mitades adyacentes, así la
+ * línea de 2px queda centrada sobre el borde real de celda y la card (inset
+ * de 2px) dista 1px de cada lado. El cierre exterior lo aportan las celdas
+ * del borde, no el wrapper, para no apilar el alfa dos veces.
+ */
 const lineCellCount = COLS * ROWS
 
 function onMoved(id: string, x: number, y: number) {
@@ -77,14 +83,14 @@ function onRemoveWidget(id: string) {
         v-if="ui.editMode"
         data-testid="dashboard-grid-lines"
         aria-hidden="true"
-        class="pointer-events-none absolute inset-0 z-0 border-b border-r border-hairline/60"
+        class="pointer-events-none absolute inset-0 z-0"
         :style="gridTemplateStyle"
       >
         <div
           v-for="n in lineCellCount"
           :key="n"
           data-testid="dashboard-grid-cell"
-          class="border-l border-t border-hairline/60"
+          class="border border-hairline/60"
         />
       </div>
       <DropZonePreview

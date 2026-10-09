@@ -181,14 +181,22 @@ describe('DashboardView', () => {
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
   })
 
-  it('en modo edición dibuja las líneas de la grilla cerradas por abajo y por la derecha', () => {
+  it('en modo edición dibuja las líneas de la grilla: cada celda aporta su borde completo', () => {
     editModeValue = true
     const wrapper = mount(DashboardView)
     const lines = wrapper.find('[data-testid="dashboard-grid-lines"]')
     expect(lines.exists()).toBe(true)
-    expect(lines.classes()).toEqual(
-      expect.arrayContaining(['border-r', 'border-b', 'border-hairline/60'])
-    )
+    // El cierre no va en el wrapper (duplicaría el pintado con las celdas
+    // del borde y oscurecería la línea por apilado del alfa): lo aportan las
+    // celdas de la última fila/columna con su propio borde.
+    for (const cls of lines.classes()) {
+      expect(cls.startsWith('border')).toBe(false)
+    }
+    const cells = lines.findAll('[data-testid="dashboard-grid-cell"]')
+    expect(cells.length).toBe(120)
+    for (const cell of cells) {
+      expect(cell.classes()).toEqual(expect.arrayContaining(['border', 'border-hairline/60']))
+    }
   })
 
   it('las líneas usan la misma grilla que los widgets para calzar exacto con los bordes de celda', () => {
@@ -205,7 +213,14 @@ describe('DashboardView', () => {
     const cells = lines.findAll('[data-testid="dashboard-grid-cell"]')
     expect(cells.length).toBe(120)
     for (const cell of cells) {
-      expect(cell.classes()).toEqual(expect.arrayContaining(['border-l', 'border-t']))
+      // Borde completo: cada borde interior lo pintan las dos celdas vecinas
+      // con mitades adyacentes ([B-1,B] + [B,B+1]), así la línea de 2px queda
+      // centrada sobre el borde real y la card dista 1px de cada lado.
+      // Una línea de 1px (border-l) se pinta de un solo lado del borde y deja
+      // 2px de un lado contra 1px del otro.
+      expect(cell.classes()).toEqual(expect.arrayContaining(['border']))
+      expect(cell.classes()).not.toContain('border-l')
+      expect(cell.classes()).not.toContain('border-t')
     }
   })
 
