@@ -194,15 +194,12 @@ watch(
     variant="default"
     glass
     padding="none"
-    class="h-full overflow-hidden"
+    class="container-widget h-full overflow-hidden"
     data-testid="year-calendar-widget"
   >
     <div class="ycw" :class="layout ? `cols-${layout.cols}` : ''" :style="layoutStyle">
-      <header
-        class="ycw__header justify-start"
-        :style="{ '--title-font-size': 'var(--title-font-size, 0.75rem)' }"
-      >
-        <Text variant="caption" weight="600" class="ycw__title text-left">Calendario Anual</Text>
+      <header class="ycw__header justify-start">
+        <Text variant="card-title" weight="600" class="ycw__title text-left">Calendario Anual</Text>
         <Loader2
           v-if="store.syncing"
           :size="12"
@@ -340,7 +337,6 @@ watch(
 
 .ycw__title {
   color: rgb(var(--color-ink));
-  font-size: var(--title-font-size, 0.75rem);
   line-height: 1.2;
   word-wrap: break-word;
 }

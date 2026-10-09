@@ -22,13 +22,15 @@ describe('widget typography (tamaño fijo)', () => {
     }
   })
 
-  it('los tamaños base respetan la escala de Configuración', () => {
+  it('los tamaños base respetan la escala de Configuración (reducidos ~10%)', () => {
     const css = readFileSync('src/styles/tailwind.css', 'utf-8')
     for (const rule of [
-      /\.container-widget \.text-card-title\s*\{[^}]*calc\(1\.375rem \* var\(--text-scale\)\)/,
-      /\.container-widget \.text-body\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/,
-      /\.container-widget \.text-body-sm\s*\{[^}]*calc\(0\.875rem \* var\(--text-scale\)\)/,
-      /\.container-widget \.text-caption\s*\{[^}]*calc\(0\.75rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-card-title\s*\{[^}]*calc\(1\.25rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-subhead\s*\{[^}]*calc\(1\.125rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-body-lg\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-body\s*\{[^}]*calc\(0\.9rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-body-sm\s*\{[^}]*calc\(0\.8rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-caption\s*\{[^}]*calc\(0\.675rem \* var\(--text-scale\)\)/,
     ]) {
       expect(css).toMatch(rule)
     }

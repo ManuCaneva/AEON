@@ -282,7 +282,7 @@ describe('PomodoroWidget', () => {
     expect(css).toMatch(/\.container-widget \.pomodoro-disc\s*\{[^}]*cqmin/)
     // La cuenta regresiva queda fija según Configuración (no escala con el widget).
     expect(css).toMatch(
-      /\.container-widget \.pomodoro-countdown\s*\{[^}]*calc\(1\.875rem \* var\(--text-scale\)\)/
+      /\.container-widget \.pomodoro-countdown\s*\{[^}]*calc\(1\.6875rem \* var\(--text-scale\)\)/
     )
     expect(css).not.toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*cq/)
   })

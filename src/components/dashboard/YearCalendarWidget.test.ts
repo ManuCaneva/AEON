@@ -201,6 +201,17 @@ describe('YearCalendarWidget', () => {
     expect(header.find("[data-testid='sync-spinner']").exists()).toBe(true)
   })
 
+  it('el título iguala al resto de los widgets (card-title, sin tamaño pineado)', () => {
+    const wrapper = mount(YearCalendarWidget)
+    const title = wrapper.get('.ycw__title')
+    expect(title.classes()).toContain('text-card-title')
+    // Sin override inline: el tamaño lo da la regla de widgets × --text-scale.
+    expect(wrapper.get('.ycw__header').attributes('style') ?? '').not.toContain('--title-font-size')
+    expect(wrapper.get('[data-testid="year-calendar-widget"]').classes()).toContain(
+      'container-widget'
+    )
+  })
+
   it('no muestra flechas de paginación cuando caben los 12 meses', () => {
     const wrapper = mount(YearCalendarWidget)
     expect(wrapper.find("[data-testid='month-up']").exists()).toBe(false)

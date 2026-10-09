@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import MonthMini from './MonthMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
@@ -233,5 +234,10 @@ describe('MonthMini', () => {
       expect.arrayContaining(['bg-accent-purple-tint', 'ring-accent-purple'])
     )
     expect(cell.attributes('style')).toBeUndefined()
+  })
+
+  it('el nombre del mes acompaña la escala de Configuración (--text-scale)', () => {
+    const sfc = readFileSync('src/components/calendar/MonthMini.vue', 'utf-8')
+    expect(sfc).toMatch(/\.month-mini__name\s*\{[^}]*var\(--text-scale/)
   })
 })

@@ -137,7 +137,7 @@ function overflowCount(date: string | null): number {
 
 .month-mini__name {
   text-align: center;
-  font-size: var(--font-size, 0.72rem);
+  font-size: calc(var(--font-size, 0.72rem) * var(--text-scale, 1));
   font-weight: 600;
   color: rgb(var(--color-ink-muted));
   text-transform: capitalize;
