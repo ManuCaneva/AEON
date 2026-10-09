@@ -176,27 +176,28 @@
 
 /* ===== Widget-responsive scaling (cqw = % of container width) ===== */
 
-/* Typography: scales with widget width, clamped to the design system
-   range — the ceiling of each variant is its default size in
-   tailwind.config.ts, so scaling only shrinks on small widgets and
-   never grows past the normal size on wide ones. */
+/* Typography: tamaño fijo según Configuración (`--text-scale`).
+   No escala con el tamaño del widget: cada variante usa su tamaño
+   por defecto del design system multiplicado por la escala elegida
+   por el usuario. El espaciado/iconos sí siguen usando cqw para
+   aprovechar el espacio sin cambiar la legibilidad. */
 .container-widget .text-card-title {
-  font-size: calc(clamp(0.875rem, 2.3cqw, 1.375rem) * var(--text-scale));
+  font-size: calc(1.375rem * var(--text-scale));
 }
 .container-widget .text-body {
-  font-size: calc(clamp(0.75rem, 2.5cqw, 1rem) * var(--text-scale));
+  font-size: calc(1rem * var(--text-scale));
 }
 .container-widget .text-body-sm {
-  font-size: calc(clamp(0.6875rem, 2.2cqw, 0.875rem) * var(--text-scale));
+  font-size: calc(0.875rem * var(--text-scale));
 }
 .container-widget .text-body-lg {
-  font-size: calc(clamp(0.8125rem, 2.5cqw, 1.125rem) * var(--text-scale));
+  font-size: calc(1.125rem * var(--text-scale));
 }
 .container-widget .text-caption {
-  font-size: calc(clamp(0.625rem, 2cqw, 0.75rem) * var(--text-scale));
+  font-size: calc(0.75rem * var(--text-scale));
 }
 .container-widget .text-subhead {
-  font-size: calc(clamp(0.8125rem, 2.3cqw, 1.25rem) * var(--text-scale));
+  font-size: calc(1.25rem * var(--text-scale));
 }
 
 /* Card spacing */
@@ -308,16 +309,16 @@
   border-radius: max(2px, 0.4cqw);
 }
 .container-widget .schedule-block-title {
-  font-size: calc(min(max(0.5625rem, 1.5cqw), 0.75rem) * var(--text-scale));
-  line-height: min(max(0.75rem, 1.9cqw), 1rem);
+  font-size: calc(0.75rem * var(--text-scale));
+  line-height: 1rem;
 }
 .container-widget .schedule-day-label {
-  font-size: calc(max(0.5625rem, 1.8cqw) * var(--text-scale));
+  font-size: calc(0.75rem * var(--text-scale));
   padding-top: max(0.25rem, 0.8cqw);
   padding-bottom: max(0.25rem, 0.8cqw);
 }
 .container-widget .schedule-hour-label {
-  font-size: calc(min(max(0.5rem, 1.3cqw), 0.625rem) * var(--text-scale));
+  font-size: calc(0.625rem * var(--text-scale));
   padding-left: max(0.25rem, 0.6cqw);
   padding-right: max(0.25rem, 0.6cqw);
 }
@@ -331,7 +332,7 @@
   height: calc(100% - max(8px, 4cqmin));
 }
 .container-widget .pomodoro-countdown {
-  font-size: calc(clamp(0.75rem, 14cqmin, 1.875rem) * var(--text-scale));
+  font-size: calc(1.875rem * var(--text-scale));
 }
 
 /* Schedule widget header - proportional scaling */
@@ -339,7 +340,7 @@
   padding: max(0.25rem, 0.5cqw) max(0.5rem, 1cqw);
 }
 .container-widget .schedule-widget-header .text-card-title {
-  font-size: calc(clamp(0.75rem, 2cqw, 1.375rem) * var(--text-scale));
+  font-size: calc(1.375rem * var(--text-scale));
 }
 .container-widget .schedule-widget-header .h-3\.5 {
   width: max(0.75rem, 2cqw);
@@ -399,7 +400,7 @@
     padding: 0.25rem 0.5rem;
   }
   .habits-header-responsive .habits-header-count {
-    font-size: calc(max(0.5rem, 1.8cqw) * var(--text-scale));
+    font-size: calc(0.625rem * var(--text-scale));
   }
   .scrollbar-gutter-stable {
     scrollbar-gutter: auto;

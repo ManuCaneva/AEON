@@ -402,4 +402,10 @@ describe('Sidebar', () => {
     expect(() => vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS * 2)).not.toThrow()
     await nextTick()
   })
+
+  it('no muestra scrollbar horizontal durante el colapso (overflow-x oculto)', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.get('aside').classes()).toContain('overflow-hidden')
+    expect(wrapper.get('nav').classes()).toContain('overflow-x-hidden')
+  })
 })

@@ -138,7 +138,7 @@ const rowActive = 'bg-surface-3 text-ink'
 <template>
   <aside
     :class="[
-      'glass-strong flex h-full flex-col rounded-xl transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+      'glass-strong flex h-full flex-col overflow-hidden rounded-xl transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
       ui.sidebarCollapsed ? 'w-14' : 'w-44',
     ]"
     @transitionend="handleTransitionEnd"
@@ -180,7 +180,7 @@ const rowActive = 'bg-surface-3 text-ink'
       </button>
     </div>
 
-    <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-1">
+    <nav class="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-2 py-1">
       <Text
         variant="eyebrow"
         color="subtle"
