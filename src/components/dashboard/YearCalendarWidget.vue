@@ -6,8 +6,8 @@ import Container from '@/components/ui/Container.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2 } from 'lucide-vue-next'
-import { computeLayout, initialOffsetForMonth, type LayoutResult } from '@/lib/calendarLayout'
-import { significantChange, layoutVars, quantizeLayout } from '@/lib/calendarResize'
+import { computeFittedLayout, initialOffsetForMonth, type LayoutResult } from '@/lib/calendarLayout'
+import { significantChange, layoutVars } from '@/lib/calendarResize'
 import { DAY_LABELS } from '@/lib/calendarDates'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import type { LayoutItem } from '@/stores/dashboard'
@@ -103,10 +103,11 @@ function recomputeNow() {
   const availH = pendingSize?.h ?? el.clientHeight
   pendingSize = null
 
-  const raw = computeLayout(availW, availH)
-  if (!raw) return
+  // Ajuste con garantía de encaje: el viewport resultante siempre entra en el
+  // cuerpo medido, así el último mes nunca queda cortado por el footer.
+  const candidate = computeFittedLayout(availW, availH)
+  if (!candidate) return
 
-  const candidate = quantizeLayout(raw)
   const change = significantChange(layout.value, candidate)
 
   if (change === 'none') return

@@ -252,6 +252,40 @@ describe('YearCalendarWidget', () => {
     vi.unstubAllGlobals()
   })
 
+  it('el viewport calculado entra en el cuerpo medido (el último mes no se corta)', async () => {
+    let resizeCallback: (() => void) | null = null
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resizeCallback = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+
+    const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
+    const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+    Object.defineProperty(bodyEl, 'clientWidth', { value: 300, configurable: true })
+    Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+
+    if (resizeCallback) {
+      ;(resizeCallback as () => void)()
+    }
+    await flushRaf()
+    await wrapper.vm.$nextTick()
+
+    const style = wrapper.find('.ycw').attributes('style') ?? ''
+    const match = style.match(/--viewport-h:\s*([\d.]+)px/)
+    expect(match).not.toBeNull()
+    // Cromado: padding 2x4 + fila de etiquetas + margen de seguridad.
+    expect(parseFloat(match![1])).toBeLessThanOrEqual(300 - 8 - 17 - 4)
+
+    vi.unstubAllGlobals()
+    wrapper.unmount()
+  })
+
   it('arranca en el semestre del mes actual (octubre -> jul-dic)', async () => {
     const getMonthSpy = vi.spyOn(Date.prototype, 'getMonth').mockReturnValue(9)
     const getFullYearSpy = vi.spyOn(Date.prototype, 'getFullYear').mockReturnValue(2026)
@@ -271,7 +305,7 @@ describe('YearCalendarWidget', () => {
     const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
     const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
     Object.defineProperty(bodyEl, 'clientWidth', { value: 300, configurable: true })
-    Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+    Object.defineProperty(bodyEl, 'clientHeight', { value: 500, configurable: true })
 
     if (resizeCallback) {
       ;(resizeCallback as () => void)()

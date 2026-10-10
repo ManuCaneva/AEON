@@ -35,8 +35,14 @@ describe('quantizeCellSize', () => {
 
   it('agrupa tamaños cercanos en el mismo paso discreto', () => {
     expect(quantizeCellSize(20)).toBe(20)
-    expect(quantizeCellSize(21)).toBe(22)
+    expect(quantizeCellSize(21)).toBe(20)
     expect(quantizeCellSize(22)).toBe(22)
+  })
+
+  it('nunca redondea hacia arriba: el cuantizado siempre entra en el ajuste exacto', () => {
+    for (let cs = 1; cs <= 120; cs++) {
+      expect(quantizeCellSize(cs)).toBeLessThanOrEqual(cs)
+    }
   })
 
   it('nunca devuelve un paso de 0 (se mantiene estable en celdas chicas)', () => {
@@ -89,8 +95,8 @@ describe('significantChange', () => {
   })
 
   it('el paso del tamaño de celda crece con el tamaño (es proporcional)', () => {
-    expect(quantizeCellSize(21)).toBe(22)
-    expect(quantizeCellSize(39)).toBe(40)
+    expect(quantizeCellSize(21)).toBe(20)
+    expect(quantizeCellSize(39)).toBe(36)
     expect(quantizeCellSize(41)).toBe(40)
     expect(quantizeCellSize(50)).toBe(50)
   })
@@ -102,12 +108,12 @@ describe('quantizeLayout', () => {
     expect(q.cellSize).toBe(40)
     // monthHeight = 6*40 + 5*cellGap + monthHeader + nameGap
     // cellGap = round(40*0.12)=5, gridGap = round(40*0.5)=20
-    // monthHeader = round(40*1.3)=52, nameGap = round(40*0.35)=14
-    // monthH = 240 + 25 + 52 + 14 = 331
-    expect(q.monthHeight).toBe(331)
+    // monthHeader = max(12, round(40*1.3)=52, techo del texto)=53, nameGap = round(40*0.35)=14
+    // monthH = 240 + 25 + 53 + 14 = 332
+    expect(q.monthHeight).toBe(332)
     expect(q.gridGap).toBe(20)
     expect(q.cellGap).toBe(5)
-    expect(q.monthHeader).toBe(52)
+    expect(q.monthHeader).toBe(53)
     expect(q.nameGap).toBe(14)
     expect(q.cols).toBe(4)
     expect(q.visibleSlots).toBe(12)
@@ -125,7 +131,7 @@ describe('layoutVars', () => {
     expect(vars['--cell-size']).toBe('12px')
     expect(vars['--month-h']).toBe('100px')
     expect(vars['--month-step']).toBe('106px')
-    expect(vars['--font-size']).toBe(`${Math.max(0.72, 12 * 0.075)}rem`)
+    expect(vars['--font-size']).toBe(`${Math.max(0.576, 12 * 0.06)}rem`)
     expect(vars['--title-font-size']).toBe(`${Math.max(0.55, 12 * 0.042)}rem`)
     expect(vars['--grid-gap']).toBe('6px')
   })

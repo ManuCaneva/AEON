@@ -1,3 +1,5 @@
+import { quantizeCellSize } from './calendarResize'
+
 export interface LayoutResult {
   cols: number
   cellSizePct: number
@@ -19,16 +21,32 @@ export interface LayoutResult {
   monthHeight: number
 }
 
+// Cromado vertical/horizontal que el algoritmo descuenta del cuerpo medido:
+// padding del cuerpo (CSS .ycw__body), alto real de la fila de etiquetas de día
+// (0.65rem + margin-bottom) y margen de seguridad.
+export const LAYOUT_CHROME = {
+  bodyPadding: 4,
+  colHeaderHeight: 17,
+  safetyMargin: 4,
+} as const
+
 // Inner DOM metrics
 const MIN_CELL_SIZE = 4 // minimum readable day cell size in pixels
 const MAX_CELL_SIZE = 120 // upper bound - algorithm iterates down from here
+
+/** Tamaño de fuente del nombre del mes en rem según el tamaño de celda. */
+export function monthFontRem(cs: number): number {
+  return Math.max(0.576, cs * 0.06)
+}
 
 export function spacingFor(cs: number) {
   const cellGap = cs < 10 ? 1 : Math.max(1, Math.round(cs * 0.12))
   const monthPadding = 0
   const gridGap = Math.max(3, Math.round(cs * 0.5))
   const nameGap = Math.max(3, Math.round(cs * 0.35))
-  const monthHeader = Math.max(10, Math.round(cs * 1.3))
+  // La caja entra el texto con line-height 1.2 y text-scale máximo 1.15.
+  const textBox = Math.ceil(monthFontRem(cs) * 16 * 1.2 * 1.15)
+  const monthHeader = Math.max(12, Math.round(cs * 1.3), textBox)
 
   // Width of 1 month card
   const monthW = 7 * cs + 6 * cellGap + 2 * monthPadding
@@ -42,11 +60,11 @@ export function computeForCols(c: number, rawW: number, rawH: number): LayoutRes
   if (rawW <= 0 || rawH <= 0) return null
 
   // Subtract container paddings, top-level day-of-week headers height, and a 4px safety margin
-  const bodyPadding = 2
-  const colHeaderHeight = rawH < 500 ? 12 : 16
+  const bodyPadding = LAYOUT_CHROME.bodyPadding
+  const colHeaderHeight = LAYOUT_CHROME.colHeaderHeight
 
   const availW = rawW - 2 * bodyPadding
-  const availH = rawH - 2 * bodyPadding - colHeaderHeight - 4
+  const availH = rawH - 2 * bodyPadding - colHeaderHeight - LAYOUT_CHROME.safetyMargin
 
   if (availW <= 0 || availH <= 0) return null
 
@@ -202,4 +220,106 @@ export function initialOffsetForMonth(
   const base = Math.floor(monthIndex / visibleSlots) * visibleSlots
   const clamped = Math.min(Math.max(0, base), maxOffset)
   return Math.floor(clamped / safeCols) * safeCols
+}
+
+function fittedContentHeight(slots: number, cols: number, cs: number): number {
+  const space = spacingFor(cs)
+  const monthH = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
+  const rows = Math.max(1, Math.ceil(slots / cols))
+  return rows * monthH + (rows - 1) * space.gridGap
+}
+
+function fittedContentWidth(cols: number, cs: number): number {
+  const space = spacingFor(cs)
+  const monthW = 7 * cs + 6 * space.cellGap
+  return cols * monthW + (cols - 1) * space.gridGap
+}
+
+/**
+ * Ajuste exacto que garantiza que el viewport resultante entra en el cuerpo
+ * medido: parte del ajuste exacto, lo baja al paso discreto inferior (nunca
+ * redondea hacia arriba) y, si ni el tamaño mínimo entra, pagina menos meses.
+ * Así el último mes visible nunca queda cortado por el footer.
+ */
+export function computeFittedLayout(
+  availW: number,
+  availH: number,
+  targetCols?: number
+): LayoutResult | null {
+  const exact = computeLayout(availW, availH, targetCols)
+  if (!exact) return null
+
+  const contentW = availW - 2 * LAYOUT_CHROME.bodyPadding
+  const contentH =
+    availH -
+    2 * LAYOUT_CHROME.bodyPadding -
+    LAYOUT_CHROME.colHeaderHeight -
+    LAYOUT_CHROME.safetyMargin
+
+  let cs = quantizeCellSize(Math.min(exact.cellSize, MAX_CELL_SIZE))
+  const slots = exact.visibleSlots
+  const cols = exact.cols
+
+  while (cs >= MIN_CELL_SIZE) {
+    if (
+      fittedContentHeight(slots, cols, cs) <= contentH &&
+      fittedContentWidth(cols, cs) <= contentW
+    ) {
+      const space = spacingFor(cs)
+      const monthH = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
+      const monthW = 7 * cs + 6 * space.cellGap
+      return {
+        cols,
+        cellSizePct: cs / availW,
+        monthWidthPct: monthW / availW,
+        monthHeightPct: monthH / availH,
+        visibleSlots: slots,
+        showsAll: slots >= 12,
+        gridGap: space.gridGap,
+        monthPadding: space.monthPadding,
+        cellGap: space.cellGap,
+        cellGapX: space.cellGap,
+        cellGapY: space.cellGap,
+        monthHeader: space.monthHeader,
+        nameGap: space.nameGap,
+        cellSize: cs,
+        monthWidth: monthW,
+        monthHeight: monthH,
+      }
+    }
+    cs--
+  }
+
+  // Ni el tamaño mínimo entra: reducir meses visibles hasta que entren.
+  let reduced = Math.max(cols, slots - cols)
+  while (reduced >= cols) {
+    if (
+      fittedContentHeight(reduced, cols, MIN_CELL_SIZE) <= contentH &&
+      fittedContentWidth(cols, MIN_CELL_SIZE) <= contentW
+    ) {
+      const space = spacingFor(MIN_CELL_SIZE)
+      const monthH = 6 * MIN_CELL_SIZE + 5 * space.cellGap + space.monthHeader + space.nameGap
+      const monthW = 7 * MIN_CELL_SIZE + 6 * space.cellGap
+      return {
+        cols,
+        cellSizePct: MIN_CELL_SIZE / availW,
+        monthWidthPct: monthW / availW,
+        monthHeightPct: monthH / availH,
+        visibleSlots: reduced,
+        showsAll: false,
+        gridGap: space.gridGap,
+        monthPadding: space.monthPadding,
+        cellGap: space.cellGap,
+        cellGapX: space.cellGap,
+        cellGapY: space.cellGap,
+        monthHeader: space.monthHeader,
+        nameGap: space.nameGap,
+        cellSize: MIN_CELL_SIZE,
+        monthWidth: monthW,
+        monthHeight: monthH,
+      }
+    }
+    reduced -= cols
+  }
+  return null
 }

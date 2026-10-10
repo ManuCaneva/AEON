@@ -1,14 +1,17 @@
 import type { LayoutResult } from './calendarLayout'
-import { spacingFor } from './calendarLayout'
+import { monthFontRem, spacingFor } from './calendarLayout'
 
 /**
- * Cuantiza un tamaño de celda a pasos discretos proporcionales al tamaño
- * (>=10px → paso 1, luego paso ~10%). Garantiza al menos 1px de avance para
- * que el algoritmo nunca se congele en celdas chicas.
+ * Cuantiza un tamaño de celda al paso discreto INFERIOR proporcional al tamaño
+ * (>=10px → paso 1, luego paso ~10%). Siempre redondea hacia abajo para que el
+ * resultado nunca exceda un ajuste exacto ya verificado (ver
+ * computeFittedLayout): redondear hacia arriba desbordaría el cuerpo y
+ * cortaría el último mes. Garantiza al menos 1px de avance para que el
+ * algoritmo nunca se congele en celdas chicas.
  */
 export function quantizeCellSize(cs: number): number {
   const step = Math.max(1, Math.round(cs * 0.1))
-  return Math.max(1, Math.round(cs / step) * step)
+  return Math.max(1, Math.floor(cs / step) * step)
 }
 
 /**
@@ -84,7 +87,7 @@ export function layoutVars(l: LayoutResult): Record<string, string> {
     '--month-step': `${monthStep}px`,
     '--month-header': `${l.monthHeader}px`,
     '--name-gap': `${l.nameGap}px`,
-    '--font-size': `${Math.max(0.72, cs * 0.075)}rem`,
+    '--font-size': `${monthFontRem(cs)}rem`,
     '--title-font-size': `${Math.max(0.55, cs * 0.042)}rem`,
     '--viewport-h': l.showsAll ? 'auto' : `${rows * monthStep - l.gridGap}px`,
   }

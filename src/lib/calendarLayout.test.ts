@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { computeForCols, computeLayout, initialOffsetForMonth } from './calendarLayout'
+import {
+  computeForCols,
+  computeLayout,
+  initialOffsetForMonth,
+  monthFontRem,
+  computeFittedLayout,
+  LAYOUT_CHROME,
+} from './calendarLayout'
 
 describe('calendarLayout', () => {
   describe('computeForCols', () => {
@@ -127,6 +134,54 @@ describe('calendarLayout', () => {
           expect(month).toBeLessThan(offset + visibleSlots)
         }
       }
+    })
+  })
+
+  describe('monthFontRem', () => {
+    it('es un 20% más chico que la fórmula anterior (0.075 -> 0.06, piso 0.72 -> 0.576)', () => {
+      expect(monthFontRem(12)).toBeCloseTo(0.72, 5)
+      expect(monthFontRem(4)).toBeCloseTo(0.576, 5)
+      expect(monthFontRem(40)).toBeCloseTo(2.4, 5)
+    })
+  })
+
+  describe('spacingFor', () => {
+    it('la caja del título entra el texto con line-height 1.2 y text-scale máximo 1.15', async () => {
+      const { spacingFor } = await import('./calendarLayout')
+      for (let cs = 4; cs <= 60; cs++) {
+        const space = spacingFor(cs)
+        const fontPx = monthFontRem(cs) * 16
+        expect(space.monthHeader).toBeGreaterThanOrEqual(Math.ceil(fontPx * 1.2 * 1.15))
+      }
+    })
+  })
+
+  describe('computeFittedLayout', () => {
+    it('el viewport resultante nunca excede el alto disponible (diciembre no se corta)', () => {
+      const sizes: Array<[number, number]> = [
+        [300, 300],
+        [220, 750],
+        [500, 400],
+        [1200, 900],
+        [200, 200],
+      ]
+      for (const [w, h] of sizes) {
+        const layout = computeFittedLayout(w, h)
+        if (layout === null) continue
+        const rows = Math.ceil(layout.visibleSlots / layout.cols)
+        const viewportH = rows * (layout.monthHeight + layout.gridGap) - layout.gridGap
+        const chromeH =
+          2 * LAYOUT_CHROME.bodyPadding + LAYOUT_CHROME.colHeaderHeight + LAYOUT_CHROME.safetyMargin
+        expect(viewportH).toBeLessThanOrEqual(h - chromeH)
+      }
+    })
+
+    it('achica las celdas en lugar de desbordar cuando el cuerpo se encoge', () => {
+      const wide = computeFittedLayout(500, 600)
+      const narrow = computeFittedLayout(500, 350)
+      expect(wide).not.toBeNull()
+      expect(narrow).not.toBeNull()
+      expect(narrow!.cellSize).toBeLessThanOrEqual(wide!.cellSize)
     })
   })
 })
