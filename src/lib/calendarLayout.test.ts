@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeForCols, computeLayout } from './calendarLayout'
+import { computeForCols, computeLayout, initialOffsetForMonth } from './calendarLayout'
 
 describe('calendarLayout', () => {
   describe('computeForCols', () => {
@@ -88,6 +88,45 @@ describe('calendarLayout', () => {
       const result1 = computeLayout(800, 600, 1)
       expect(result1).not.toBeNull()
       expect(result1!.cols).toBe(1)
+    })
+  })
+
+  describe('initialOffsetForMonth', () => {
+    it('muestra el primer semestre cuando el mes está en ene-jun', () => {
+      expect(initialOffsetForMonth(0, 6, 2)).toBe(0)
+      expect(initialOffsetForMonth(5, 6, 2)).toBe(0)
+    })
+
+    it('muestra el segundo semestre cuando el mes está en jul-dic (octubre -> jul-dic)', () => {
+      expect(initialOffsetForMonth(9, 6, 2)).toBe(6)
+      expect(initialOffsetForMonth(6, 6, 2)).toBe(6)
+      expect(initialOffsetForMonth(11, 6, 2)).toBe(6)
+    })
+
+    it('alinea el offset a columnas completas', () => {
+      // Mes 7 con 6 visibles y 4 columnas: base 6 -> alineado a 4
+      expect(initialOffsetForMonth(7, 6, 4)).toBe(4)
+    })
+
+    it('devuelve 0 cuando caben los 12 meses', () => {
+      expect(initialOffsetForMonth(9, 12, 4)).toBe(0)
+    })
+
+    it('siempre incluye el mes actual dentro de la ventana visible', () => {
+      for (let month = 0; month < 12; month++) {
+        for (const [visibleSlots, cols] of [
+          [6, 1],
+          [6, 2],
+          [3, 3],
+          [2, 2],
+        ] as const) {
+          const offset = initialOffsetForMonth(month, visibleSlots, cols)
+          expect(offset).toBeGreaterThanOrEqual(0)
+          expect(offset).toBeLessThanOrEqual(12 - visibleSlots)
+          expect(month).toBeGreaterThanOrEqual(offset)
+          expect(month).toBeLessThan(offset + visibleSlots)
+        }
+      }
     })
   })
 })

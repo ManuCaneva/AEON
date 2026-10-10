@@ -186,3 +186,20 @@ export function computeLayout(
 
   return best
 }
+
+/**
+ * Offset inicial del viewport de meses para que el mes dado quede visible.
+ * Agrupa por páginas de `visibleSlots` y alinea a filas completas (`cols`).
+ */
+export function initialOffsetForMonth(
+  monthIndex: number,
+  visibleSlots: number,
+  cols: number
+): number {
+  if (visibleSlots >= 12) return 0
+  const safeCols = Math.max(1, cols)
+  const maxOffset = Math.max(0, 12 - visibleSlots)
+  const base = Math.floor(monthIndex / visibleSlots) * visibleSlots
+  const clamped = Math.min(Math.max(0, base), maxOffset)
+  return Math.floor(clamped / safeCols) * safeCols
+}

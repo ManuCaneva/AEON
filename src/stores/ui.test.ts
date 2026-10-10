@@ -492,3 +492,37 @@ describe('ui store: diálogo de salida', () => {
     expect(ui.editMode).toBe(true)
   })
 })
+
+describe('ui store: vista inicial', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    const values = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('siempre abre en dashboard aunque haya una vista persistida', () => {
+    localStorage.setItem('aeon.viewMode', JSON.stringify('settings'))
+    const ui = useUiStore()
+    expect(ui.viewMode).toBe('dashboard')
+  })
+
+  it('sigue permitiendo navegar luego del arranque', () => {
+    localStorage.setItem('aeon.viewMode', JSON.stringify('pomodoro'))
+    const ui = useUiStore()
+    expect(ui.viewMode).toBe('dashboard')
+    ui.setViewMode('settings')
+    expect(ui.viewMode).toBe('settings')
+  })
+})

@@ -6,7 +6,7 @@ import Container from '@/components/ui/Container.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2 } from 'lucide-vue-next'
-import { computeLayout, type LayoutResult } from '@/lib/calendarLayout'
+import { computeLayout, initialOffsetForMonth, type LayoutResult } from '@/lib/calendarLayout'
 import { significantChange, layoutVars, quantizeLayout } from '@/lib/calendarResize'
 import { DAY_LABELS } from '@/lib/calendarDates'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
@@ -38,6 +38,16 @@ const layout = ref<LayoutResult | null>(null)
 const offset = ref(0)
 const selectedDate = ref('')
 const showDayModal = ref(false)
+
+/**
+ * Offset con el que debe arrancar un año: el año en curso muestra el
+ * semestre del mes actual, cualquier otro año arranca desde enero.
+ */
+function offsetForYear(year: number, visibleSlots: number, cols: number): number {
+  const now = new Date()
+  if (year !== now.getFullYear()) return 0
+  return initialOffsetForMonth(now.getMonth(), visibleSlots, cols)
+}
 
 function openDayModal(date: string) {
   selectedDate.value = date
@@ -105,7 +115,15 @@ function recomputeNow() {
   // significativo (estructura o tamaño en un paso discreto). Los 12 MonthMini
   // reciben props estables, así que Vue no los re-renderiza: solo el shell del
   // widget se actualiza (variables CSS + footer), que es barato.
+  const isFirstLayout = layout.value === null
   layout.value = candidate
+
+  if (isFirstLayout) {
+    // Al abrir, el viewport arranca en el semestre del mes actual para que
+    // el mes en curso quede visible (ej. octubre -> jul-dic).
+    offset.value = offsetForYear(store.currentYear, candidate.visibleSlots, candidate.cols)
+    return
+  }
 
   const maxOffset = Math.max(0, 12 - candidate.visibleSlots)
   offset.value = Math.min(offset.value, maxOffset)
@@ -184,6 +202,9 @@ watch(
   (newYear, oldYear) => {
     if (newYear !== oldYear) {
       store.syncYear(newYear)
+      if (layout.value) {
+        offset.value = offsetForYear(newYear, layout.value.visibleSlots, layout.value.cols)
+      }
     }
   }
 )

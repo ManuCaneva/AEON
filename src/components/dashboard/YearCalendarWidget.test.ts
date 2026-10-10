@@ -252,6 +252,47 @@ describe('YearCalendarWidget', () => {
     vi.unstubAllGlobals()
   })
 
+  it('arranca en el semestre del mes actual (octubre -> jul-dic)', async () => {
+    const getMonthSpy = vi.spyOn(Date.prototype, 'getMonth').mockReturnValue(9)
+    const getFullYearSpy = vi.spyOn(Date.prototype, 'getFullYear').mockReturnValue(2026)
+    mockStore.currentYear = 2026
+    let resizeCallback: (() => void) | null = null
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resizeCallback = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+
+    const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
+    const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+    Object.defineProperty(bodyEl, 'clientWidth', { value: 300, configurable: true })
+    Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+
+    if (resizeCallback) {
+      ;(resizeCallback as () => void)()
+    }
+    await flushRaf()
+    await wrapper.vm.$nextTick()
+
+    // Offset inicial 6/6: ya estamos al final, se puede subir pero no bajar.
+    const up = wrapper.find("[data-testid='month-up']")
+    const down = wrapper.find("[data-testid='month-down']")
+    expect(up.exists()).toBe(true)
+    expect(down.exists()).toBe(true)
+    expect(up.attributes('disabled')).toBeUndefined()
+    expect(down.attributes('disabled')).not.toBeUndefined()
+
+    getMonthSpy.mockRestore()
+    getFullYearSpy.mockRestore()
+    vi.unstubAllGlobals()
+    wrapper.unmount()
+  })
+
   it('difiere el recompute a rAF y no vuelve a calcular en cada frame del resize', async () => {
     let resizeCallback: (() => void) | null = null
     vi.stubGlobal(

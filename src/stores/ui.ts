@@ -89,7 +89,10 @@ export const useUiStore = defineStore('ui', () => {
     },
   })
 
-  const viewMode = ref<ViewMode>(stored.value)
+  const viewMode = ref<ViewMode>('dashboard')
+  // La app siempre abre en el dashboard: se descarta cualquier vista
+  // persistida de la sesión anterior. La navegación posterior sí se persiste.
+  if (stored.value !== 'dashboard') stored.value = 'dashboard'
 
   watch(viewMode, (v) => {
     stored.value = v
