@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import * as db from '@/lib/db'
 import { useUiStore } from './ui'
@@ -524,5 +525,25 @@ describe('ui store: vista inicial', () => {
     expect(ui.viewMode).toBe('dashboard')
     ui.setViewMode('settings')
     expect(ui.viewMode).toBe('settings')
+  })
+
+  it('no pisa la vista persistida en el arranque (solo la ignora en memoria)', async () => {
+    const writes: Array<{ key: string; value: string }> = []
+    const values = new Map<string, string>([['aeon.viewMode', JSON.stringify('settings')]])
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        writes.push({ key, value })
+        values.set(key, value)
+      },
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    })
+    setActivePinia(createPinia())
+    const ui = useUiStore()
+    expect(ui.viewMode).toBe('dashboard')
+    await nextTick()
+    await nextTick()
+    expect(writes.filter((w) => w.key === 'aeon.viewMode')).toEqual([])
   })
 })

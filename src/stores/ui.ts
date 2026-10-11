@@ -90,9 +90,9 @@ export const useUiStore = defineStore('ui', () => {
   })
 
   const viewMode = ref<ViewMode>('dashboard')
-  // La app siempre abre en el dashboard: se descarta cualquier vista
-  // persistida de la sesión anterior. La navegación posterior sí se persiste.
-  if (stored.value !== 'dashboard') stored.value = 'dashboard'
+  // La app siempre abre en el dashboard: se ignora cualquier vista
+  // persistida de la sesión anterior solo en memoria, sin pisar el
+  // almacenamiento. La navegación posterior sí se persiste vía watch.
 
   watch(viewMode, (v) => {
     stored.value = v
@@ -231,11 +231,6 @@ export const useUiStore = defineStore('ui', () => {
     document.documentElement.style.setProperty('--glass-widget-alpha', String(alpha))
   }
 
-  /** Resuelve el id de preset a su URL empaquetada, o null si es desconocido. */
-  function resolvePresetUrl(presetId: string | null): string | null {
-    return presetWallpaperUrl(presetId)
-  }
-
   async function persistWallpaperSettings(settings: WallpaperSettings): Promise<void> {
     await db.saveConfig(WALLPAPER_SETTINGS_KEY, JSON.stringify(settings))
   }
@@ -246,7 +241,7 @@ export const useUiStore = defineStore('ui', () => {
     // Preset desconocido (asset eliminado): se descarta sin lanzar.
     const presetId = isPresetWallpaperId(settings.presetId) ? settings.presetId : null
     wallpaperPresetId.value = presetId
-    wallpaperUrl.value = resolvePresetUrl(presetId) ?? settings.dataUrl
+    wallpaperUrl.value = presetWallpaperUrl(presetId) ?? settings.dataUrl
     widgetGlassAlpha.value = settings.widgetGlassAlpha
     applyGlassAlphaVar(settings.widgetGlassAlpha)
   }
@@ -263,7 +258,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   async function setWallpaperPreset(presetId: string): Promise<void> {
-    const url = resolvePresetUrl(presetId)
+    const url = presetWallpaperUrl(presetId)
     if (!url) throw new Error(`setWallpaperPreset: preset desconocido (${presetId})`)
     const settings = WallpaperSettingsSchema.parse({
       dataUrl: null,
