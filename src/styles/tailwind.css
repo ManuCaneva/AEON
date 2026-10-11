@@ -183,6 +183,11 @@
    aprovechar el espacio sin cambiar la legibilidad. */
 .container-widget .text-card-title {
   font-size: calc(1.25rem * var(--text-scale));
+  /* Tamaño fijo sin mínimo responsivo: en widgets chicos el título
+     se recorta con ellipsis en vez de desbordar la card. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .container-widget .text-body {
   font-size: calc(0.9rem * var(--text-scale));

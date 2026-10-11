@@ -40,4 +40,14 @@ describe('widget typography (tamaño fijo)', () => {
       expect(css).toMatch(rule)
     }
   })
+
+  it('el título fijo de widget no desborda en widgets chicos (ellipsis)', () => {
+    const css = readFileSync('src/styles/tailwind.css', 'utf-8')
+    const match = css.match(/\.container-widget \.text-card-title\s*\{[^}]*\}/)
+    expect(match).not.toBeNull()
+    const rule = match![0]
+    expect(rule).toMatch(/overflow:\s*hidden/)
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/)
+    expect(rule).toMatch(/white-space:\s*nowrap/)
+  })
 })
