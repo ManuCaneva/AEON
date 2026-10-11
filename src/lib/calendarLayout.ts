@@ -208,6 +208,8 @@ export function computeLayout(
 /**
  * Offset inicial del viewport de meses para que el mes dado quede visible.
  * Agrupa por páginas de `visibleSlots` y alinea a filas completas (`cols`).
+ * Si ningún múltiplo de `cols` incluye al mes (cola con fila parcial),
+ * prioriza que el mes quede visible sobre la alineación.
  */
 export function initialOffsetForMonth(
   monthIndex: number,
@@ -217,9 +219,31 @@ export function initialOffsetForMonth(
   if (visibleSlots >= 12) return 0
   const safeCols = Math.max(1, cols)
   const maxOffset = Math.max(0, 12 - visibleSlots)
-  const base = Math.floor(monthIndex / visibleSlots) * visibleSlots
-  const clamped = Math.min(Math.max(0, base), maxOffset)
-  return Math.floor(clamped / safeCols) * safeCols
+  const month = Math.min(Math.max(0, monthIndex), 11)
+  const base = Math.floor(month / visibleSlots) * visibleSlots
+  const clampedBase = Math.min(Math.max(0, base), maxOffset)
+  const lo = Math.max(0, month - visibleSlots + 1)
+  const hi = Math.min(month, maxOffset)
+  let best: number | null = null
+  for (let o = Math.ceil(lo / safeCols) * safeCols; o <= hi; o += safeCols) {
+    if (best === null || Math.abs(o - clampedBase) < Math.abs(best - clampedBase)) best = o
+  }
+  if (best !== null) return best
+  return hi
+}
+
+/**
+ * Offset con el que debe arrancar un año: el año en curso muestra el
+ * semestre del mes actual, cualquier otro año arranca desde enero.
+ */
+export function offsetForYear(
+  year: number,
+  visibleSlots: number,
+  cols: number,
+  now: Date = new Date()
+): number {
+  if (year !== now.getFullYear()) return 0
+  return initialOffsetForMonth(now.getMonth(), visibleSlots, cols)
 }
 
 function fittedContentHeight(slots: number, cols: number, cs: number): number {
@@ -233,6 +257,36 @@ function fittedContentWidth(cols: number, cs: number): number {
   const space = spacingFor(cs)
   const monthW = 7 * cs + 6 * space.cellGap
   return cols * monthW + (cols - 1) * space.gridGap
+}
+
+function buildLayoutResult(
+  cols: number,
+  slots: number,
+  cs: number,
+  availW: number,
+  availH: number
+): LayoutResult {
+  const space = spacingFor(cs)
+  const monthH = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
+  const monthW = 7 * cs + 6 * space.cellGap
+  return {
+    cols,
+    cellSizePct: cs / availW,
+    monthWidthPct: monthW / availW,
+    monthHeightPct: monthH / availH,
+    visibleSlots: slots,
+    showsAll: slots >= 12,
+    gridGap: space.gridGap,
+    monthPadding: space.monthPadding,
+    cellGap: space.cellGap,
+    cellGapX: space.cellGap,
+    cellGapY: space.cellGap,
+    monthHeader: space.monthHeader,
+    nameGap: space.nameGap,
+    cellSize: cs,
+    monthWidth: monthW,
+    monthHeight: monthH,
+  }
 }
 
 /**
@@ -265,27 +319,7 @@ export function computeFittedLayout(
       fittedContentHeight(slots, cols, cs) <= contentH &&
       fittedContentWidth(cols, cs) <= contentW
     ) {
-      const space = spacingFor(cs)
-      const monthH = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
-      const monthW = 7 * cs + 6 * space.cellGap
-      return {
-        cols,
-        cellSizePct: cs / availW,
-        monthWidthPct: monthW / availW,
-        monthHeightPct: monthH / availH,
-        visibleSlots: slots,
-        showsAll: slots >= 12,
-        gridGap: space.gridGap,
-        monthPadding: space.monthPadding,
-        cellGap: space.cellGap,
-        cellGapX: space.cellGap,
-        cellGapY: space.cellGap,
-        monthHeader: space.monthHeader,
-        nameGap: space.nameGap,
-        cellSize: cs,
-        monthWidth: monthW,
-        monthHeight: monthH,
-      }
+      return buildLayoutResult(cols, slots, cs, availW, availH)
     }
     cs--
   }
@@ -297,27 +331,7 @@ export function computeFittedLayout(
       fittedContentHeight(reduced, cols, MIN_CELL_SIZE) <= contentH &&
       fittedContentWidth(cols, MIN_CELL_SIZE) <= contentW
     ) {
-      const space = spacingFor(MIN_CELL_SIZE)
-      const monthH = 6 * MIN_CELL_SIZE + 5 * space.cellGap + space.monthHeader + space.nameGap
-      const monthW = 7 * MIN_CELL_SIZE + 6 * space.cellGap
-      return {
-        cols,
-        cellSizePct: MIN_CELL_SIZE / availW,
-        monthWidthPct: monthW / availW,
-        monthHeightPct: monthH / availH,
-        visibleSlots: reduced,
-        showsAll: false,
-        gridGap: space.gridGap,
-        monthPadding: space.monthPadding,
-        cellGap: space.cellGap,
-        cellGapX: space.cellGap,
-        cellGapY: space.cellGap,
-        monthHeader: space.monthHeader,
-        nameGap: space.nameGap,
-        cellSize: MIN_CELL_SIZE,
-        monthWidth: monthW,
-        monthHeight: monthH,
-      }
+      return buildLayoutResult(cols, reduced, MIN_CELL_SIZE, availW, availH)
     }
     reduced -= cols
   }

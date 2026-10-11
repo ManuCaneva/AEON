@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import YearCalendarWidget from './YearCalendarWidget.vue'
+import { offsetForYear } from '@/lib/calendarLayout'
 import MonthMini from '@/components/calendar/MonthMini.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
@@ -284,6 +285,14 @@ describe('YearCalendarWidget', () => {
 
     vi.unstubAllGlobals()
     wrapper.unmount()
+  })
+
+  it('offsetForYear recibe la fecha como parámetro (testeable sin espiar Date)', () => {
+    const oct2026 = new Date(2026, 9, 15)
+    expect(offsetForYear(2026, 6, 2, oct2026)).toBe(6)
+    expect(offsetForYear(2026, 6, 2, new Date(2026, 2, 10))).toBe(0)
+    expect(offsetForYear(2025, 6, 2, oct2026)).toBe(0)
+    expect(offsetForYear(2027, 6, 2, oct2026)).toBe(0)
   })
 
   it('arranca en el semestre del mes actual (octubre -> jul-dic)', async () => {

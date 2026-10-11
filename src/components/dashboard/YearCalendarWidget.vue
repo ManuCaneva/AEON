@@ -6,7 +6,7 @@ import Container from '@/components/ui/Container.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2 } from 'lucide-vue-next'
-import { computeFittedLayout, initialOffsetForMonth, type LayoutResult } from '@/lib/calendarLayout'
+import { computeFittedLayout, offsetForYear, type LayoutResult } from '@/lib/calendarLayout'
 import { significantChange, layoutVars } from '@/lib/calendarResize'
 import { DAY_LABELS } from '@/lib/calendarDates'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
@@ -38,16 +38,6 @@ const layout = ref<LayoutResult | null>(null)
 const offset = ref(0)
 const selectedDate = ref('')
 const showDayModal = ref(false)
-
-/**
- * Offset con el que debe arrancar un año: el año en curso muestra el
- * semestre del mes actual, cualquier otro año arranca desde enero.
- */
-function offsetForYear(year: number, visibleSlots: number, cols: number): number {
-  const now = new Date()
-  if (year !== now.getFullYear()) return 0
-  return initialOffsetForMonth(now.getMonth(), visibleSlots, cols)
-}
 
 function openDayModal(date: string) {
   selectedDate.value = date

@@ -124,6 +124,9 @@ describe('calendarLayout', () => {
         for (const [visibleSlots, cols] of [
           [6, 1],
           [6, 2],
+          [6, 3],
+          [6, 4],
+          [8, 4],
           [3, 3],
           [2, 2],
         ] as const) {
