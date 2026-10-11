@@ -53,13 +53,19 @@ describe('MonthMini', () => {
     expect(monthEl.attributes('title')).toBeUndefined()
   })
 
-  it('muestra el día exacto formateado en el tooltip de la celda de día', () => {
+  it('muestra la fecha exacta completa en el tooltip rico al hover', async () => {
     const wrapper = mount(MonthMini, {
+      attachTo: document.body,
       props: { year: 2026, month: 0, eventsByDate },
     })
     const cells = wrapper.findAll("[data-testid='day-cell']")
     const cell15 = cells[14] // 15 de Enero
-    expect(cell15.attributes('title')).toBe('15 de Enero')
+    await cell15.trigger('mouseenter')
+    const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+    expect(tooltip).not.toBeNull()
+    expect(tooltip!.textContent).toContain('Jueves, 15 de enero de 2026')
+    wrapper.unmount()
+    document.body.innerHTML = ''
   })
 
   it('emite select-day al hacer clic en una celda con fecha', async () => {
@@ -160,8 +166,9 @@ describe('MonthMini', () => {
 
     const todayCells = wrapper.findAll('.day-cell--today')
     expect(todayCells).toHaveLength(1)
-    // El marcaje cae en la celda cuya fecha es exactamente la de hoy
-    expect(todayCells[0].attributes('title')).toBe('15 de Enero')
+    // El marcaje cae en la celda cuya fecha es exactamente la de hoy (15 de enero)
+    const cells = wrapper.findAll("[data-testid='day-cell']")
+    expect(todayCells[0].element).toBe(cells[14].element)
     // Halo: fondo tint del acento + borde fino del acento (1–2px)
     expect(todayCells[0].classes()).toContain('bg-accent-purple-tint')
     expect(todayCells[0].classes()).toContain('ring-2')
@@ -177,9 +184,10 @@ describe('MonthMini', () => {
     // (jueves 22), ni las celdas de padding (febrero visto como relleno)
     const marked = enero.findAll('.day-cell--today')
     expect(marked).toHaveLength(1)
-    expect(marked[0].attributes('title')).toBe('15 de Enero')
+    const eneroCells = enero.findAll("[data-testid='day-cell']")
+    expect(marked[0].element).toBe(eneroCells[14].element)
     for (const cell of enero.findAll('.day-cell')) {
-      if (cell.attributes('title') !== '15 de Enero') {
+      if (cell.element !== eneroCells[14].element) {
         expect(cell.classes()).not.toContain('day-cell--today')
       }
     }
@@ -210,7 +218,8 @@ describe('MonthMini', () => {
 
     const marked = wrapper.findAll('.day-cell--today')
     expect(marked).toHaveLength(1)
-    expect(marked[0].attributes('title')).toBe('15 de Enero')
+    const cells = wrapper.findAll("[data-testid='day-cell']")
+    expect(marked[0].element).toBe(cells[14].element)
   })
 
   it('los puntos de eventos del día siguen visibles en la celda marcada', () => {
@@ -239,5 +248,118 @@ describe('MonthMini', () => {
   it('el nombre del mes acompaña la escala de Configuración (--text-scale)', () => {
     const sfc = readFileSync('src/components/calendar/MonthMini.vue', 'utf-8')
     expect(sfc).toMatch(/\.month-mini__name\s*\{[^}]*var\(--text-scale/)
+  })
+
+  describe('tooltip de día al hover', () => {
+    afterEach(() => {
+      document.body.innerHTML = ''
+    })
+
+    function mountAttached(props: Record<string, unknown>) {
+      return mount(MonthMini, {
+        attachTo: document.body,
+        props: { year: 2026, month: 0, eventsByDate, ...props },
+      })
+    }
+
+    function hoverCell(wrapper: ReturnType<typeof mount>, index: number) {
+      const cells = wrapper.findAll("[data-testid='day-cell']")
+      return cells[index]
+    }
+
+    it('las celdas no usan title nativo (el tooltip rico lo reemplaza)', () => {
+      const wrapper = mountAttached({})
+      for (const cell of wrapper.findAll("[data-testid='day-cell']")) {
+        expect(cell.attributes('title')).toBeUndefined()
+      }
+      wrapper.unmount()
+    })
+
+    it('muestra fecha exacta y títulos con dots al hacer hover en un día con eventos', async () => {
+      const wrapper = mountAttached({})
+      const cell15 = hoverCell(wrapper, 14) // 15 de Enero
+      await cell15.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.textContent).toContain('15 de enero de 2026')
+      expect(tooltip!.textContent).toContain('Standup')
+      expect(tooltip!.textContent).toContain('Review')
+      expect(tooltip!.querySelectorAll("[data-testid='day-tooltip-dot']")).toHaveLength(2)
+      wrapper.unmount()
+    })
+
+    it('muestra fecha y "Sin eventos" al hacer hover en un día vacío', async () => {
+      const wrapper = mountAttached({})
+      const cell16 = hoverCell(wrapper, 15) // 16 de Enero, sin eventos
+      await cell16.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.textContent).toContain('16 de enero de 2026')
+      expect(tooltip!.textContent).toContain('Sin eventos')
+      wrapper.unmount()
+    })
+
+    it('oculta el tooltip al salir el mouse de la celda', async () => {
+      const wrapper = mountAttached({})
+      const cell15 = hoverCell(wrapper, 14)
+      await cell15.trigger('mouseenter')
+      expect(document.body.querySelector("[data-testid='day-tooltip']")).not.toBeNull()
+      await cell15.trigger('mouseleave')
+      expect(document.body.querySelector("[data-testid='day-tooltip']")).toBeNull()
+      wrapper.unmount()
+    })
+
+    it('limita el tooltip a 5 títulos y muestra +N más', async () => {
+      const manyEvents: CalendarEvent[] = Array.from({ length: 7 }, (_, i) => ({
+        id: `t${i}`,
+        date: '2026-01-20',
+        title: `Tarea ${i}`,
+        color: '#e67c73',
+        calendarId: 'primary',
+        start: `2026-01-20T${String(i + 9).padStart(2, '0')}:00:00Z`,
+        end: `2026-01-20T${String(i + 10).padStart(2, '0')}:00:00Z`,
+      }))
+      const map = new Map<string, CalendarEvent[]>()
+      map.set('2026-01-20', manyEvents)
+      const wrapper = mountAttached({ eventsByDate: map })
+      const cells = wrapper.findAll("[data-testid='day-cell']")
+      const cell20 = cells[19] // 20 de Enero
+      await cell20.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.querySelectorAll("[data-testid='day-tooltip-item']")).toHaveLength(5)
+      expect(tooltip!.textContent).toContain('+2 más')
+      wrapper.unmount()
+    })
+
+    it('posiciona el tooltip debajo de la celda, pegado al día', async () => {
+      const wrapper = mountAttached({})
+      const cells = wrapper.findAll("[data-testid='day-cell']")
+      const cell15 = cells[14] // 15 de Enero
+      cell15.element.getBoundingClientRect = () =>
+        ({ top: 300, bottom: 310, left: 100, right: 110, width: 10, height: 10 }) as DOMRect
+      await cell15.trigger('mouseenter')
+      const tooltip = document.body.querySelector(
+        "[data-testid='day-tooltip']"
+      ) as HTMLElement | null
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.style.top).toBe('318px')
+      wrapper.unmount()
+    })
+
+    it('también va debajo en las celdas del fondo (diciembre), sin voltearse arriba', async () => {
+      const wrapper = mountAttached({})
+      const cells = wrapper.findAll("[data-testid='day-cell']")
+      const cell15 = cells[14]
+      cell15.element.getBoundingClientRect = () =>
+        ({ top: 700, bottom: 710, left: 100, right: 110, width: 10, height: 10 }) as DOMRect
+      await cell15.trigger('mouseenter')
+      const tooltip = document.body.querySelector(
+        "[data-testid='day-tooltip']"
+      ) as HTMLElement | null
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.style.top).toBe('718px')
+      wrapper.unmount()
+    })
   })
 })

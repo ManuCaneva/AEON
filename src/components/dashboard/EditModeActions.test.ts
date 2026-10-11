@@ -95,11 +95,29 @@ describe('EditModeActions', () => {
     expect(toastEl()?.textContent).toContain('Cambios guardados')
   })
 
-  it('deshabilita ambos botones cuando no hay cambios pendientes', () => {
+  it('habilita ambos botones aunque no haya cambios pendientes para poder cerrar la edición', () => {
     hasUnsavedChangesValue = false
     const w = factory()
-    expect(w.find("[data-testid='edit-save']").attributes('disabled')).toBeDefined()
-    expect(w.find("[data-testid='edit-discard']").attributes('disabled')).toBeDefined()
+    expect(w.find("[data-testid='edit-save']").attributes('disabled')).toBeUndefined()
+    expect(w.find("[data-testid='edit-discard']").attributes('disabled')).toBeUndefined()
+  })
+
+  it('sin cambios, Guardar cierra la edición en silencio sin persistir', async () => {
+    hasUnsavedChangesValue = false
+    const w = factory()
+    await w.find("[data-testid='edit-save']").trigger('click')
+    expect(mockExitEditMode).toHaveBeenCalledOnce()
+    expect(mockSaveEdit).not.toHaveBeenCalled()
+    expect(toastEl()).toBeNull()
+  })
+
+  it('sin cambios, Descartar cierra la edición en silencio sin restaurar', async () => {
+    hasUnsavedChangesValue = false
+    const w = factory()
+    await w.find("[data-testid='edit-discard']").trigger('click')
+    expect(mockExitEditMode).toHaveBeenCalledOnce()
+    expect(mockDiscardEdit).not.toHaveBeenCalled()
+    expect(toastEl()).toBeNull()
   })
 
   it('habilita ambos botones cuando hay cambios pendientes', () => {

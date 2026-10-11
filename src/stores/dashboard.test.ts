@@ -80,6 +80,28 @@ describe('dashboard store (grilla entera)', () => {
     expect(store.layout[0].h).toBe(5) // round(0.5 * 10)
   })
 
+  it('refresca minW/minH desde el registro al cargar enteros con mínimos viejos', async () => {
+    vi.mocked(loadConfig).mockResolvedValue(
+      JSON.stringify([{ i: 'year-calendar', x: 11, y: 0, w: 1, h: 10, minW: 1, minH: 3 }])
+    )
+    const store = useDashboardStore()
+    await flush()
+    expect(store.layout).toHaveLength(1)
+    expect(store.layout[0].minW).toBe(1)
+    expect(store.layout[0].minH).toBe(2)
+  })
+
+  it('conserva los mínimos guardados si el widget ya no está en el registro', async () => {
+    vi.mocked(loadConfig).mockResolvedValue(
+      JSON.stringify([{ i: 'widget-fantasma', x: 0, y: 0, w: 2, h: 2, minW: 2, minH: 2 }])
+    )
+    const store = useDashboardStore()
+    await flush()
+    expect(store.layout).toHaveLength(1)
+    expect(store.layout[0].minW).toBe(2)
+    expect(store.layout[0].minH).toBe(2)
+  })
+
   it('restaura minW/minH del registro de widgets al migrar desde porcentajes', async () => {
     vi.mocked(loadConfig).mockResolvedValue(
       JSON.stringify([

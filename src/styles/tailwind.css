@@ -182,7 +182,7 @@
    por el usuario. El espaciado/iconos sí siguen usando cqw para
    aprovechar el espacio sin cambiar la legibilidad. */
 .container-widget .text-card-title {
-  font-size: calc(1.25rem * var(--text-scale));
+  font-size: calc(1rem * var(--text-scale));
   /* Tamaño fijo sin mínimo responsivo: en widgets chicos el título
      se recorta con ellipsis en vez de desbordar la card. */
   overflow: hidden;
@@ -360,7 +360,7 @@
   padding: max(0.25rem, 0.5cqw) max(0.5rem, 1cqw);
 }
 .container-widget .schedule-widget-header .text-card-title {
-  font-size: calc(1.25rem * var(--text-scale));
+  font-size: calc(1rem * var(--text-scale));
 }
 .container-widget .schedule-widget-header .h-3\.5 {
   width: max(0.75rem, 2cqw);
@@ -377,7 +377,7 @@
     padding: 0.125rem 0.375rem;
   }
   .container-widget .goals-header-responsive .text-card-title {
-    font-size: calc(0.675rem * var(--text-scale));
+    font-size: calc(0.54rem * var(--text-scale));
   }
   .container-widget .entity-footer-responsive {
     padding: 0.125rem;

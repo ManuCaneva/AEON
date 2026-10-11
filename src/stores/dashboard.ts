@@ -195,14 +195,17 @@ function validateLayout(raw: unknown): Layout | null {
   for (const item of raw) {
     let migrated: LayoutItem | null = null
     if (isIntegerItem(item)) {
+      // Los mínimos son del registro (fuente de verdad): un layout guardado
+      // con mínimos viejos se actualiza solo al cargar.
+      const widget = getWidgetById(item.i)
       migrated = {
         i: item.i,
         x: clamp(item.x, 0, COLS - 1),
         y: clamp(item.y, 0, ROWS - 1),
         w: clamp(item.w, 1, COLS),
         h: clamp(item.h, 1, ROWS),
-        minW: item.minW,
-        minH: item.minH,
+        minW: widget?.minW ?? item.minW,
+        minH: widget?.minH ?? item.minH,
         maxW: item.maxW,
         maxH: item.maxH,
       }

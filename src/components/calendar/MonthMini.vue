@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
+import { useDayTooltip } from '@/composables/useDayTooltip'
 import type { CalendarEvent } from '@/schemas/calendar'
+import DayTooltip from './DayTooltip.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -34,29 +36,6 @@ function isToday(date: string | null): boolean {
   return date !== null && date === todayDate.value
 }
 
-const MONTHS = [
-  'Enero',
-  'Febrero',
-  'Marzo',
-  'Abril',
-  'Mayo',
-  'Junio',
-  'Julio',
-  'Agosto',
-  'Septiembre',
-  'Octubre',
-  'Noviembre',
-  'Diciembre',
-]
-
-function formatTooltipDate(dateStr: string | null): string {
-  if (!dateStr) return ''
-  const [, monthStr, dayStr] = dateStr.split('-')
-  const day = parseInt(dayStr, 10)
-  const monthIndex = parseInt(monthStr, 10) - 1
-  return `${day} de ${MONTHS[monthIndex]}`
-}
-
 function getEvents(date: string | null): CalendarEvent[] {
   if (!date) return []
   return props.eventsByDate.get(date) ?? []
@@ -68,6 +47,14 @@ function visibleDots(date: string | null): CalendarEvent[] {
 
 function overflowCount(date: string | null): number {
   return Math.max(0, getEvents(date).length - MAX_DOTS)
+}
+
+const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
+
+function onDaySelect(date: string | null) {
+  if (!date) return
+  hideTooltip()
+  emit('select-day', date)
 }
 </script>
 
@@ -102,8 +89,11 @@ function overflowCount(date: string | null): number {
               ),
             },
           ]"
-          :title="cell.date ? formatTooltipDate(cell.date) : undefined"
-          @click="cell.date && emit('select-day', cell.date)"
+          @click="onDaySelect(cell.date)"
+          @mouseenter="onDayEnter(cell.date, $event)"
+          @mouseleave="hideTooltip"
+          @focus="onDayEnter(cell.date, $event)"
+          @blur="hideTooltip"
         >
           <template v-if="cell.date">
             <span
@@ -120,6 +110,13 @@ function overflowCount(date: string | null): number {
         </div>
       </template>
     </div>
+    <DayTooltip
+      v-if="hovered"
+      :date-label="hovered.label"
+      :events="hovered.events"
+      :overflow-count="hovered.overflow"
+      :position="hovered.position"
+    />
   </div>
 </template>
 

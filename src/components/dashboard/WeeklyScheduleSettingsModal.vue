@@ -55,20 +55,26 @@ async function save() {
 </script>
 
 <template>
-  <Modal :open="open" size="sm" @close="emit('close')">
+  <Modal :open="open" size="md" @close="emit('close')">
     <div class="p-4">
       <h3 class="mb-3 text-card-title font-semibold text-ink">Ajustes del cronograma</h3>
       <label class="mb-1.5 block text-caption font-medium text-ink-muted">Granularidad</label>
-      <div class="mb-4 flex gap-2">
+      <div
+        role="radiogroup"
+        aria-label="Granularidad"
+        class="mb-4 flex gap-1 rounded-lg border border-hairline bg-surface-2 p-1"
+      >
         <button
           v-for="g in [15, 30, 60]"
           :key="g"
           type="button"
+          role="radio"
+          :aria-checked="granularity === g"
           :class="[
-            'rounded-md border px-3 py-1.5 text-body-sm transition-colors',
+            'flex-1 rounded-md px-3 py-1.5 text-body-sm transition-colors',
             granularity === g
-              ? 'border-primary bg-primary text-on-primary'
-              : 'border-hairline text-ink-muted hover:bg-surface-2',
+              ? 'bg-primary text-on-primary shadow-sm'
+              : 'text-ink-muted hover:text-ink',
           ]"
           @click="granularity = g"
         >
@@ -76,17 +82,17 @@ async function save() {
         </button>
       </div>
       <label class="mb-1.5 block text-caption font-medium text-ink-muted">Días activos</label>
-      <div class="mb-4 grid grid-cols-4 gap-2 sm:grid-cols-7">
+      <div class="mb-4 grid grid-cols-7 gap-1.5">
         <button
           v-for="(day, index) in DAYS"
           :key="day"
           type="button"
           :aria-pressed="enabledDays.includes(index)"
           :class="[
-            'rounded-md border px-2 py-1.5 text-body-sm transition-colors',
+            'min-w-0 whitespace-nowrap rounded-full border px-2 py-1.5 text-center text-body-sm transition-colors duration-150',
             enabledDays.includes(index)
-              ? 'border-primary bg-primary text-on-primary'
-              : 'border-hairline text-ink-muted hover:bg-surface-2',
+              ? 'border-primary/60 bg-accent-purple-tint text-accent-purple'
+              : 'border-hairline bg-surface-1 text-ink-tertiary hover:border-hairline-strong hover:text-ink-muted',
           ]"
           @click="toggleDay(index)"
         >

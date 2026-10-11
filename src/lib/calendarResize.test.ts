@@ -94,6 +94,18 @@ describe('significantChange', () => {
     expect(significantChange(big, { ...big, cellSize: 40 })).toBe('none')
   })
 
+  it('redistribuir el sobrante en los gaps es un cambio de tamaño (el llenado sigue al resize)', () => {
+    expect(significantChange(base, { ...base, gridGap: 12 })).toBe('size')
+    expect(significantChange(base, { ...base, cellGapX: 4 })).toBe('size')
+    expect(significantChange(base, { ...base, cellGapY: 4 })).toBe('size')
+  })
+
+  it('ignora jitter sub-pixel de los gaps (no spamea updates)', () => {
+    expect(significantChange(base, { ...base, gridGap: 6.2, cellGapX: 2.1, cellGapY: 1.9 })).toBe(
+      'none'
+    )
+  })
+
   it('el paso del tamaño de celda crece con el tamaño (es proporcional)', () => {
     expect(quantizeCellSize(21)).toBe(20)
     expect(quantizeCellSize(39)).toBe(36)

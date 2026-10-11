@@ -27,10 +27,11 @@ describe('widget typography (tamaño fijo)', () => {
     }
   })
 
-  it('los tamaños base respetan la escala de Configuración (reducidos ~10%)', () => {
+  it('los tamaños base respetan la escala de Configuración (títulos -20%)', () => {
     const css = readFileSync('src/styles/tailwind.css', 'utf-8')
     for (const rule of [
-      /\.container-widget \.text-card-title\s*\{[^}]*calc\(1\.25rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.text-card-title\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/,
+      /\.container-widget \.schedule-widget-header \.text-card-title\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/,
       /\.container-widget \.text-subhead\s*\{[^}]*calc\(1\.125rem \* var\(--text-scale\)\)/,
       /\.container-widget \.text-body-lg\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/,
       /\.container-widget \.text-body\s*\{[^}]*calc\(0\.9rem \* var\(--text-scale\)\)/,

@@ -12,6 +12,22 @@ export function formatYyyyMmDd(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/**
+ * Fecha larga en español ("Jueves, 4 de junio de 2026") para el tooltip rico
+ * de día. Comparte formato entre los modos meses y tira.
+ */
+export function formatLongDateEs(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const formatted = new Date(y, m - 1, d).toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1)
+}
+
 /** Índice de día con semana iniciada en lunes: 0 = lunes … 6 = domingo. */
 export function dayIndexOfWeek(date: Date): number {
   return (date.getDay() + 6) % 7

@@ -1,0 +1,409 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
+import { useDayTooltip } from '@/composables/useDayTooltip'
+import DayTooltip from '@/components/calendar/DayTooltip.vue'
+import {
+  STRIP_CHROME,
+  STRIP_LABEL_W,
+  buildYearStrip,
+  computeStripCellSize,
+  monthDividers,
+  stripGap,
+  type MonthDivider,
+} from '@/lib/calendarHeatmap'
+import type { CalendarEvent } from '@/schemas/calendar'
+
+const props = withDefaults(
+  defineProps<{
+    year: number
+    eventsByDate: Map<string, CalendarEvent[]>
+    monthNames?: string[]
+    highlightMonth?: number | null
+    today?: string
+    cellSize?: number | null
+  }>(),
+  {
+    monthNames: () => [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ],
+    highlightMonth: null,
+    today: undefined,
+    cellSize: null,
+  }
+)
+
+const emit = defineEmits<{
+  'select-day': [date: string]
+}>()
+
+const MAX_DOTS = 4
+const LABEL_W = STRIP_LABEL_W
+
+const rootRef = ref<HTMLElement | null>(null)
+const autoCell = ref(computeStripCellSize(800, 400))
+
+const cell = computed(() => props.cellSize ?? autoCell.value)
+const gap = computed(() => stripGap(cell.value))
+const headerH = STRIP_CHROME.header
+
+const strip = computed(() => buildYearStrip(props.year))
+const dividers = computed(() => monthDividers(strip.value.weeks, strip.value.spans))
+
+const todayDate = computed(() => props.today ?? formatYyyyMmDd(new Date()))
+
+const highlight = computed(() => {
+  if (props.highlightMonth !== null && props.highlightMonth !== undefined) {
+    return props.highlightMonth
+  }
+  const now = new Date()
+  if (props.year !== now.getFullYear()) return -1
+  return now.getMonth()
+})
+
+function isToday(date: string | null): boolean {
+  return date !== null && date === todayDate.value
+}
+
+function getEvents(date: string | null): CalendarEvent[] {
+  if (!date) return []
+  return props.eventsByDate.get(date) ?? []
+}
+
+const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
+
+function onDaySelect(date: string | null) {
+  if (!date) return
+  hideTooltip()
+  emit('select-day', date)
+}
+
+function visibleDots(date: string | null): CalendarEvent[] {
+  return getEvents(date).slice(0, MAX_DOTS)
+}
+
+function overflowCount(date: string | null): number {
+  return Math.max(0, getEvents(date).length - MAX_DOTS)
+}
+
+function shortMonthLabel(name: string): string {
+  const short = name.slice(0, 3)
+  return short.charAt(0).toUpperCase() + short.slice(1)
+}
+
+function isHighlightDivider(d: MonthDivider): boolean {
+  return d.fromMonth === highlight.value - 1 || d.fromMonth === highlight.value
+}
+
+const colCount = computed(() => strip.value.weeks.length)
+
+const gridCols = computed(() => `${LABEL_W}px repeat(${colCount.value}, ${cell.value}px)`)
+
+const contentW = computed(
+  () => LABEL_W + gap.value + colCount.value * cell.value + (colCount.value - 1) * gap.value
+)
+const contentH = computed(() => headerH + gap.value + 7 * cell.value + 6 * gap.value)
+
+function toPxX(x: number): number {
+  return LABEL_W + gap.value + x * (cell.value + gap.value) - gap.value / 2
+}
+
+function toPxY(y: number): number {
+  return headerH + gap.value + y * (cell.value + gap.value) - gap.value / 2
+}
+
+function dividerPointsAttr(d: MonthDivider): string {
+  return d.points.map((p) => `${toPxX(p.x)},${toPxY(p.y)}`).join(' ')
+}
+
+let resizeObserver: ResizeObserver | null = null
+let rafId: number | null = null
+
+function recompute() {
+  const el = rootRef.value
+  if (!el || props.cellSize) return
+  autoCell.value = computeStripCellSize(
+    el.clientWidth || 800,
+    el.clientHeight || 400,
+    strip.value.weeks.length
+  )
+}
+
+function scheduleRecompute() {
+  if (rafId !== null) return
+  rafId = requestAnimationFrame(() => {
+    rafId = null
+    recompute()
+  })
+}
+
+onMounted(() => {
+  recompute()
+  if (rootRef.value) {
+    resizeObserver = new ResizeObserver(() => scheduleRecompute())
+    resizeObserver.observe(rootRef.value)
+  }
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+})
+</script>
+
+<template>
+  <div ref="rootRef" class="ys" data-testid="year-strip">
+    <div class="ys__scroller" data-testid="tira-scroller" @scroll="hideTooltip">
+      <div class="ys__content" :style="{ width: `${contentW}px`, height: `${contentH}px` }">
+        <div
+          class="ys__months"
+          :style="{
+            gridTemplateColumns: gridCols,
+            height: `${headerH}px`,
+            columnGap: `${gap}px`,
+            marginBottom: `${gap}px`,
+          }"
+        >
+          <div class="ys__corner" />
+          <div
+            v-for="span in strip.spans"
+            :key="span.month"
+            class="ys__month"
+            data-testid="strip-month"
+            :style="{ gridColumn: `${span.startCol + 2} / span ${span.span}` }"
+          >
+            {{ shortMonthLabel(monthNames[span.month]) }}
+          </div>
+        </div>
+
+        <div class="ys__body" :style="{ gridTemplateColumns: gridCols, gap: `${gap}px` }">
+          <span
+            v-for="r in 7"
+            :key="`label-${r}`"
+            class="ys__row-label"
+            data-testid="strip-day-label"
+            :style="{ gridRow: r, gridColumn: 1, width: `${LABEL_W}px`, height: `${cell}px` }"
+            >{{ DAY_LABELS[r - 1] }}</span
+          >
+          <template v-for="(week, c) in strip.weeks" :key="`w-${c}`">
+            <div
+              v-for="(cellData, r) in week.cells"
+              :key="`c-${c}-${r}`"
+              :data-testid="cellData.date ? 'strip-cell' : 'strip-cell-empty'"
+              :data-date="cellData.date ?? undefined"
+              :class="[
+                'ys__cell',
+                {
+                  'ys__cell--empty': !cellData.date,
+                  'ys__cell--today': isToday(cellData.date),
+                },
+              ]"
+              :style="{
+                gridRow: r + 1,
+                gridColumn: c + 2,
+                width: `${cell}px`,
+                height: `${cell}px`,
+              }"
+              @click="onDaySelect(cellData.date)"
+              @mouseenter="onDayEnter(cellData.date, $event)"
+              @mouseleave="hideTooltip"
+              @focus="onDayEnter(cellData.date, $event)"
+              @blur="hideTooltip"
+            >
+              <template v-if="cellData.date">
+                <span
+                  v-for="evt in visibleDots(cellData.date)"
+                  :key="evt.id"
+                  class="ys__dot"
+                  :style="{ backgroundColor: evt.color }"
+                  data-testid="event-dot"
+                />
+                <span v-if="overflowCount(cellData.date) > 0" class="ys__overflow"
+                  >+{{ overflowCount(cellData.date) }}</span
+                >
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <svg
+          class="ys__dividers"
+          :width="contentW"
+          :height="contentH"
+          :viewBox="`0 0 ${contentW} ${contentH}`"
+        >
+          <polyline
+            v-for="d in dividers"
+            :key="`d-${d.fromMonth}`"
+            data-testid="strip-divider"
+            :data-highlight="isHighlightDivider(d) ? 'true' : 'false'"
+            :points="dividerPointsAttr(d)"
+            :class="['ys__divider', { 'ys__divider--hl': isHighlightDivider(d) }]"
+          />
+        </svg>
+      </div>
+    </div>
+    <DayTooltip
+      v-if="hovered"
+      :date-label="hovered.label"
+      :events="hovered.events"
+      :overflow-count="hovered.overflow"
+      :position="hovered.position"
+    />
+  </div>
+</template>
+
+<style scoped>
+.ys {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.ys__scroller {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-hairline-strong)) transparent;
+}
+
+.ys__scroller::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ys__scroller::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-hairline-strong));
+  border-radius: 2px;
+}
+
+.ys__scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ys__content {
+  position: relative;
+  margin: auto;
+  flex: none;
+}
+
+.ys__months {
+  display: grid;
+  /* El margen real lo pone el inline style (= gap dinámico); esto es fallback. */
+  column-gap: 2px;
+  margin-bottom: 2px;
+}
+
+.ys__corner {
+  grid-column: 1;
+}
+
+.ys__month {
+  text-align: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgb(var(--color-ink-muted));
+  text-transform: capitalize;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ys__body {
+  display: grid;
+  position: relative;
+}
+
+.ys__row-label {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgb(var(--color-ink-tertiary));
+  line-height: 1;
+}
+
+.ys__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: calc(v-bind(cell) * 1px * 0.06);
+  overflow: hidden;
+  background: rgb(var(--color-surface-3));
+  border-radius: 2px;
+  box-sizing: border-box;
+  padding: calc(v-bind(cell) * 1px * 0.06);
+}
+
+.ys__cell--empty {
+  background: transparent;
+}
+
+.ys__body .ys__cell:not(.ys__cell--empty) {
+  cursor: pointer;
+}
+
+.ys__body .ys__cell:not(.ys__cell--empty):not(.ys__cell--today):hover {
+  background: rgb(var(--color-surface-4));
+}
+
+.ys__cell--today {
+  background: rgb(var(--color-accent-purple-tint));
+  box-shadow: inset 0 0 0 2px rgb(var(--color-accent-purple));
+}
+
+.ys__dot {
+  width: calc(v-bind(cell) * 1px * 0.3);
+  height: calc(v-bind(cell) * 1px * 0.3);
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.ys__overflow {
+  font-size: calc(v-bind(cell) * 1px * 0.44);
+  line-height: 1;
+  color: rgb(var(--color-ink-tertiary));
+}
+
+.ys__dividers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ys__divider {
+  fill: none;
+  stroke: rgb(var(--color-hairline-tertiary));
+  stroke-width: 1;
+  opacity: 1;
+}
+
+.ys__divider--hl {
+  stroke: rgb(var(--color-accent-purple));
+  stroke-width: 1.5;
+  opacity: 1;
+}
+</style>

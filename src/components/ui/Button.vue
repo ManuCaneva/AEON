@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { Loader2 } from 'lucide-vue-next'
 
-type Variant = 'primary' | 'secondary' | 'tertiary' | 'inverse' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'tertiary' | 'inverse' | 'ghost' | 'danger' | 'outline'
 type Size = 'sm' | 'md' | 'lg'
 
 const props = withDefaults(
@@ -56,6 +56,8 @@ const variantClass = computed(() => {
       return 'bg-transparent text-ink-muted hover:text-ink hover:bg-surface-1 active:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas'
     case 'danger':
       return 'bg-accent-red-tint text-accent-red border border-accent-red/25 hover:bg-accent-red/15 active:bg-accent-red/25 focus-visible:ring-2 focus-visible:ring-accent-red/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas'
+    case 'outline':
+      return 'bg-transparent text-primary border border-primary/70 hover:border-primary hover:bg-primary/10 active:bg-primary/15 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas'
     default:
       return ''
   }

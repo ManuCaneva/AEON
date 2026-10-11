@@ -316,4 +316,43 @@ describe('DashboardView', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.findComponent({ name: 'DropZonePreview' }).exists()).toBe(false)
   })
+
+  it('durante el gesto el contenido interno previsualiza la geometría destino (WYSIWYG)', async () => {
+    editModeValue = true
+    layoutValue = [{ i: 'habits', x: 0, y: 0, w: 1, h: 10 }]
+    const wrapper = mount(DashboardView)
+    const gridItem = wrapper.findComponent({ name: 'GridItemVue' })
+    gridItem.vm.$emit('preview', 'habits', 0, 0, 2, 10)
+    await wrapper.vm.$nextTick()
+    // El posicionamiento conserva la geometría origen (el salto lo muestra DropZonePreview).
+    expect(gridItem.props('item')).toMatchObject({ x: 0, y: 0, w: 1, h: 10 })
+    // Pero el contenido interno ya ve el destino: así el calendario anual
+    // calcula las mismas columnas/celdas que tras soltar.
+    const inner = wrapper.findComponent({ name: 'HabitsWidget' })
+    expect(inner.exists()).toBe(true)
+    expect((inner.vm.$attrs as Record<string, unknown>).item).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 2,
+      h: 10,
+    })
+  })
+
+  it('al terminar el gesto el contenido interno vuelve a la geometría real', async () => {
+    editModeValue = true
+    layoutValue = [{ i: 'habits', x: 0, y: 0, w: 1, h: 10 }]
+    const wrapper = mount(DashboardView)
+    const gridItem = wrapper.findComponent({ name: 'GridItemVue' })
+    gridItem.vm.$emit('preview', 'habits', 0, 0, 2, 10)
+    await wrapper.vm.$nextTick()
+    gridItem.vm.$emit('preview-end')
+    await wrapper.vm.$nextTick()
+    const inner = wrapper.findComponent({ name: 'HabitsWidget' })
+    expect((inner.vm.$attrs as Record<string, unknown>).item).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 10,
+    })
+  })
 })

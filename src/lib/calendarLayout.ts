@@ -34,6 +34,25 @@ export const LAYOUT_CHROME = {
 const MIN_CELL_SIZE = 4 // minimum readable day cell size in pixels
 const MAX_CELL_SIZE = 120 // upper bound - algorithm iterates down from here
 
+/** Mínimo legible para el modo scrolleable (los 12 meses con scroll vertical). */
+export const MIN_SCROLL_CELL = 10
+
+/**
+ * Columnas del modo meses a partir del ancho del item del dashboard.
+ * w=1 -> 1, w=2 -> 2, con tope en 4. Sin item, fallback por píxeles
+ * (mismas cotas históricas de computeLayout).
+ */
+export function colsForItemWidth(itemW?: number, availW?: number): number {
+  if (itemW !== undefined && itemW !== null && Number.isFinite(itemW) && itemW > 0) {
+    return Math.max(1, Math.min(4, Math.round(itemW)))
+  }
+  const w = availW ?? 0
+  if (w >= 900) return 4
+  if (w >= 600) return 3
+  if (w >= 340) return 2
+  return 1
+}
+
 /** Tamaño de fuente del nombre del mes en rem según el tamaño de celda. */
 export function monthFontRem(cs: number): number {
   return Math.max(0.576, cs * 0.06)
@@ -68,24 +87,23 @@ export function computeForCols(c: number, rawW: number, rawH: number): LayoutRes
 
   if (availW <= 0 || availH <= 0) return null
 
-  // 1. Try to fit all 12 months (skip if c === 1 to force semester view)
+  // 1. Los 12 meses entran: vale para cualquier columna (incluida 1).
+  // Solo se pagina si ni al mínimo entran.
   const rowsAll = Math.ceil(12 / c)
   let bestCs = -1
   let showsAll = false
   let visibleSlots = 12
 
-  if (c > 1) {
-    for (let cs = MAX_CELL_SIZE; cs >= MIN_CELL_SIZE; cs--) {
-      const space = spacingFor(cs)
-      const totalW = c * space.monthW + (c - 1) * space.gridGap
-      const totalH = rowsAll * space.monthH + (rowsAll - 1) * space.gridGap
+  for (let cs = MAX_CELL_SIZE; cs >= MIN_CELL_SIZE; cs--) {
+    const space = spacingFor(cs)
+    const totalW = c * space.monthW + (c - 1) * space.gridGap
+    const totalH = rowsAll * space.monthH + (rowsAll - 1) * space.gridGap
 
-      if (totalW <= availW && totalH <= availH) {
-        bestCs = cs
-        showsAll = true
-        visibleSlots = 12
-        break
-      }
+    if (totalW <= availW && totalH <= availH) {
+      bestCs = cs
+      showsAll = true
+      visibleSlots = 12
+      break
     }
   }
 
@@ -259,33 +277,76 @@ function fittedContentWidth(cols: number, cs: number): number {
   return cols * monthW + (cols - 1) * space.gridGap
 }
 
-function buildLayoutResult(
+/**
+ * Reparte el sobrante del ajuste exacto en los espaciados para que la grilla
+ * ocupe el cuerpo disponible sin huecos:
+ *
+ * - El sobrante horizontal abre las columnas (`cellGapX`), con tope en 2x el
+ *   gap base y redondeado a entero: las celdas siguen agrupadas y las columnas
+ *   caen en píxeles exactos (sin distancias desparejas por redondeo). El resto
+ *   del ancho queda como margen lateral centrado.
+ * - El sobrante vertical se reparte mitad arriba y mitad abajo del nombre del
+ *   mes (`gridGap`/`nameGap` crecen parejo): el nombre queda ópticamente
+ *   centrado entre bloques en lugar de pegado a su grilla.
+ *
+ * Las celdas no cambian de tamaño (legibilidad intacta) y el paso de paginado
+ * se recalcula con los gaps finales para que el scroll por semestres siga
+ * cayendo exacto.
+ *
+ * En varias columnas abrir `gridGap` desbordaría el ancho, así que ahí el
+ * sobrante vertical abre las semanas dentro de cada mes (`cellGapY`, que no
+ * afecta el ancho).
+ */
+function distributeSlack(
   cols: number,
   slots: number,
   cs: number,
-  availW: number,
-  availH: number
-): LayoutResult {
+  contentW: number,
+  contentH: number
+): {
+  gridGap: number
+  cellGap: number
+  cellGapX: number
+  cellGapY: number
+  monthW: number
+  monthH: number
+  monthHeader: number
+  nameGap: number
+} {
   const space = spacingFor(cs)
-  const monthH = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
-  const monthW = 7 * cs + 6 * space.cellGap
+  // Horizontal: siempre seguro (no afecta el alto).
+  const monthWBase = 7 * cs + 6 * space.cellGap
+  const extraW = Math.max(0, contentW - (cols * monthWBase + (cols - 1) * space.gridGap))
+  const cellGapX = Math.min(
+    Math.round(space.cellGap + extraW / Math.max(1, cols * 6)),
+    space.cellGap * 2
+  )
+  const monthW = 7 * cs + 6 * cellGapX
+  // Vertical (ver doc superior para el destino según columnas).
+  const rows = Math.max(1, Math.ceil(slots / cols))
+  const monthHBase = 6 * cs + 5 * space.cellGap + space.monthHeader + space.nameGap
+  const extraV = Math.max(0, contentH - (rows * monthHBase + (rows - 1) * space.gridGap))
+  let gridGap = space.gridGap
+  let cellGapY = space.cellGap
+  let nameGap = space.nameGap
+  if (cols === 1 && rows > 1) {
+    // (rows-1) huecos gridGap + rows huecos nameGap = 2*rows-1 partes iguales
+    const half = extraV / (2 * rows - 1)
+    gridGap += half
+    nameGap += half
+  } else {
+    cellGapY += extraV / (rows * 5)
+  }
+  const monthH = 6 * cs + 5 * cellGapY + space.monthHeader + nameGap
   return {
-    cols,
-    cellSizePct: cs / availW,
-    monthWidthPct: monthW / availW,
-    monthHeightPct: monthH / availH,
-    visibleSlots: slots,
-    showsAll: slots >= 12,
-    gridGap: space.gridGap,
-    monthPadding: space.monthPadding,
-    cellGap: space.cellGap,
-    cellGapX: space.cellGap,
-    cellGapY: space.cellGap,
+    gridGap,
+    cellGap: cellGapY,
+    cellGapX,
+    cellGapY,
+    monthW,
+    monthH,
     monthHeader: space.monthHeader,
-    nameGap: space.nameGap,
-    cellSize: cs,
-    monthWidth: monthW,
-    monthHeight: monthH,
+    nameGap,
   }
 }
 
@@ -319,7 +380,26 @@ export function computeFittedLayout(
       fittedContentHeight(slots, cols, cs) <= contentH &&
       fittedContentWidth(cols, cs) <= contentW
     ) {
-      return buildLayoutResult(cols, slots, cs, availW, availH)
+      const space = spacingFor(cs)
+      const slack = distributeSlack(cols, slots, cs, contentW, contentH)
+      return {
+        cols,
+        cellSizePct: cs / availW,
+        monthWidthPct: slack.monthW / availW,
+        monthHeightPct: slack.monthH / availH,
+        visibleSlots: slots,
+        showsAll: slots >= 12,
+        gridGap: slack.gridGap,
+        monthPadding: space.monthPadding,
+        cellGap: slack.cellGap,
+        cellGapX: slack.cellGapX,
+        cellGapY: slack.cellGapY,
+        monthHeader: slack.monthHeader,
+        nameGap: slack.nameGap,
+        cellSize: cs,
+        monthWidth: slack.monthW,
+        monthHeight: slack.monthH,
+      }
     }
     cs--
   }
@@ -331,9 +411,77 @@ export function computeFittedLayout(
       fittedContentHeight(reduced, cols, MIN_CELL_SIZE) <= contentH &&
       fittedContentWidth(cols, MIN_CELL_SIZE) <= contentW
     ) {
-      return buildLayoutResult(cols, reduced, MIN_CELL_SIZE, availW, availH)
+      const space = spacingFor(MIN_CELL_SIZE)
+      const slack = distributeSlack(cols, reduced, MIN_CELL_SIZE, contentW, contentH)
+      return {
+        cols,
+        cellSizePct: MIN_CELL_SIZE / availW,
+        monthWidthPct: slack.monthW / availW,
+        monthHeightPct: slack.monthH / availH,
+        visibleSlots: reduced,
+        showsAll: false,
+        gridGap: slack.gridGap,
+        monthPadding: space.monthPadding,
+        cellGap: slack.cellGap,
+        cellGapX: slack.cellGapX,
+        cellGapY: slack.cellGapY,
+        monthHeader: slack.monthHeader,
+        nameGap: slack.nameGap,
+        cellSize: MIN_CELL_SIZE,
+        monthWidth: slack.monthW,
+        monthHeight: slack.monthH,
+      }
     }
     reduced -= cols
   }
   return null
+}
+
+/**
+ * Layout scrolleable del modo meses: los 12 meses siempre visibles con
+ * scroll vertical. La celda se dimensiona solo por el ancho (ocupa todo
+ * el ancho disponible) con mínimo legible `MIN_SCROLL_CELL` (10px): el
+ * alto no achica celdas, así 1360x768 y 1920x1080 se ven igual.
+ */
+export function computeScrollableLayout(availW: number, cols: number): LayoutResult | null {
+  if (availW <= 0 || cols <= 0) return null
+  const safeCols = Math.max(1, Math.min(4, Math.round(cols)))
+  const contentW = availW - 2 * LAYOUT_CHROME.bodyPadding
+  if (contentW <= 0) return null
+
+  let best = -1
+  for (let cs = MAX_CELL_SIZE; cs >= MIN_SCROLL_CELL; cs--) {
+    if (fittedContentWidth(safeCols, cs) <= contentW) {
+      best = cs
+      break
+    }
+  }
+  // Ni el mínimo entra (widget ultra-angosto): igual se devuelve al mínimo
+  // legible para no dejar la pantalla en blanco; el viewport scrollea en X.
+  if (best === -1) best = MIN_SCROLL_CELL
+
+  const cs = quantizeCellSize(Math.min(best, MAX_CELL_SIZE))
+  const neededH = fittedContentHeight(12, safeCols, cs)
+  // Sin sobrante vertical (extraV=0): los gaps quedan en base, solo se abre
+  // el ancho (cellGapX) para llenar el cuerpo.
+  const slack = distributeSlack(safeCols, 12, cs, contentW, neededH)
+  const space = spacingFor(cs)
+  return {
+    cols: safeCols,
+    cellSizePct: cs / availW,
+    monthWidthPct: slack.monthW / availW,
+    monthHeightPct: slack.monthH / Math.max(1, neededH),
+    visibleSlots: 12,
+    showsAll: true,
+    gridGap: slack.gridGap,
+    monthPadding: space.monthPadding,
+    cellGap: slack.cellGap,
+    cellGapX: slack.cellGapX,
+    cellGapY: slack.cellGapY,
+    monthHeader: slack.monthHeader,
+    nameGap: slack.nameGap,
+    cellSize: cs,
+    monthWidth: slack.monthW,
+    monthHeight: slack.monthH,
+  }
 }

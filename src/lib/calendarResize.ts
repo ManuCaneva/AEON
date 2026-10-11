@@ -52,10 +52,18 @@ export type ChangeKind = 'structure' | 'size' | 'none'
 
 /**
  * Decide si un candidato de layout es significativo. 'structure' cambia la
- * grilla visible (columnas/slots); 'size' solo escala las celdas dentro de un
- * paso discreto. Ambos actualizan el layout reactivamente — el costo de
- * re-render del shell es despreciable porque los MonthMini no cambian de props.
+ * grilla visible (columnas/slots); 'size' re-escala celdas o redistribuye el
+ * sobrante en los gaps (el llenado exacto depende del tamaño medido al px).
+ * Ambos actualizan el layout reactivamente — el costo de re-render del shell
+ * es despreciable porque los MonthMini no cambian de props (solo variables
+ * CSS). El épsilon evita updates por jitter sub-pixel del ResizeObserver.
  */
+const GAP_EPSILON = 0.5
+
+function gapDiffers(a: number, b: number): boolean {
+  return Math.abs(a - b) > GAP_EPSILON
+}
+
 export function significantChange(
   prev: LayoutResult | null,
   next: LayoutResult | null
@@ -64,6 +72,12 @@ export function significantChange(
   if (prev === null) return 'structure'
   if (!sameStructure(prev, next)) return 'structure'
   if (quantizeCellSize(prev.cellSize) !== quantizeCellSize(next.cellSize)) return 'size'
+  if (
+    gapDiffers(prev.gridGap, next.gridGap) ||
+    gapDiffers(prev.cellGapX, next.cellGapX) ||
+    gapDiffers(prev.cellGapY, next.cellGapY)
+  )
+    return 'size'
   return 'none'
 }
 

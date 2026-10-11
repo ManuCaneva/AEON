@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ArrowRight, Plus } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -214,22 +215,28 @@ async function deleteBlock() {
         >
           <option v-for="i in enabledDays" :key="i" :value="i">{{ DAYS[i] }}</option>
         </select>
-        <div class="flex gap-3">
+        <div class="flex gap-2">
           <div class="flex-1">
             <label class="mb-1.5 block text-center text-caption font-medium text-ink-muted"
               >Inicio</label
             >
-            <TimePicker v-model="slotStart" />
+            <TimePicker v-model="slotStart" label="Inicio" />
           </div>
+          <ArrowRight
+            :size="16"
+            class="mt-7 shrink-0 self-start text-ink-subtle"
+            aria-hidden="true"
+          />
           <div class="flex-1">
             <label class="mb-1.5 block text-center text-caption font-medium text-ink-muted"
               >Fin</label
             >
-            <TimePicker v-model="slotEnd" />
+            <TimePicker v-model="slotEnd" label="Fin" align="right" />
           </div>
         </div>
-        <div class="mt-2 flex gap-2">
-          <Button size="sm" @click="addOrUpdateSlot">
+        <div class="mt-2 flex justify-end gap-2">
+          <Button size="sm" variant="outline" @click="addOrUpdateSlot">
+            <template v-if="editingIndex === null" #icon-left><Plus :size="14" /></template>
             {{ editingIndex !== null ? 'Actualizar' : 'Agregar' }}
           </Button>
           <Button v-if="editingIndex !== null" size="sm" variant="ghost" @click="cancelSlotEdit"

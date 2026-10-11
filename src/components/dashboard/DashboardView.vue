@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useDashboardStore, wouldCollide } from '@/stores/dashboard'
+import { useDashboardStore, wouldCollide, type LayoutItem } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { getWidgetById } from '@/lib/dashboardWidgets'
 import { COLS, ROWS } from '@/lib/grid'
@@ -29,6 +29,19 @@ function onPreview(id: string, x: number, y: number, w: number, h: number) {
 
 function onPreviewEnd() {
   preview.value = null
+}
+
+/**
+ * Item que ve el contenido interno del widget. Durante el gesto de
+ * mover/redimensionar ya refleja la geometría destino del preview, así el
+ * contenido (ej. columnas del calendario anual) calcula el mismo layout que
+ * tras soltar (WYSIWYG). El posicionamiento del GridItem conserva la
+ * geometría origen: el salto visual lo muestra DropZonePreview.
+ */
+function previewItemFor(item: LayoutItem): LayoutItem {
+  const zone = preview.value
+  if (!zone || zone.id !== item.i) return item
+  return { ...item, x: zone.x, y: zone.y, w: zone.w, h: zone.h }
 }
 
 /** Misma regla de colisión que aplica el store al soltar: si la zona choca, el gesto se rechaza. */
@@ -111,7 +124,7 @@ function onRemoveWidget(id: string) {
         @preview="onPreview"
         @preview-end="onPreviewEnd"
       >
-        <component :is="getWidgetById(item.i)?.component" :item="item" />
+        <component :is="getWidgetById(item.i)?.component" :item="previewItemFor(item)" />
         <template #controls>
           <WidgetRemoveButton v-if="ui.editMode" :widget-id="item.i" @remove="onRemoveWidget" />
         </template>
