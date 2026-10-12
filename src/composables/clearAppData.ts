@@ -3,6 +3,7 @@ import { useHabitsStore } from '@/stores/habits'
 import { useTasksStore } from '@/stores/tasks'
 import { useGoalsStore } from '@/stores/goals'
 import { useNotesStore } from '@/stores/notes'
+import { useExamsStore } from '@/stores/exams'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useCalendarStore } from '@/stores/calendar'
 import { usePomodoroStore } from '@/stores/pomodoro'
@@ -22,6 +23,7 @@ export async function clearAppData(): Promise<void> {
   useTasksStore().reset()
   useGoalsStore().reset()
   useNotesStore().reset()
+  useExamsStore().reset()
   useWeeklyScheduleStore().reset()
   useCalendarStore().resetLocalEvents()
   usePomodoroStore().resetSession()
