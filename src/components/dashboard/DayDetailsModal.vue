@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, unref } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
+import { useExamsStore } from '@/stores/exams'
+import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
+import { blockColorRgb } from '@/lib/scheduleColors'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -19,6 +22,8 @@ const emit = defineEmits<{
 }>()
 
 const store = useCalendarStore()
+const exams = useExamsStore()
+const ui = useUiStore()
 
 const isFormMode = ref(false)
 const editingEvent = ref<CalendarEvent | null>(null)
@@ -36,6 +41,14 @@ const loading = ref(false)
 const filteredEvents = computed(() => {
   return store.events.filter((e) => e.date === props.date)
 })
+
+// Exámenes del día: se leen del store de exámenes (fuente única de su fecha).
+// Bloque aparte, no editable como evento: al clickear se abre el examen.
+const dayExams = computed(() => exams.exams.filter((e) => e.date === props.date))
+
+function openExam(examId: string) {
+  ui.openEditExam(examId)
+}
 
 const formattedDateTitle = computed(() => {
   if (!props.date) return ''
@@ -236,6 +249,30 @@ function cancelEdit() {
 
         <!-- VIEW MODE: EVENTS LIST -->
         <div v-if="!isFormMode" class="flex flex-col gap-4">
+          <!-- Exámenes del día: lista aparte, no editable como evento -->
+          <div v-if="dayExams.length > 0" data-testid="day-exams" class="flex flex-col gap-2">
+            <h3 class="text-caption font-semibold uppercase tracking-wider text-ink-muted">
+              Exámenes
+            </h3>
+            <button
+              v-for="exam in dayExams"
+              :key="exam.id"
+              type="button"
+              data-testid="day-exam-item"
+              class="flex items-center gap-3 rounded-lg border border-hairline bg-surface-2 p-3 text-left transition-colors hover:border-hairline-strong"
+              @click="openExam(exam.id)"
+            >
+              <span
+                data-testid="day-exam-dot"
+                class="h-3.5 w-3.5 flex-shrink-0 rounded-full"
+                :style="{ backgroundColor: blockColorRgb(exams.colorFor(exam)) }"
+              />
+              <span class="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">
+                {{ exam.title }}
+              </span>
+            </button>
+          </div>
+
           <div
             v-if="filteredEvents.length === 0"
             class="flex flex-col items-center justify-center py-12 text-center"

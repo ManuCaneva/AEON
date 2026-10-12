@@ -27,6 +27,39 @@ vi.mock('@/stores/calendar', () => ({
   useCalendarStore: () => reactiveMockStore,
 }))
 
+const examsState = ref<
+  { id: string; title: string; date: string; status: string; fallback_color: string }[]
+>([])
+
+const examsMock = {
+  get exams() {
+    return examsState.value
+  },
+  colorFor: vi.fn().mockReturnValue('lavender'),
+  blockFor: vi.fn().mockReturnValue(undefined),
+}
+
+const uiMock = {
+  openEditExam: vi.fn(),
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => examsMock,
+}))
+vi.mock('@/stores/ui', () => ({
+  useUiStore: () => uiMock,
+}))
+
+function makeExam(id: string, title: string, date: string) {
+  return {
+    id,
+    title,
+    date,
+    status: 'pendiente',
+    fallback_color: 'lavender',
+  }
+}
+
 describe('DayDetailsModal', () => {
   let wrapper: any
 
@@ -54,6 +87,10 @@ describe('DayDetailsModal', () => {
 
     mockStore.syncError.value = null
     hiddenCalendarIds.value = new Set<string>()
+    examsState.value = []
+    examsMock.colorFor.mockReturnValue('lavender')
+    examsMock.blockFor.mockReturnValue(undefined)
+    uiMock.openEditExam.mockReset()
     mockStore.createEvent.mockReset().mockResolvedValue(undefined)
     mockStore.updateEvent.mockReset().mockResolvedValue(undefined)
     mockStore.deleteEvent.mockReset().mockResolvedValue(undefined)
@@ -213,6 +250,52 @@ describe('DayDetailsModal', () => {
   it('no usa colores de paleta cruda de Tailwind', () => {
     factory()
     expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+  })
+
+  describe('exámenes en el detalle del día', () => {
+    it('lista sólo los exámenes de la fecha mostrada', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22'),
+        makeExam('exam-2', 'Final de Física', '2026-07-23'),
+      ]
+      factory()
+
+      const dialog = document.body.querySelector("[role='dialog']")
+      expect(dialog!.textContent).toContain('Parcial de Análisis')
+      expect(dialog!.textContent).not.toContain('Final de Física')
+    })
+
+    it('abre el examen al clickearlo sin editarlo como evento del calendario', async () => {
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      factory()
+
+      const item = document.body.querySelector("[data-testid='day-exam-item']") as HTMLElement
+      expect(item).not.toBeNull()
+      await item.click()
+      await wrapper.vm.$nextTick()
+
+      expect(uiMock.openEditExam).toHaveBeenCalledWith('exam-1')
+      // El examen no entra en el CRUD del calendario: no se toca ningún evento.
+      expect(mockStore.updateEvent).not.toHaveBeenCalled()
+      expect(mockStore.deleteEvent).not.toHaveBeenCalled()
+    })
+
+    it('el punto del examen usa el color resuelto como variable CSS', () => {
+      examsMock.colorFor.mockReturnValue('green')
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      factory()
+
+      const dot = document.body.querySelector("[data-testid='day-exam-dot']")
+      expect(dot).not.toBeNull()
+      expect((dot as HTMLElement).getAttribute('style')).toContain('rgb(var(--color-block-green))')
+      expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+    })
+
+    it('no muestra la sección si no hay exámenes ese día', () => {
+      examsState.value = []
+      factory()
+      expect(document.body.querySelector("[data-testid='day-exams']")).toBeNull()
+    })
   })
 
   it('el aviso de permisos usa el acento rojo, no la paleta cruda', () => {
