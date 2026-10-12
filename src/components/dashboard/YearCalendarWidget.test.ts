@@ -7,6 +7,7 @@ import YearStrip from '@/components/dashboard/YearStrip.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import { eventKey } from '@/lib/examEventLink'
 
 function flushRaf() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
@@ -49,9 +50,11 @@ vi.mock('@/stores/calendar', () => ({
 const mockExams: {
   exams: unknown[]
   overlayByDate: Map<string, { id: string; color: string }[]>
+  linkedEventKeys: Set<string>
 } = {
   exams: [],
   overlayByDate: new Map(),
+  linkedEventKeys: new Set(),
 }
 
 vi.mock('@/stores/exams', () => ({
@@ -70,6 +73,7 @@ describe('YearCalendarWidget', () => {
     mockStore.configReady = Promise.resolve()
     mockExams.overlayByDate = new Map()
     mockExams.exams = []
+    mockExams.linkedEventKeys = new Set()
     // Los tests históricos cubren el modo meses: lo pinean explícito.
     // El comportamiento de auto/tira tiene sus propios tests abajo.
     const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
@@ -704,6 +708,52 @@ describe('YearCalendarWidget', () => {
         { id: 'exam_1', color: 'rgb(var(--color-block-green))' },
       ])
       expect(mockStore.events).toEqual([])
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un examen vinculado a un evento del mismo día pinta un solo punto (dedup)', async () => {
+      const evt = {
+        id: 'evt-1',
+        title: 'Consulta de Análisis',
+        date: '2026-01-11',
+        color: '#6e56cf',
+        calendarId: 'local',
+        start: '2026-01-11T10:00:00',
+        end: '2026-01-11T11:00:00',
+      }
+      mockStore.eventsByDate = new Map([['2026-01-11', [evt]]])
+      mockExams.overlayByDate = new Map([
+        ['2026-01-11', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+      ])
+      mockExams.linkedEventKeys = new Set([eventKey('local', 'evt-1')])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      // El evento vinculado se omite de la capa de eventos…
+      expect(month.props('eventsByDate')?.get('2026-01-11')).toBeUndefined()
+      // …y sólo queda el punto del examen.
+      const dots = month.findAll("[data-testid='event-dot']")
+      expect(dots).toHaveLength(1)
+      expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-green))')
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un vínculo huérfano no rompe el render del calendario', async () => {
+      mockStore.eventsByDate = new Map()
+      mockExams.overlayByDate = new Map([
+        ['2026-01-11', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+      ])
+      mockExams.linkedEventKeys = new Set()
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.findAll("[data-testid='event-dot']")).toHaveLength(1)
 
       vi.unstubAllGlobals()
       wrapper.unmount()
