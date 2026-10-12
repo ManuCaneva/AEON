@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import * as db from '@/lib/db'
+import { blockColorRgb } from '@/lib/scheduleColors'
 import {
   rowToExam,
   type Exam,
@@ -10,6 +11,7 @@ import {
 } from '@/schemas/exams'
 import { useWeeklyScheduleStore } from './weeklySchedule'
 import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
+import type { DayOverlayByDate } from '@/schemas/calendar'
 
 function nowIsoUtc(): string {
   return new Date().toISOString()
@@ -129,6 +131,24 @@ export const useExamsStore = defineStore('exams', () => {
     return blockFor(exam)?.color ?? exam.fallback_color
   }
 
+  /**
+   * Overlay derivado para el Calendario anual: cada examen es un punto más,
+   * agrupado por fecha, con su color vivo ya resuelto a variable CSS. No crea
+   * ningún evento espejo: el examen sigue siendo la única fuente de su fecha.
+   * El id usa el prefijo `exam_` (nunca `local_`, que el calendario trataría
+   * como evento local editable).
+   */
+  const overlayByDate = computed<DayOverlayByDate>(() => {
+    const map: DayOverlayByDate = new Map()
+    for (const exam of exams.value) {
+      const dot = { id: `exam_${exam.id}`, color: blockColorRgb(colorFor(exam)) }
+      const list = map.get(exam.date)
+      if (list) list.push(dot)
+      else map.set(exam.date, [dot])
+    }
+    return map
+  })
+
   return {
     exams,
     loading,
@@ -144,5 +164,6 @@ export const useExamsStore = defineStore('exams', () => {
     toggleTopic,
     blockFor,
     colorFor,
+    overlayByDate,
   }
 })

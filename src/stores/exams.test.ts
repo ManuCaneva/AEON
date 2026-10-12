@@ -357,6 +357,73 @@ describe('exams store - color vivo del bloque', () => {
   })
 })
 
+describe('exams store - overlay del calendario anual', () => {
+  const blockId = '11111111-1111-4111-8111-111111111111'
+  const examId = '22222222-2222-4222-8222-222222222222'
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('mapea cada examen a un punto por fecha con id exam_ y su color resuelto', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', fallback_color: 'pink' }),
+    ])
+    await store.loadExams()
+
+    const dots = store.overlayByDate.get('2026-07-01')
+    expect(dots).toHaveLength(1)
+    expect(dots![0].id).toBe(`exam_${examId}`)
+    // El color viaja como variable CSS del token, sin hex.
+    expect(dots![0].color).toBe('rgb(var(--color-block-pink))')
+  })
+
+  it('usa el color vivo del bloque cuando el examen está asociado', async () => {
+    const store = useExamsStore()
+    useWeeklyScheduleStore().blocksWithSlots = [
+      {
+        id: blockId,
+        title: 'Física',
+        color: 'green',
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+        slots: [],
+      },
+    ]
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', block_id: blockId, fallback_color: 'lavender' }),
+    ])
+    await store.loadExams()
+
+    expect(store.overlayByDate.get('2026-07-01')![0].color).toBe('rgb(var(--color-block-green))')
+  })
+
+  it('agrupa varios exámenes de la misma fecha con ids únicos (nunca local_)', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', date: '2026-07-01' }),
+      makeRow({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', date: '2026-07-01' }),
+    ])
+    await store.loadExams()
+
+    const dots = store.overlayByDate.get('2026-07-01')!
+    expect(dots).toHaveLength(2)
+    expect(dots.map((d) => d.id)).toEqual([
+      'exam_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'exam_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    ])
+    for (const dot of dots) expect(dot.id.startsWith('local_')).toBe(false)
+  })
+
+  it('sin exámenes el overlay queda vacío', () => {
+    const store = useExamsStore()
+    expect(store.overlayByDate.size).toBe(0)
+  })
+})
+
 describe('exams store - reset', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
