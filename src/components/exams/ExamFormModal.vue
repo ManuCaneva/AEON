@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
+import { ExamStatusSchema, type ExamStatus } from '@/schemas/exams'
+import { examStatusLabel } from '@/lib/examStatus'
 import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
@@ -17,8 +19,15 @@ const editing = computed(() => {
 
 const isEdit = computed(() => editing.value !== null)
 
+const statusOptions = ExamStatusSchema.options.map((value) => ({
+  value,
+  label: examStatusLabel(value),
+}))
+
 const title = ref('')
 const date = ref('')
+const status = ref<ExamStatus>('pendiente')
+const gradeInput = ref('')
 const error = ref<string | null>(null)
 const saving = ref(false)
 
@@ -29,14 +38,32 @@ watch(
       if (editing.value) {
         title.value = editing.value.title
         date.value = editing.value.date
+        status.value = editing.value.status
+        gradeInput.value = editing.value.grade !== null ? String(editing.value.grade) : ''
       } else {
         title.value = ''
         date.value = ''
+        status.value = 'pendiente'
+        gradeInput.value = ''
       }
       error.value = null
     }
   }
 )
+
+// La nota sólo tiene sentido en un examen rendido: al salir de ese estado se
+// limpia, y el guardado la envía como null (sin nota).
+watch(status, (value) => {
+  if (value !== 'rendido') gradeInput.value = ''
+})
+
+/** Nota del formulario: null = sin nota; valida rango 0–10 con decimales. */
+function resolveGrade(): number | null | 'invalid' {
+  if (status.value !== 'rendido' || gradeInput.value.trim() === '') return null
+  const parsed = Number(gradeInput.value)
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > 10) return 'invalid'
+  return parsed
+}
 
 async function handleSubmit(e: Event) {
   e.preventDefault()
@@ -50,14 +77,30 @@ async function handleSubmit(e: Event) {
     return
   }
 
+  const grade = resolveGrade()
+  if (grade === 'invalid') {
+    error.value = 'La nota debe ser un número entre 0 y 10.'
+    return
+  }
+
   saving.value = true
   error.value = null
 
   try {
     if (editing.value) {
-      await exams.updateExam(editing.value.id, { title: trimmedTitle, date: date.value })
+      await exams.updateExam(editing.value.id, {
+        title: trimmedTitle,
+        date: date.value,
+        status: status.value,
+        grade,
+      })
     } else {
-      await exams.createExam({ title: trimmedTitle, date: date.value })
+      await exams.createExam({
+        title: trimmedTitle,
+        date: date.value,
+        status: status.value,
+        grade,
+      })
     }
     ui.closeExamModal()
   } catch (err) {
@@ -89,6 +132,39 @@ async function handleSubmit(e: Event) {
         />
 
         <Input v-model="date" data-testid="exam-date-input" type="date" label="Fecha" />
+
+        <div class="flex flex-col gap-1.5">
+          <span class="select-none text-body-sm text-ink-muted">Estado</span>
+          <div class="flex gap-2">
+            <button
+              v-for="option in statusOptions"
+              :key="option.value"
+              type="button"
+              :data-testid="`exam-status-${option.value}`"
+              :class="[
+                'rounded-md px-3 py-1.5 text-body-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+                status === option.value
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'bg-surface-2 text-ink-muted hover:bg-surface-3 hover:text-ink',
+              ]"
+              @click="status = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <Input
+          v-model="gradeInput"
+          data-testid="exam-grade-input"
+          type="number"
+          label="Nota"
+          placeholder="Ej: 8.5"
+          min="0"
+          max="10"
+          :disabled="status !== 'rendido'"
+          helper="Sólo se guarda si el examen está rendido."
+        />
       </div>
 
       <div class="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
