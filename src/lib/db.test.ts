@@ -750,6 +750,32 @@ describe('db.createExam - shape hacia Rust', () => {
     })
   })
 
+  it('sin bloque asociado envía block_id null', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+  })
+
+  it('envía el bloque asociado cuando el draft lo incluye', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+  })
+
   it('envía los temas del draft serializados', async () => {
     await createExam(
       {
@@ -905,6 +931,36 @@ describe('db.updateExam - shape hacia Rust', () => {
     )
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.grade).toBeNull()
+  })
+
+  it('envía el bloque cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: '660e8400-e29b-41d4-a716-446655440000' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+  })
+
+  it('envía null para desasociar el bloque', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+  })
+
+  it('omite el bloque cuando el patch no lo trae (no pisa la asociación)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeUndefined()
   })
 
   it('omite la nota cuando el patch no la trae (no pisa la persistida)', async () => {

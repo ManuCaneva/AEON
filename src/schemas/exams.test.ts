@@ -63,6 +63,7 @@ describe('ExamSchema', () => {
     date: validDate,
     status: 'pendiente' as const,
     grade: null,
+    block_id: null,
     fallback_color: 'lavender' as const,
     topics: [],
     sort_order: 0,
@@ -72,6 +73,16 @@ describe('ExamSchema', () => {
 
   it('acepta un examen válido', () => {
     expect(ExamSchema.parse(validExam)).toEqual(validExam)
+  })
+
+  it('el bloque es opcional: por defecto queda sin asociar', () => {
+    const { block_id: _omit, ...withoutBlock } = validExam
+    expect(ExamSchema.parse(withoutBlock).block_id).toBeNull()
+  })
+
+  it('acepta un bloque asociado por uuid y rechaza uno inválido', () => {
+    expect(ExamSchema.parse({ ...validExam, block_id: validUuid2 }).block_id).toBe(validUuid2)
+    expect(() => ExamSchema.parse({ ...validExam, block_id: 'bloque-1' })).toThrow()
   })
 
   it('por defecto no tiene temas', () => {
@@ -158,6 +169,14 @@ describe('CreateExamDraftSchema', () => {
       CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, grade: -1 })
     ).toThrow()
   })
+
+  it('el bloque es opcional: sin bloque queda en null y acepta un uuid', () => {
+    expect(CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate }).block_id).toBeNull()
+    expect(
+      CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, block_id: validUuid2 })
+        .block_id
+    ).toBe(validUuid2)
+  })
 })
 
 describe('UpdateExamDraftSchema', () => {
@@ -228,9 +247,13 @@ describe('rowToExam', () => {
     expect(rowToExam({ ...rawRow, grade: 7.5 }).grade).toBe(7.5)
   })
 
+  it('mapea el bloque asociado y su ausencia (null)', () => {
+    expect(rowToExam(rawRow).block_id).toBeNull()
+    expect(rowToExam({ ...rawRow, block_id: validUuid2 }).block_id).toBe(validUuid2)
+  })
+
   it('no expone columnas fuera del alcance de este ticket', () => {
     const exam = rowToExam(rawRow)
-    expect(exam).not.toHaveProperty('block_id')
     expect(exam).not.toHaveProperty('calendar_id')
     expect(exam).not.toHaveProperty('event_id')
   })
@@ -304,6 +327,15 @@ describe('examToRow', () => {
 
   it('omite la nota cuando el patch no la trae (no la toca)', () => {
     expect(examToRow({ title: 'Nuevo' }).grade).toBeUndefined()
+  })
+
+  it('incluye el bloque cuando está presente, incluido null para limpiarlo', () => {
+    expect(examToRow({ block_id: validUuid2 }).block_id).toBe(validUuid2)
+    expect(examToRow({ block_id: null }).block_id).toBeNull()
+  })
+
+  it('omite el bloque cuando el patch no lo trae (no lo toca)', () => {
+    expect(examToRow({ title: 'Nuevo' }).block_id).toBeUndefined()
   })
 
   it('serializa los temas como JSON string', () => {

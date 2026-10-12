@@ -4,10 +4,10 @@ import { blockColorSchema } from './weeklySchedule'
 
 // Capa dual de validación de Examen: dominio (lo que consume el frontend)
 // + drafts (create/update) + fila permisiva (espejo de SQLite) + mappers.
-// Alcance de #133 (walking skeleton): id, título, fecha, estado, color de
-// respaldo, orden y timestamps. #138 agrega la nota. #136 agrega los temas
-// embebidos. Las columnas T1 restantes (bloque, vínculo al calendario)
-// existen en SQL pero se cablean en tickets posteriores.
+// #133 (walking skeleton): id, título, fecha, estado, color de respaldo,
+// orden y timestamps. #138 agrega la nota. #136 agrega los temas embebidos.
+// #135 cablea el bloque asociado (materia) y el color vivo. La columna de
+// vínculo al calendario existe en SQL pero se cablea en un ticket posterior.
 
 export const ExamStatusSchema = z.enum(['pendiente', 'estudiando', 'rendido'])
 export type ExamStatus = z.infer<typeof ExamStatusSchema>
@@ -27,6 +27,8 @@ export const ExamSchema = z.object({
   date: localDate,
   status: ExamStatusSchema,
   grade: z.number().min(0).max(10).nullable(),
+  // Bloque del Cronograma semanal (la materia). Opcional: null = sin bloque.
+  block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema,
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().default(0),
@@ -40,6 +42,7 @@ export const CreateExamDraftSchema = z.object({
   date: localDate,
   status: ExamStatusSchema.default('pendiente'),
   grade: z.number().min(0).max(10).nullable().optional(),
+  block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema.default('lavender'),
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().optional(),
@@ -81,6 +84,7 @@ export function rowToExam(row: ExamRow): Exam {
     date: row.date,
     status: row.status,
     grade: row.grade,
+    block_id: row.block_id,
     fallback_color: row.fallback_color,
     topics: parsedTopics,
     sort_order: row.sort_order,
@@ -94,6 +98,7 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
   date?: string
   status?: ExamStatus
   grade?: number | null
+  block_id?: string | null
   fallback_color?: string
   topics: string
   sort_order?: number
@@ -103,6 +108,7 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
     ...('date' in e && e.date !== undefined ? { date: e.date } : {}),
     ...('status' in e && e.status !== undefined ? { status: e.status } : {}),
     ...('grade' in e && e.grade !== undefined ? { grade: e.grade } : {}),
+    ...('block_id' in e && e.block_id !== undefined ? { block_id: e.block_id } : {}),
     ...('fallback_color' in e && e.fallback_color !== undefined
       ? { fallback_color: e.fallback_color }
       : {}),

@@ -768,3 +768,56 @@ fn exams_topics_round_trip_and_reject_invalid_json() {
     );
     assert!(invalid.is_err(), "topics inválido debe violar el CHECK");
 }
+
+#[test]
+fn exams_block_id_round_trips_and_set_null_on_block_delete() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // Un Bloque del Cronograma semanal (la materia del examen).
+    conn.execute(
+        "INSERT INTO schedule_blocks (id, title, color, sort_order, created_at, updated_at)
+         VALUES ('block-1', 'Física', 'green', 0,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert schedule block");
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, block_id, created_at, updated_at)
+         VALUES ('exam-block', 'Parcial', '2026-07-01', 'block-1',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with block");
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT block_id FROM exams WHERE id = 'exam-block'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read block_id");
+    assert_eq!(stored.as_deref(), Some("block-1"));
+
+    // Borrar el Bloque NO borra el examen: la referencia se anula (SET NULL)
+    // y el examen conserva su color de respaldo.
+    conn.execute("DELETE FROM schedule_blocks WHERE id = 'block-1'", [])
+        .expect("delete schedule block");
+
+    let (count, block_id, fallback_color): (i64, Option<String>, String) = conn
+        .query_row(
+            "SELECT (SELECT count(*) FROM exams WHERE id = 'exam-block'),
+                    block_id, fallback_color
+             FROM exams WHERE id = 'exam-block'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read exam after block delete");
+    assert_eq!(count, 1, "el examen debe sobrevivir al borrado del bloque");
+    assert_eq!(
+        block_id, None,
+        "block_id debe anularse (ON DELETE SET NULL)"
+    );
+    assert_eq!(fallback_color, "lavender", "conserva su color de respaldo");
+}
