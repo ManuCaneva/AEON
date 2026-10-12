@@ -7,8 +7,9 @@ use tauri::State;
 // El walking skeleton (#133) cablea título, fecha, estado, color de
 // respaldo y orden; #138 agrega la nota (0–10, nullable); #136 agrega los
 // temas embebidos como JSON string; #135 cablea el bloque asociado
-// (materia, nullable, ON DELETE SET NULL). El resto de las columnas T1 usan
-// los defaults del SQL.
+// (materia, nullable, ON DELETE SET NULL); #134 cablea el vínculo opcional a
+// un evento del calendario (par calendar_id + event_id, nullable). El resto
+// de las columnas T1 usan los defaults del SQL.
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateExamInput {
@@ -21,6 +22,10 @@ pub struct CreateExamInput {
     pub grade: Option<f64>,
     #[serde(default)]
     pub block_id: Option<String>,
+    #[serde(default)]
+    pub calendar_id: Option<String>,
+    #[serde(default)]
+    pub event_id: Option<String>,
     #[serde(default = "default_fallback_color")]
     pub fallback_color: String,
     #[serde(default = "default_topics")]
@@ -53,6 +58,10 @@ pub struct UpdateExamInput {
     pub grade: Option<Option<f64>>,
     // Double-Option: None no toca el bloque; Some(None) lo desasocia.
     pub block_id: Option<Option<String>>,
+    // Double-Option: None no toca el vínculo; Some(None) lo limpia;
+    // Some(par) lo fija. El par se envía junto desde el frontend.
+    pub calendar_id: Option<Option<String>>,
+    pub event_id: Option<Option<String>>,
     pub fallback_color: Option<String>,
     pub topics: Option<String>,
     pub sort_order: Option<i32>,
@@ -100,8 +109,8 @@ pub fn create_exam(db: State<'_, Db>, input: CreateExamInput) -> Result<ExamRow,
         let conn = db.conn.lock().unwrap();
 
         conn.execute(
-            "INSERT INTO exams (id, title, date, status, grade, fallback_color, block_id, topics, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO exams (id, title, date, status, grade, fallback_color, block_id, calendar_id, event_id, topics, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 input.id,
                 input.title,
@@ -110,6 +119,8 @@ pub fn create_exam(db: State<'_, Db>, input: CreateExamInput) -> Result<ExamRow,
                 input.grade,
                 input.fallback_color,
                 input.block_id,
+                input.calendar_id,
+                input.event_id,
                 input.topics,
                 input.sort_order,
                 input.created_at,
@@ -159,9 +170,11 @@ pub fn update_exam(db: State<'_, Db>, input: UpdateExamInput) -> Result<ExamRow,
                 grade          = CASE WHEN ?5 = 1 THEN ?6 ELSE grade END,
                 fallback_color = COALESCE(?7, fallback_color),
                 block_id       = CASE WHEN ?8 = 1 THEN ?9 ELSE block_id END,
-                topics         = COALESCE(?10, topics),
-                sort_order     = COALESCE(?11, sort_order),
-                updated_at     = ?12
+                calendar_id    = CASE WHEN ?10 = 1 THEN ?11 ELSE calendar_id END,
+                event_id       = CASE WHEN ?12 = 1 THEN ?13 ELSE event_id END,
+                topics         = COALESCE(?14, topics),
+                sort_order     = COALESCE(?15, sort_order),
+                updated_at     = ?16
              WHERE id = ?1",
             params![
                 input.id,
@@ -173,6 +186,10 @@ pub fn update_exam(db: State<'_, Db>, input: UpdateExamInput) -> Result<ExamRow,
                 input.fallback_color,
                 input.block_id.is_some() as i32,
                 input.block_id.flatten(),
+                input.calendar_id.is_some() as i32,
+                input.calendar_id.flatten(),
+                input.event_id.is_some() as i32,
+                input.event_id.flatten(),
                 input.topics,
                 input.sort_order,
                 input.updated_at,

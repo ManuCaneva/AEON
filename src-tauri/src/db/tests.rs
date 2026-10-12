@@ -821,3 +821,47 @@ fn exams_block_id_round_trips_and_set_null_on_block_delete() {
     );
     assert_eq!(fallback_color, "lavender", "conserva su color de respaldo");
 }
+
+#[test]
+fn exams_event_link_round_trips_and_clears() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // El vínculo es el par (calendar_id, event_id). Las columnas ya existen
+    // (012_exams): este test es una guarda de su persistencia.
+    conn.execute(
+        "INSERT INTO exams (id, title, date, calendar_id, event_id, created_at, updated_at)
+         VALUES ('exam-link', 'Parcial', '2026-07-01', 'local', 'evt-1',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with event link");
+
+    let (calendar_id, event_id): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT calendar_id, event_id FROM exams WHERE id = 'exam-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read event link");
+    assert_eq!(calendar_id.as_deref(), Some("local"));
+    assert_eq!(event_id.as_deref(), Some("evt-1"));
+
+    // Desvincular: ambas columnas quedan NULL y el examen conserva su fecha.
+    conn.execute(
+        "UPDATE exams SET calendar_id = NULL, event_id = NULL WHERE id = 'exam-link'",
+        [],
+    )
+    .expect("clear event link");
+
+    let (calendar_id, event_id, date): (Option<String>, Option<String>, String) = conn
+        .query_row(
+            "SELECT calendar_id, event_id, date FROM exams WHERE id = 'exam-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read cleared event link");
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+    assert_eq!(date, "2026-07-01", "la fecha del examen no cambia");
+}
