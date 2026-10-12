@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useExamsStore } from './exams'
 import { useWeeklyScheduleStore } from './weeklySchedule'
+import { useCalendarStore } from './calendar'
 import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
+import type { CalendarEvent } from '@/schemas/calendar'
+import { eventKey } from '@/lib/examEventLink'
 import * as db from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({
@@ -437,5 +440,71 @@ describe('exams store - reset', () => {
     store.reset()
     expect(store.exams).toEqual([])
     expect(store.lastError).toBeNull()
+  })
+})
+
+describe('exams store - vínculo al evento (dedup)', () => {
+  const examId = '22222222-2222-4222-8222-222222222222'
+
+  function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
+    return {
+      id: 'evt-1',
+      date: '2026-07-01',
+      title: 'Consulta de Análisis',
+      color: '#6e56cf',
+      calendarId: 'local',
+      start: '2026-07-01T10:00:00',
+      end: '2026-07-01T11:00:00',
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('expone la clave del evento cuando el vínculo resuelve el mismo día', async () => {
+    useCalendarStore().events = [makeEvent()]
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', calendar_id: 'local', event_id: 'evt-1' }),
+    ])
+    await store.loadExams()
+
+    expect([...store.linkedEventKeys]).toEqual([eventKey('local', 'evt-1')])
+  })
+
+  it('un vínculo huérfano no aporta claves y el examen sigue pintando su punto', async () => {
+    useCalendarStore().events = []
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', calendar_id: 'local', event_id: 'evt-ausente' }),
+    ])
+    await store.loadExams()
+
+    expect(store.linkedEventKeys.size).toBe(0)
+    expect(store.overlayByDate.get('2026-07-01')).toHaveLength(1)
+  })
+
+  it('un examen sin vínculo no aporta claves y sigue pintando su punto', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([makeRow({ id: examId, date: '2026-07-01' })])
+    await store.loadExams()
+
+    expect(store.linkedEventKeys.size).toBe(0)
+    expect(store.overlayByDate.get('2026-07-01')).toHaveLength(1)
+  })
+
+  it('el vínculo no mueve la fecha del examen', async () => {
+    useCalendarStore().events = [makeEvent({ date: '2026-07-01' })]
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', calendar_id: 'local', event_id: 'evt-1' }),
+    ])
+    await store.loadExams()
+
+    expect(store.exams[0].date).toBe('2026-07-01')
+    expect(store.overlayByDate.get('2026-07-01')![0].id).toBe(`exam_${examId}`)
   })
 })

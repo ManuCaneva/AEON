@@ -10,8 +10,10 @@ import {
   type ExamRow,
 } from '@/schemas/exams'
 import { useWeeklyScheduleStore } from './weeklySchedule'
+import { useCalendarStore } from './calendar'
 import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
 import type { DayOverlayByDate } from '@/schemas/calendar'
+import { resolvedLinkKeys } from '@/lib/examEventLink'
 
 function nowIsoUtc(): string {
   return new Date().toISOString()
@@ -149,6 +151,16 @@ export const useExamsStore = defineStore('exams', () => {
     return map
   })
 
+  /**
+   * Claves de los eventos del calendario que ya están vinculados a un examen
+   * del mismo día. El calendario anual las omite para no pintar dos puntos el
+   * mismo día (el punto del examen se conserva). Un vínculo huérfano o de otro
+   * día no aporta clave: degrada en silencio.
+   */
+  const linkedEventKeys = computed<Set<string>>(() =>
+    resolvedLinkKeys(exams.value, useCalendarStore().events)
+  )
+
   return {
     exams,
     loading,
@@ -165,5 +177,6 @@ export const useExamsStore = defineStore('exams', () => {
     blockFor,
     colorFor,
     overlayByDate,
+    linkedEventKeys,
   }
 })
