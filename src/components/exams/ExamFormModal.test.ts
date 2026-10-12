@@ -12,6 +12,7 @@ const examsState = ref<
     date: string
     status: string
     grade: number | null
+    block_id: string | null
     fallback_color: string
     topics: { id: string; title: string; completed: boolean }[]
     sort_order: number
@@ -25,6 +26,23 @@ const examsMock = {
   },
   createExam: vi.fn().mockResolvedValue({}),
   updateExam: vi.fn().mockResolvedValue({}),
+}
+const weeklyBlocks = ref<
+  {
+    id: string
+    title: string
+    color: string
+    sort_order: number
+    created_at: string
+    updated_at: string
+    slots: unknown[]
+  }[]
+>([])
+const weeklyMock = {
+  get blocksWithSlots() {
+    return weeklyBlocks.value
+  },
+  loadAll: vi.fn().mockResolvedValue(undefined),
 }
 const uiState = {
   createExamOpen: ref(true),
@@ -48,6 +66,9 @@ const uiMock = {
 }
 vi.mock('@/stores/exams', () => ({
   useExamsStore: () => examsMock,
+}))
+vi.mock('@/stores/weeklySchedule', () => ({
+  useWeeklyScheduleStore: () => weeklyMock,
 }))
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => uiMock,
@@ -110,12 +131,39 @@ function removeTopic(index: number) {
   buttons[index].click()
 }
 
+function blockSelect(): HTMLSelectElement {
+  return document.body.querySelector("[data-testid='exam-block-select']") as HTMLSelectElement
+}
+
+function selectBlock(value: string) {
+  const select = blockSelect()
+  select.value = value
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function colorPreview(): HTMLElement {
+  return document.body.querySelector("[data-testid='exam-color-preview']") as HTMLElement
+}
+
+function makeBlock(id: string, title: string, color = 'green') {
+  return {
+    id,
+    title,
+    color,
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    slots: [],
+  }
+}
+
 describe('ExamFormModal', () => {
   let wrapper: VueWrapper
 
   beforeEach(() => {
     setActivePinia(createPinia())
     examsState.value = []
+    weeklyBlocks.value = []
     uiState.createExamOpen.value = true
     uiState.editingExamId.value = null
     vi.clearAllMocks()
@@ -139,6 +187,7 @@ describe('ExamFormModal', () => {
         date: '2026-08-15',
         status: 'pendiente',
         grade: null,
+        block_id: null,
         fallback_color: 'lavender',
         topics: [],
         sort_order: 0,
@@ -167,6 +216,7 @@ describe('ExamFormModal', () => {
       date: '2026-08-15',
       status: 'pendiente',
       grade: null,
+      block_id: null,
       topics: [],
     })
   })
@@ -179,6 +229,7 @@ describe('ExamFormModal', () => {
         date: '2026-08-15',
         status: 'pendiente',
         grade: null,
+        block_id: null,
         fallback_color: 'lavender',
         topics: [],
         sort_order: 0,
@@ -197,6 +248,7 @@ describe('ExamFormModal', () => {
       date: '2026-08-15',
       status: 'pendiente',
       grade: null,
+      block_id: null,
       topics: [],
     })
   })
@@ -256,6 +308,7 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'rendido',
       grade: 8.5,
+      block_id: null,
       topics: [],
     })
   })
@@ -291,6 +344,7 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'pendiente',
       grade: null,
+      block_id: null,
       topics: [],
     })
   })
@@ -303,6 +357,7 @@ describe('ExamFormModal', () => {
         date: '2026-12-01',
         status: 'rendido',
         grade: 7.5,
+        block_id: null,
         fallback_color: 'lavender',
         topics: [],
         sort_order: 0,
@@ -321,6 +376,7 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'rendido',
       grade: 7.5,
+      block_id: null,
       topics: [],
     })
   })
@@ -393,6 +449,7 @@ describe('ExamFormModal', () => {
         date: '2026-08-15',
         status: 'pendiente',
         grade: null,
+        block_id: null,
         fallback_color: 'lavender',
         topics: [{ id: 't-1', title: 'Límites', completed: true }],
         sort_order: 0,
@@ -411,5 +468,103 @@ describe('ExamFormModal', () => {
         topics: [{ id: 't-1', title: 'Límites', completed: true }],
       })
     )
+  })
+
+  it('el selector de bloques lista los existentes y la opción sin bloque', async () => {
+    weeklyBlocks.value = [makeBlock('block-1', 'Física'), makeBlock('block-2', 'Análisis')]
+    await flushPromises()
+    const options = Array.from(blockSelect().options).map((o) => o.value)
+    expect(options[0]).toBe('')
+    expect(options).toContain('block-1')
+    expect(options).toContain('block-2')
+    expect(blockSelect().textContent).toContain('Física')
+    expect(blockSelect().textContent).toContain('Sin bloque')
+  })
+
+  it('al crear con un bloque envía su id', async () => {
+    weeklyBlocks.value = [makeBlock('block-1', 'Física')]
+    await flushPromises()
+    fillTitle('Parcial de Física')
+    fillDate('2026-08-15')
+    selectBlock('block-1')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledWith(
+      expect.objectContaining({ block_id: 'block-1' })
+    )
+  })
+
+  it('al crear sin bloque envía block_id null', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledWith(expect.objectContaining({ block_id: null }))
+  })
+
+  it('al editar prefilla el bloque asociado', async () => {
+    weeklyBlocks.value = [makeBlock('block-1', 'Física')]
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: 'block-1',
+        fallback_color: 'lavender',
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(blockSelect().value).toBe('block-1')
+  })
+
+  it('desasociar el bloque envía null al guardar', async () => {
+    weeklyBlocks.value = [makeBlock('block-1', 'Física')]
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: 'block-1',
+        fallback_color: 'lavender',
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    selectBlock('')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({ block_id: null })
+    )
+  })
+
+  it('la vista previa de color deriva del bloque elegido', async () => {
+    weeklyBlocks.value = [makeBlock('block-1', 'Física', 'green')]
+    await flushPromises()
+    selectBlock('block-1')
+    await flushPromises()
+    expect(colorPreview().getAttribute('style')).toContain('rgb(var(--color-block-green))')
+  })
+
+  it('sin bloque la vista previa usa el color de respaldo', async () => {
+    await flushPromises()
+    expect(colorPreview().getAttribute('style')).toContain('rgb(var(--color-block-lavender))')
   })
 })
