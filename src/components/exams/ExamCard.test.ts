@@ -32,6 +32,7 @@ const baseExam: Exam = {
   title: 'Parcial 1 de Análisis',
   date: localDate(),
   status: 'pendiente',
+  grade: null,
   fallback_color: 'lavender',
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',
@@ -71,6 +72,56 @@ describe('ExamCard', () => {
     const wrapper = mount(ExamCard, { props: { exam: baseExam } })
     const indicator = wrapper.find("[data-testid='exam-color-indicator']")
     expect(indicator.attributes('style')).toContain('rgb(var(--color-block-lavender))')
+  })
+
+  it('muestra siempre la etiqueta de estado', () => {
+    const wrapper = mount(ExamCard, { props: { exam: baseExam } })
+    expect(wrapper.find("[data-testid='exam-status']").text()).toBe('Pendiente')
+  })
+
+  it('traduce cada estado a su etiqueta', () => {
+    expect(
+      mount(ExamCard, { props: { exam: { ...baseExam, status: 'estudiando' } } })
+        .find("[data-testid='exam-status']")
+        .text()
+    ).toBe('Estudiando')
+    expect(
+      mount(ExamCard, { props: { exam: { ...baseExam, status: 'rendido' } } })
+        .find("[data-testid='exam-status']")
+        .text()
+    ).toBe('Rendido')
+  })
+
+  it('no muestra la etiqueta de nota si el examen no está rendido', () => {
+    const wrapper = mount(ExamCard, {
+      props: { exam: { ...baseExam, status: 'estudiando', grade: 9 } },
+    })
+    expect(wrapper.find("[data-testid='exam-grade']").exists()).toBe(false)
+  })
+
+  it('no muestra la etiqueta de nota si está rendido pero sin nota', () => {
+    const wrapper = mount(ExamCard, {
+      props: { exam: { ...baseExam, status: 'rendido', grade: null } },
+    })
+    expect(wrapper.find("[data-testid='exam-grade']").exists()).toBe(false)
+  })
+
+  it('muestra la nota cuando está rendido y hay nota cargada', () => {
+    const wrapper = mount(ExamCard, {
+      props: { exam: { ...baseExam, status: 'rendido', grade: 8.5 } },
+    })
+    expect(wrapper.find("[data-testid='exam-grade']").text()).toContain('8.5')
+  })
+
+  it('ordena las etiquetas estado → días → nota', () => {
+    const wrapper = mount(ExamCard, {
+      props: { exam: { ...baseExam, status: 'rendido', grade: 7 } },
+    })
+    const ids = wrapper
+      .find("[data-testid='exam-pills']")
+      .findAll('[data-testid]')
+      .map((el) => el.attributes('data-testid'))
+    expect(ids).toEqual(['exam-status', 'exam-days', 'exam-grade'])
   })
 
   it('abre el menú de contexto al clickear el botón', async () => {

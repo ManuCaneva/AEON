@@ -4,7 +4,9 @@ import { MoreHorizontal } from 'lucide-vue-next'
 import type { Exam } from '@/schemas/exams'
 import { useUiStore } from '@/stores/ui'
 import { daysLabel } from '@/lib/examDays'
+import { examStatusLabel, examStatusVariant, shouldShowGrade, formatGrade } from '@/lib/examStatus'
 import { blockColorRgb } from '@/lib/scheduleColors'
+import Badge from '@/components/ui/Badge.vue'
 import Container from '@/components/ui/Container.vue'
 import Text from '@/components/ui/Text.vue'
 import ExamContextMenu from './ExamContextMenu.vue'
@@ -18,6 +20,10 @@ const ui = useUiStore()
 const isMenuOpen = computed(() => ui.menuOpenForExamId === props.exam.id)
 const daysText = computed(() => daysLabel(props.exam.date))
 const color = computed(() => blockColorRgb(props.exam.fallback_color))
+const statusLabel = computed(() => examStatusLabel(props.exam.status))
+const statusVariant = computed(() => examStatusVariant(props.exam.status))
+const showGrade = computed(() => shouldShowGrade(props.exam.status, props.exam.grade))
+const gradeText = computed(() => (props.exam.grade !== null ? formatGrade(props.exam.grade) : ''))
 </script>
 
 <template>
@@ -49,13 +55,19 @@ const color = computed(() => blockColorRgb(props.exam.fallback_color))
           </button>
         </div>
 
-        <div class="flex items-center gap-3 text-caption">
+        <div data-testid="exam-pills" class="flex items-center gap-3 text-caption">
+          <Badge data-testid="exam-status" :variant="statusVariant">
+            {{ statusLabel }}
+          </Badge>
           <span
             data-testid="exam-days"
             class="inline-flex items-center rounded-full bg-accent-purple-tint px-2 py-0.5 font-medium text-accent-purple"
           >
             {{ daysText }}
           </span>
+          <Badge v-if="showGrade" data-testid="exam-grade" variant="success">
+            Nota {{ gradeText }}
+          </Badge>
         </div>
       </div>
     </div>
