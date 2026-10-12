@@ -13,6 +13,7 @@ const examsState = ref<
     status: string
     grade: number | null
     fallback_color: string
+    topics: { id: string; title: string; completed: boolean }[]
     sort_order: number
     created_at: string
     updated_at: string
@@ -86,6 +87,29 @@ function submit() {
   form.dispatchEvent(new Event('submit', { bubbles: true }))
 }
 
+function clickAddTopic() {
+  ;(document.body.querySelector("[data-testid='add-topic-button']") as HTMLButtonElement).click()
+}
+
+function topicInputs(): HTMLInputElement[] {
+  return Array.from(
+    document.body.querySelectorAll("[data-testid='topic-input'] input")
+  ) as HTMLInputElement[]
+}
+
+function fillTopic(index: number, value: string) {
+  const input = topicInputs()[index]
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function removeTopic(index: number) {
+  const buttons = document.body.querySelectorAll(
+    "[data-testid='remove-topic-button']"
+  ) as NodeListOf<HTMLButtonElement>
+  buttons[index].click()
+}
+
 describe('ExamFormModal', () => {
   let wrapper: VueWrapper
 
@@ -116,6 +140,7 @@ describe('ExamFormModal', () => {
         status: 'pendiente',
         grade: null,
         fallback_color: 'lavender',
+        topics: [],
         sort_order: 0,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -142,6 +167,7 @@ describe('ExamFormModal', () => {
       date: '2026-08-15',
       status: 'pendiente',
       grade: null,
+      topics: [],
     })
   })
 
@@ -154,6 +180,7 @@ describe('ExamFormModal', () => {
         status: 'pendiente',
         grade: null,
         fallback_color: 'lavender',
+        topics: [],
         sort_order: 0,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -170,6 +197,7 @@ describe('ExamFormModal', () => {
       date: '2026-08-15',
       status: 'pendiente',
       grade: null,
+      topics: [],
     })
   })
 
@@ -228,6 +256,7 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'rendido',
       grade: 8.5,
+      topics: [],
     })
   })
 
@@ -262,6 +291,7 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'pendiente',
       grade: null,
+      topics: [],
     })
   })
 
@@ -274,6 +304,7 @@ describe('ExamFormModal', () => {
         status: 'rendido',
         grade: 7.5,
         fallback_color: 'lavender',
+        topics: [],
         sort_order: 0,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -290,11 +321,95 @@ describe('ExamFormModal', () => {
       date: '2026-12-01',
       status: 'rendido',
       grade: 7.5,
+      topics: [],
     })
   })
 
   it('no usa colores de paleta cruda de Tailwind', async () => {
     await flushPromises()
     expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+  })
+
+  it('tiene un botón para agregar temas', () => {
+    expect(document.body.querySelector("[data-testid='add-topic-button']")).not.toBeNull()
+  })
+
+  it('agrega un tema y lo envía al crear', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Límites')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { id: string; title: string; completed: boolean }[]
+    }
+    expect(payload.topics).toHaveLength(1)
+    expect(payload.topics[0].title).toBe('Límites')
+    expect(payload.topics[0].completed).toBe(false)
+    expect(typeof payload.topics[0].id).toBe('string')
+  })
+
+  it('quita un tema de la lista', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Límites')
+    fillTopic(1, 'Derivadas')
+    await flushPromises()
+    removeTopic(0)
+    await flushPromises()
+    expect(topicInputs()).toHaveLength(1)
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { title: string }[]
+    }
+    expect(payload.topics.map((t) => t.title)).toEqual(['Derivadas'])
+  })
+
+  it('rechaza un tema sin título sin invocar al store', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).not.toHaveBeenCalled()
+    expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
+      'Todos los temas deben tener un título'
+    )
+  })
+
+  it('al editar prefilla los temas y los conserva al guardar', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        fallback_color: 'lavender',
+        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(topicInputs()[0].value).toBe('Límites')
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({
+        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+      })
+    )
   })
 })

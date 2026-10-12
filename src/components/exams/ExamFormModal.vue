@@ -2,12 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
-import { ExamStatusSchema, type ExamStatus } from '@/schemas/exams'
+import { ExamStatusSchema, type ExamStatus, type ExamTopic } from '@/schemas/exams'
 import { examStatusLabel } from '@/lib/examStatus'
 import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Text from '@/components/ui/Text.vue'
+import { X } from 'lucide-vue-next'
 
 const ui = useUiStore()
 const exams = useExamsStore()
@@ -28,6 +29,7 @@ const title = ref('')
 const date = ref('')
 const status = ref<ExamStatus>('pendiente')
 const gradeInput = ref('')
+const topics = ref<ExamTopic[]>([])
 const error = ref<string | null>(null)
 const saving = ref(false)
 
@@ -40,16 +42,34 @@ watch(
         date.value = editing.value.date
         status.value = editing.value.status
         gradeInput.value = editing.value.grade !== null ? String(editing.value.grade) : ''
+        topics.value = [...editing.value.topics]
       } else {
         title.value = ''
         date.value = ''
         status.value = 'pendiente'
         gradeInput.value = ''
+        topics.value = []
       }
       error.value = null
     }
   }
 )
+
+function addTopic() {
+  topics.value.push({
+    id: crypto.randomUUID(),
+    title: '',
+    completed: false,
+  })
+}
+
+function removeTopic(index: number) {
+  topics.value.splice(index, 1)
+}
+
+function updateTopicTitle(index: number, newTitle: string) {
+  topics.value[index].title = newTitle
+}
 
 // La nota sólo tiene sentido en un examen rendido: al salir de ese estado se
 // limpia, y el guardado la envía como null (sin nota).
@@ -83,6 +103,12 @@ async function handleSubmit(e: Event) {
     return
   }
 
+  const validTopics = topics.value.filter((t) => t.title.trim())
+  if (validTopics.length !== topics.value.length) {
+    error.value = 'Todos los temas deben tener un título.'
+    return
+  }
+
   saving.value = true
   error.value = null
 
@@ -93,6 +119,7 @@ async function handleSubmit(e: Event) {
         date: date.value,
         status: status.value,
         grade,
+        topics: validTopics,
       })
     } else {
       await exams.createExam({
@@ -100,6 +127,7 @@ async function handleSubmit(e: Event) {
         date: date.value,
         status: status.value,
         grade,
+        topics: validTopics,
       })
     }
     ui.closeExamModal()
@@ -165,6 +193,41 @@ async function handleSubmit(e: Event) {
           :disabled="status !== 'rendido'"
           helper="Sólo se guarda si el examen está rendido."
         />
+
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <Text variant="body-sm" color="muted">Temas</Text>
+            <Button
+              type="button"
+              variant="tertiary"
+              size="sm"
+              data-testid="add-topic-button"
+              @click="addTopic"
+            >
+              + Agregar tema
+            </Button>
+          </div>
+
+          <div v-if="topics.length > 0" class="flex flex-col gap-2">
+            <div v-for="(topic, index) in topics" :key="topic.id" class="flex items-center gap-2">
+              <Input
+                v-model="topic.title"
+                data-testid="topic-input"
+                :placeholder="`Tema ${index + 1}`"
+                maxlength="100"
+                @update:model-value="(val) => updateTopicTitle(index, val)"
+              />
+              <button
+                type="button"
+                data-testid="remove-topic-button"
+                class="rounded p-2 text-ink-muted hover:bg-surface-2"
+                @click="removeTopic(index)"
+              >
+                <X :size="16" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
