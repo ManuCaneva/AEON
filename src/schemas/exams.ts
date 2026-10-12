@@ -21,6 +21,16 @@ export const ExamTopicSchema = z.object({
 })
 export type ExamTopic = z.infer<typeof ExamTopicSchema>
 
+// Vínculo opcional a un evento del calendario. La identidad del evento es el
+// PAR (calendarId, eventId): los ids de Google sólo son únicos por calendario.
+// El examen NO crea ni espeja eventos: el vínculo es un adorno y la fecha del
+// examen sigue siendo la única fuente de su fecha.
+export const ExamEventLinkSchema = z.object({
+  calendarId: z.string().min(1),
+  eventId: z.string().min(1),
+})
+export type ExamEventLink = z.infer<typeof ExamEventLinkSchema>
+
 export const ExamSchema = z.object({
   id: uuid,
   title: trimmed(1, 100),
@@ -30,6 +40,8 @@ export const ExamSchema = z.object({
   // Bloque del Cronograma semanal (la materia). Opcional: null = sin bloque.
   block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema,
+  // Vínculo opcional a un evento del calendario: null = sin vínculo.
+  event_link: ExamEventLinkSchema.nullable().default(null),
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().default(0),
   created_at: isoTimestamp,
@@ -44,6 +56,7 @@ export const CreateExamDraftSchema = z.object({
   grade: z.number().min(0).max(10).nullable().optional(),
   block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema.default('lavender'),
+  event_link: ExamEventLinkSchema.nullable().default(null),
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().optional(),
 })
@@ -86,11 +99,21 @@ export function rowToExam(row: ExamRow): Exam {
     grade: row.grade,
     block_id: row.block_id,
     fallback_color: row.fallback_color,
+    event_link: linkFromColumns(row.calendar_id, row.event_id),
     topics: parsedTopics,
     sort_order: row.sort_order,
     created_at: normalizeTimestamp(row.created_at),
     updated_at: normalizeTimestamp(row.updated_at),
   })
+}
+
+/** Reconstruye el par (calendarId, eventId) sólo si ambas columnas existen. */
+function linkFromColumns(
+  calendarId: string | null,
+  eventId: string | null
+): ExamEventLink | null {
+  if (!calendarId || !eventId) return null
+  return { calendarId, eventId }
 }
 
 export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
@@ -100,6 +123,8 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
   grade?: number | null
   block_id?: string | null
   fallback_color?: string
+  calendar_id?: string | null
+  event_id?: string | null
   topics: string
   sort_order?: number
 } {
@@ -111,6 +136,14 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
     ...('block_id' in e && e.block_id !== undefined ? { block_id: e.block_id } : {}),
     ...('fallback_color' in e && e.fallback_color !== undefined
       ? { fallback_color: e.fallback_color }
+      : {}),
+    // El par se persiste en dos columnas. `undefined` no toca ninguna;
+    // `null` limpia ambas; un objeto las fija.
+    ...('event_link' in e && e.event_link !== undefined
+      ? {
+          calendar_id: e.event_link?.calendarId ?? null,
+          event_id: e.event_link?.eventId ?? null,
+        }
       : {}),
     topics: JSON.stringify('topics' in e && e.topics ? e.topics : []),
     ...('sort_order' in e && e.sort_order !== undefined ? { sort_order: e.sort_order } : {}),

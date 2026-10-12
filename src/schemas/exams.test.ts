@@ -65,6 +65,7 @@ describe('ExamSchema', () => {
     grade: null,
     block_id: null,
     fallback_color: 'lavender' as const,
+    event_link: null,
     topics: [],
     sort_order: 0,
     created_at: validIso,
@@ -78,6 +79,22 @@ describe('ExamSchema', () => {
   it('el bloque es opcional: por defecto queda sin asociar', () => {
     const { block_id: _omit, ...withoutBlock } = validExam
     expect(ExamSchema.parse(withoutBlock).block_id).toBeNull()
+  })
+
+  it('el vínculo a un evento es opcional: por defecto queda sin vínculo', () => {
+    const { event_link: _omit, ...withoutLink } = validExam
+    expect(ExamSchema.parse(withoutLink).event_link).toBeNull()
+  })
+
+  it('acepta un vínculo (calendarId, eventId) y rechaza uno incompleto', () => {
+    expect(
+      ExamSchema.parse({ ...validExam, event_link: { calendarId: 'local', eventId: 'evt-1' } })
+        .event_link
+    ).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+    expect(() => ExamSchema.parse({ ...validExam, event_link: { calendarId: 'local' } })).toThrow()
+    expect(() =>
+      ExamSchema.parse({ ...validExam, event_link: { calendarId: 'local', eventId: '' } })
+    ).toThrow()
   })
 
   it('acepta un bloque asociado por uuid y rechaza uno inválido', () => {
@@ -177,6 +194,17 @@ describe('CreateExamDraftSchema', () => {
         .block_id
     ).toBe(validUuid2)
   })
+
+  it('el vínculo es opcional: sin vínculo queda en null y acepta uno válido', () => {
+    expect(CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate }).event_link).toBeNull()
+    expect(
+      CreateExamDraftSchema.parse({
+        title: 'Parcial',
+        date: validDate,
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }).event_link
+    ).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+  })
 })
 
 describe('UpdateExamDraftSchema', () => {
@@ -184,6 +212,14 @@ describe('UpdateExamDraftSchema', () => {
     expect(UpdateExamDraftSchema.parse({})).toEqual({})
     expect(UpdateExamDraftSchema.parse({ title: 'Nuevo' })).toMatchObject({ title: 'Nuevo' })
     expect(UpdateExamDraftSchema.parse({ date: validDate })).toMatchObject({ date: validDate })
+  })
+
+  it('acepta el vínculo, incluido null para limpiarlo', () => {
+    expect(
+      UpdateExamDraftSchema.parse({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
+        .event_link
+    ).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+    expect(UpdateExamDraftSchema.parse({ event_link: null }).event_link).toBeNull()
   })
 })
 
@@ -215,6 +251,12 @@ describe('ExamRowSchema', () => {
     const parsed = ExamRowSchema.parse({ ...rawRow, grade: 8.5, block_id: validUuid })
     expect(parsed.grade).toBe(8.5)
     expect(parsed.block_id).toBe(validUuid)
+  })
+
+  it('acepta un vínculo persistido (calendar_id + event_id)', () => {
+    const parsed = ExamRowSchema.parse({ ...rawRow, calendar_id: 'local', event_id: 'evt-1' })
+    expect(parsed.calendar_id).toBe('local')
+    expect(parsed.event_id).toBe('evt-1')
   })
 })
 
@@ -252,7 +294,18 @@ describe('rowToExam', () => {
     expect(rowToExam({ ...rawRow, block_id: validUuid2 }).block_id).toBe(validUuid2)
   })
 
-  it('no expone columnas fuera del alcance de este ticket', () => {
+  it('reconstruye el vínculo (calendarId, eventId) desde las columnas', () => {
+    const exam = rowToExam({ ...rawRow, calendar_id: 'local', event_id: 'evt-1' })
+    expect(exam.event_link).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+  })
+
+  it('sin ambas columnas del vínculo el par queda en null', () => {
+    expect(rowToExam(rawRow).event_link).toBeNull()
+    expect(rowToExam({ ...rawRow, calendar_id: 'local', event_id: null }).event_link).toBeNull()
+    expect(rowToExam({ ...rawRow, calendar_id: null, event_id: 'evt-1' }).event_link).toBeNull()
+  })
+
+  it('no expone las columnas crudas del vínculo (solo el par event_link)', () => {
     const exam = rowToExam(rawRow)
     expect(exam).not.toHaveProperty('calendar_id')
     expect(exam).not.toHaveProperty('event_id')
@@ -338,6 +391,21 @@ describe('examToRow', () => {
     expect(examToRow({ title: 'Nuevo' }).block_id).toBeUndefined()
   })
 
+  it('incluye el vínculo cuando está presente, incluido null para limpiarlo', () => {
+    const linked = examToRow({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
+    expect(linked.calendar_id).toBe('local')
+    expect(linked.event_id).toBe('evt-1')
+    const cleared = examToRow({ event_link: null })
+    expect(cleared.calendar_id).toBeNull()
+    expect(cleared.event_id).toBeNull()
+  })
+
+  it('omite el vínculo cuando el patch no lo trae (no lo toca)', () => {
+    const row = examToRow({ title: 'Nuevo' })
+    expect(row.calendar_id).toBeUndefined()
+    expect(row.event_id).toBeUndefined()
+  })
+
   it('serializa los temas como JSON string', () => {
     const row = examToRow({
       topics: [{ id: validUuid2, title: 'Límites', completed: false }],
@@ -373,5 +441,25 @@ describe('examToRow', () => {
       updated_at: validIso,
     })
     expect(domain.topics).toEqual([{ id: validUuid2, title: 'Límites', completed: true }])
+  })
+
+  it('roundtrip dominio↔fila preserva el vínculo al evento', () => {
+    const row = examToRow({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
+    const domain = rowToExam({
+      id: validUuid,
+      title: 'Parcial',
+      date: validDate,
+      status: 'pendiente',
+      grade: null,
+      block_id: null,
+      fallback_color: 'lavender',
+      calendar_id: row.calendar_id!,
+      event_id: row.event_id!,
+      topics: '[]',
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+    })
+    expect(domain.event_link).toEqual({ calendarId: 'local', eventId: 'evt-1' })
   })
 })

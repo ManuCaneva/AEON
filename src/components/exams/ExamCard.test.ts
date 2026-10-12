@@ -38,6 +38,7 @@ const baseExam: Exam = {
   grade: null,
   block_id: null,
   fallback_color: 'lavender',
+  event_link: null,
   topics: [],
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',
