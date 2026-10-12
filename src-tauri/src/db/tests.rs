@@ -735,3 +735,36 @@ fn exams_grade_round_trips_and_enforces_range() {
     );
     assert!(out_of_range.is_err(), "grade > 10 debe violar el CHECK");
 }
+
+#[test]
+fn exams_topics_round_trip_and_reject_invalid_json() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    let topics = r#"[{"id":"t1","title":"Límites","completed":false}]"#;
+    conn.execute(
+        "INSERT INTO exams (id, title, date, topics, created_at, updated_at)
+         VALUES ('exam-topics', 'Parcial', '2026-07-01', ?1,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [topics],
+    )
+    .expect("insert exam with topics");
+
+    let stored: String = conn
+        .query_row(
+            "SELECT topics FROM exams WHERE id = 'exam-topics'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read topics");
+    assert_eq!(stored, topics);
+
+    // El CHECK(json_valid) rechaza un string que no es JSON.
+    let invalid = conn.execute(
+        "INSERT INTO exams (id, title, date, topics, created_at, updated_at)
+         VALUES ('exam-bad-topics', 'Parcial', '2026-07-01', 'no-json',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(invalid.is_err(), "topics inválido debe violar el CHECK");
+}

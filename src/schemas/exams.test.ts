@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ExamSchema,
   ExamStatusSchema,
+  ExamTopicSchema,
   CreateExamDraftSchema,
   UpdateExamDraftSchema,
   ExamRowSchema,
@@ -10,8 +11,37 @@ import {
 } from './exams'
 
 const validUuid = '550e8400-e29b-41d4-a716-446655440000'
+const validUuid2 = '660e8400-e29b-41d4-a716-446655440000'
 const validIso = '2026-06-27T10:00:00.000Z'
 const validDate = '2026-07-01'
+
+describe('ExamTopicSchema', () => {
+  it('acepta un tema válido y normaliza el título', () => {
+    const parsed = ExamTopicSchema.parse({
+      id: validUuid2,
+      title: '  Derivadas  ',
+      completed: false,
+    })
+    expect(parsed.title).toBe('Derivadas')
+    expect(parsed.completed).toBe(false)
+  })
+
+  it('rechaza un título vacío', () => {
+    expect(() =>
+      ExamTopicSchema.parse({ id: validUuid2, title: '   ', completed: false })
+    ).toThrow()
+  })
+
+  it('rechaza completed no booleano', () => {
+    expect(() =>
+      ExamTopicSchema.parse({ id: validUuid2, title: 'Tema', completed: 'sí' })
+    ).toThrow()
+  })
+
+  it('rechaza un id que no es uuid', () => {
+    expect(() => ExamTopicSchema.parse({ id: 'tema-1', title: 'Tema', completed: false })).toThrow()
+  })
+})
 
 describe('ExamStatusSchema', () => {
   it('acepta pendiente, estudiando y rendido', () => {
@@ -34,6 +64,7 @@ describe('ExamSchema', () => {
     status: 'pendiente' as const,
     grade: null,
     fallback_color: 'lavender' as const,
+    topics: [],
     sort_order: 0,
     created_at: validIso,
     updated_at: validIso,
@@ -41,6 +72,20 @@ describe('ExamSchema', () => {
 
   it('acepta un examen válido', () => {
     expect(ExamSchema.parse(validExam)).toEqual(validExam)
+  })
+
+  it('por defecto no tiene temas', () => {
+    const { topics: _omit, ...withoutTopics } = validExam
+    expect(ExamSchema.parse(withoutTopics).topics).toEqual([])
+  })
+
+  it('acepta temas embebidos', () => {
+    const parsed = ExamSchema.parse({
+      ...validExam,
+      topics: [{ id: validUuid2, title: 'Límites', completed: true }],
+    })
+    expect(parsed.topics).toHaveLength(1)
+    expect(parsed.topics[0].completed).toBe(true)
   })
 
   it('acepta una nota nula (sin nota) y notas con decimales de 0 a 10', () => {
@@ -81,6 +126,7 @@ describe('CreateExamDraftSchema', () => {
     expect(parsed).toMatchObject({ title: 'Parcial', date: validDate })
     expect(parsed.status).toBe('pendiente')
     expect(parsed.fallback_color).toBe('lavender')
+    expect(parsed.topics).toEqual([])
   })
 
   it('rechaza sin título', () => {
@@ -184,10 +230,39 @@ describe('rowToExam', () => {
 
   it('no expone columnas fuera del alcance de este ticket', () => {
     const exam = rowToExam(rawRow)
-    expect(exam).not.toHaveProperty('topics')
     expect(exam).not.toHaveProperty('block_id')
     expect(exam).not.toHaveProperty('calendar_id')
     expect(exam).not.toHaveProperty('event_id')
+  })
+
+  it('parsea el JSON de temas y normaliza cada tema', () => {
+    const exam = rowToExam({
+      ...rawRow,
+      topics: JSON.stringify([
+        { id: validUuid2, title: '  Derivadas  ', completed: true },
+        { id: validUuid, title: 'Integrales', completed: false },
+      ]),
+    })
+    expect(exam.topics).toHaveLength(2)
+    expect(exam.topics[0]).toEqual({ id: validUuid2, title: 'Derivadas', completed: true })
+    expect(exam.topics[1].completed).toBe(false)
+  })
+
+  it('sin temas persistidos mapea una lista vacía', () => {
+    expect(rowToExam(rawRow).topics).toEqual([])
+  })
+
+  it('lanza con JSON de temas inválido', () => {
+    expect(() => rowToExam({ ...rawRow, topics: 'no-json' })).toThrow()
+  })
+
+  it('lanza con estructura de temas inválida', () => {
+    expect(() =>
+      rowToExam({
+        ...rawRow,
+        topics: JSON.stringify([{ id: validUuid2, title: '', completed: 'x' }]),
+      })
+    ).toThrow()
   })
 
   it('lanza con fecha inválida', () => {
@@ -229,5 +304,42 @@ describe('examToRow', () => {
 
   it('omite la nota cuando el patch no la trae (no la toca)', () => {
     expect(examToRow({ title: 'Nuevo' }).grade).toBeUndefined()
+  })
+
+  it('serializa los temas como JSON string', () => {
+    const row = examToRow({
+      topics: [{ id: validUuid2, title: 'Límites', completed: false }],
+    })
+    expect(row.topics).toBe(
+      JSON.stringify([{ id: validUuid2, title: 'Límites', completed: false }])
+    )
+  })
+
+  it('sin temas serializa una lista vacía', () => {
+    expect(examToRow({ title: 'Nuevo' }).topics).toBe('[]')
+  })
+
+  it('roundtrip dominio↔fila preserva los temas', () => {
+    const row = examToRow({
+      title: 'Parcial',
+      date: validDate,
+      topics: [{ id: validUuid2, title: 'Límites', completed: true }],
+    })
+    const domain = rowToExam({
+      id: validUuid,
+      title: row.title!,
+      date: row.date!,
+      status: 'pendiente',
+      grade: null,
+      block_id: null,
+      fallback_color: 'lavender',
+      calendar_id: null,
+      event_id: null,
+      topics: row.topics,
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+    })
+    expect(domain.topics).toEqual([{ id: validUuid2, title: 'Límites', completed: true }])
   })
 })

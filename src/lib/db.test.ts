@@ -738,6 +738,37 @@ describe('db.createExam - shape hacia Rust', () => {
     })
   })
 
+  it('envía topics serializado como JSON string (vacío por defecto)', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({ topics: '[]' }),
+    })
+  })
+
+  it('envía los temas del draft serializados', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        topics: [{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true }],
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe(
+      JSON.stringify([
+        { id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true },
+      ])
+    )
+  })
+
   it('rechaza draft inválido sin invocar', async () => {
     await expect(
       createExam(
@@ -884,6 +915,42 @@ describe('db.updateExam - shape hacia Rust', () => {
     )
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.grade).toBeUndefined()
+  })
+
+  it('omite topics cuando el patch no los incluye (preserva los temas persistidos)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBeUndefined()
+  })
+
+  it('envía topics cuando el patch los incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      {
+        topics: [{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true }],
+      },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe(
+      JSON.stringify([
+        { id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true },
+      ])
+    )
+  })
+
+  it('envía topics vacío cuando el patch quita todos los temas', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { topics: [] },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe('[]')
   })
 })
 
