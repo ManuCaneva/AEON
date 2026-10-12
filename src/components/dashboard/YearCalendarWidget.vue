@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
+import { useExamsStore } from '@/stores/exams'
 import MonthMini from '@/components/calendar/MonthMini.vue'
 import YearStrip from '@/components/dashboard/YearStrip.vue'
 import YearCalendarSettingsModal from '@/components/dashboard/YearCalendarSettingsModal.vue'
@@ -27,6 +28,7 @@ const props = defineProps<{
 }>()
 
 const store = useCalendarStore()
+const exams = useExamsStore()
 
 const MONTH_NAMES = [
   'enero',
@@ -294,6 +296,7 @@ watch(
           v-if="resolvedMode === 'tira'"
           :year="store.currentYear"
           :events-by-date="store.eventsByDate"
+          :overlay-by-date="exams.overlayByDate"
           :month-names="MONTH_NAMES"
           @select-day="openDayModal"
         />
@@ -318,6 +321,7 @@ watch(
                 :month="m - 1"
                 :month-name="MONTH_NAMES[m - 1]"
                 :events-by-date="store.eventsByDate"
+                :overlay-by-date="exams.overlayByDate"
                 :show-header="false"
                 @select-day="openDayModal"
               />

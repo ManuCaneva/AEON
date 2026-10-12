@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import YearCalendarWidget from './YearCalendarWidget.vue'
 import MonthMini from '@/components/calendar/MonthMini.vue'
+import YearStrip from '@/components/dashboard/YearStrip.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
@@ -45,6 +46,18 @@ vi.mock('@/stores/calendar', () => ({
   useCalendarStore: () => mockStore,
 }))
 
+const mockExams: {
+  exams: unknown[]
+  overlayByDate: Map<string, { id: string; color: string }[]>
+} = {
+  exams: [],
+  overlayByDate: new Map(),
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => mockExams,
+}))
+
 describe('YearCalendarWidget', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -55,6 +68,8 @@ describe('YearCalendarWidget', () => {
     mockStore.eventsByDate = new Map()
     mockStore.syncError = null
     mockStore.configReady = Promise.resolve()
+    mockExams.overlayByDate = new Map()
+    mockExams.exams = []
     // Los tests históricos cubren el modo meses: lo pinean explícito.
     // El comportamiento de auto/tira tiene sus propios tests abajo.
     const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
@@ -654,6 +669,42 @@ describe('YearCalendarWidget', () => {
       const wrapper = await mountWithSize(500, 900)
       expect(wrapper.find('.ycw__footer').exists()).toBe(true)
       expect(wrapper.find('.ycw__footer').text()).toContain('2026')
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('pasa el overlay de exámenes a los meses sin crear eventos espejo', async () => {
+      mockExams.overlayByDate = new Map([
+        ['2026-10-11', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', color: 'rgb(var(--color-block-green))' },
+      ])
+      // El examen se lee como overlay: no se agrega ningún evento al calendario.
+      expect(mockStore.events).toEqual([])
+      expect(mockStore.eventsByDate.size).toBe(0)
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira también pasa el overlay de exámenes', async () => {
+      mockExams.overlayByDate = new Map([
+        ['2026-10-11', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+
+      const strip = wrapper.findComponent(YearStrip)
+      expect(strip.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', color: 'rgb(var(--color-block-green))' },
+      ])
+      expect(mockStore.events).toEqual([])
+
       vi.unstubAllGlobals()
       wrapper.unmount()
     })
