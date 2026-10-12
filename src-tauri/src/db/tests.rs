@@ -638,3 +638,56 @@ fn normalizes_invalid_values_in_a_canonical_count_column() {
         .expect("read normalized count");
     assert_eq!(count, 1);
 }
+
+#[test]
+fn adds_exams_table_additively_and_preserves_existing_data() {
+    let (db, habit_id, _log_id, _note) = legacy_db();
+    db.run_migrations().expect("apply exams migration");
+
+    let conn = db.conn.lock().unwrap();
+
+    let exams_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='exams')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("check exams table");
+    assert!(exams_exists, "la migración debe crear la tabla exams");
+
+    // La data previa sobrevive intacta (migración aditiva).
+    let habit_count: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM habits WHERE id = ?1",
+            [&habit_id],
+            |row| row.get(0),
+        )
+        .expect("count legacy habit");
+    assert_eq!(habit_count, 1);
+}
+
+#[test]
+fn exams_schema_applies_expected_defaults_on_a_fresh_database() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, created_at, updated_at)
+         VALUES ('exam-fixture', 'Parcial', '2026-07-01',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with defaults");
+
+    let (status, fallback_color, topics, grade): (String, String, String, Option<f64>) = conn
+        .query_row(
+            "SELECT status, fallback_color, topics, grade FROM exams WHERE id = 'exam-fixture'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("read exam defaults");
+    assert_eq!(status, "pendiente");
+    assert_eq!(fallback_color, "lavender");
+    assert_eq!(topics, "[]");
+    assert_eq!(grade, None);
+}

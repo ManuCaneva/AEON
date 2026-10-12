@@ -19,6 +19,10 @@ import {
   listNotes,
   updateNote,
   deleteNote,
+  createExam,
+  listExams,
+  updateExam,
+  deleteExam,
   clearAllData,
 } from './db'
 import { DATA_TABLES, DATA_CONFIG_KEYS, PRESERVED_CONFIG_KEYS } from './dataScope'
@@ -674,6 +678,182 @@ describe('db.deleteNote', () => {
     vi.mocked(invoke).mockResolvedValue(undefined)
     await deleteNote('123e4567-e89b-12d3-a456-426614174000')
     expect(invoke).toHaveBeenCalledWith('delete_note', {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+    })
+  })
+})
+
+describe('db.createExam - shape hacia Rust', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(mockExamRow)
+  })
+
+  it('envía input con estado y color de respaldo por defecto', async () => {
+    await createExam(
+      { title: 'Parcial 1 de Análisis', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Parcial 1 de Análisis',
+        date: '2026-07-01',
+        status: 'pendiente',
+        fallback_color: 'lavender',
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      }),
+    })
+  })
+
+  it('rechaza draft inválido sin invocar', async () => {
+    await expect(
+      createExam(
+        { title: '', date: '2026-07-01' } as any,
+        '123e4567-e89b-12d3-a456-426614174000',
+        '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z'
+      )
+    ).rejects.toThrow()
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('valida la fila devuelta con ExamRowSchema', async () => {
+    const result = await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(result.title).toBe('Parcial 1 de Análisis')
+    expect(result.topics).toBe('[]')
+  })
+})
+
+describe('db.listExams', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue([mockExamRow])
+  })
+
+  it('invoca list_exams sin args y parsea cada row', async () => {
+    const result = await listExams()
+    expect(invoke).toHaveBeenCalledWith('list_exams')
+    expect(result).toHaveLength(1)
+    expect(result[0].date).toBe('2026-07-01')
+  })
+
+  it('tolera respuesta no-array devolviendo vacío', async () => {
+    vi.mocked(invoke).mockResolvedValue(null)
+    expect(await listExams()).toEqual([])
+  })
+})
+
+describe('db.updateExam - shape hacia Rust', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(mockExamRow)
+  })
+
+  it('aplana el patch al shape que espera Rust', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo', date: '2026-08-01' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('update_exam', {
+      input: expect.objectContaining({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Nuevo',
+        date: '2026-08-01',
+        updated_at: '2026-07-05T00:00:00.000Z',
+      }),
+    })
+  })
+
+  it('omite status cuando el patch no lo incluye (no pisa el estado persistido)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.status).toBeUndefined()
+    expect(payload.input.fallback_color).toBeUndefined()
+  })
+
+  it('envía status cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { status: 'rendido' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.status).toBe('rendido')
+  })
+})
+
+describe('db.deleteExam', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+  })
+
+  it('invoca delete_exam con el id', async () => {
+    await deleteExam('123e4567-e89b-12d3-a456-426614174000')
+    expect(invoke).toHaveBeenCalledWith('delete_exam', {
       id: '123e4567-e89b-12d3-a456-426614174000',
     })
   })

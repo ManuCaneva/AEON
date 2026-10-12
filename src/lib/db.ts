@@ -37,6 +37,15 @@ import {
   noteToRow,
 } from '../schemas/notes'
 import {
+  CreateExamDraftSchema,
+  type CreateExamDraft,
+  type UpdateExamDraft,
+  UpdateExamDraftSchema,
+  ExamRowSchema,
+  type ExamRow,
+  examToRow,
+} from '../schemas/exams'
+import {
   CreateGoalDraftSchema,
   type CreateGoalDraft,
   type UpdateGoalDraft,
@@ -304,9 +313,67 @@ export async function deleteNote(id: string): Promise<void> {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Goals
+// Exams
 // ───────────────────────────────────────────────────────────────
 
+export async function createExam(
+  draft: CreateExamDraft,
+  id: string,
+  created_at: string,
+  updated_at: string
+): Promise<ExamRow> {
+  const validated = CreateExamDraftSchema.parse(draft)
+  const row = examToRow(validated)
+  const raw = await invoke<unknown>('create_exam', {
+    input: {
+      id,
+      title: row.title,
+      date: row.date,
+      status: row.status ?? 'pendiente',
+      fallback_color: row.fallback_color ?? 'lavender',
+      sort_order: row.sort_order ?? 0,
+      created_at,
+      updated_at,
+    },
+  })
+  return ExamRowSchema.parse(raw)
+}
+
+export async function listExams(): Promise<ExamRow[]> {
+  const raw = await invoke<unknown>('list_exams')
+  const arr = Array.isArray(raw) ? raw : []
+  return arr.map((r) => ExamRowSchema.parse(r))
+}
+
+export async function updateExam(
+  id: string,
+  patch: UpdateExamDraft,
+  updated_at: string
+): Promise<ExamRow> {
+  const validated = UpdateExamDraftSchema.parse(patch)
+  const row = examToRow(validated)
+  const raw = await invoke<unknown>('update_exam', {
+    input: {
+      id,
+      // undefined se omite al serializar (no toca el campo persistido).
+      title: row.title,
+      date: row.date,
+      status: row.status,
+      fallback_color: row.fallback_color,
+      sort_order: row.sort_order,
+      updated_at,
+    },
+  })
+  return ExamRowSchema.parse(raw)
+}
+
+export async function deleteExam(id: string): Promise<void> {
+  await invoke('delete_exam', { id })
+}
+
+// ───────────────────────────────────────────────────────────────
+// Goals
+// ───────────────────────────────────────────────────────────────
 export async function createGoal(
   draft: CreateGoalDraft,
   id: string,

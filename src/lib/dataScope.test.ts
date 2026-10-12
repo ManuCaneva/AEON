@@ -10,6 +10,7 @@ describe('dataScope — frontera entre datos y configuración', () => {
       'goals',
       'tasks',
       'notes',
+      'exams',
       'schedule_block_slots',
       'schedule_blocks',
     ])
