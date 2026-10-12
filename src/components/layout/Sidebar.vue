@@ -18,10 +18,11 @@ const ui = useUiStore()
 const { transitioning, start, end, onEnd } = useLayoutTransition()
 
 // El panel anima su ancho (176px ↔ 56px) en 300ms con la curva del snap de
-// widgets; los fundidos de opacidad acompañan (labels/textos 300ms, logo
-// 250ms, ícono del botón 150ms). El estado asentado (labels ocultos + filas
-// centradas) se aplica cuando la transición de ancho termina de verdad
-// (transitionend), con el fallback del composable como red.
+// widgets; los fundidos de opacidad acompañan (labels/textos 300ms, ícono del
+// botón 150ms). El logo fadea rápido al colapsar (100ms, para que no se lo
+// vea viajar a la izquierda) y suave al expandir (250ms). El estado asentado
+// (labels ocultos + filas centradas) se aplica cuando la transición de ancho
+// termina de verdad (transitionend), con el fallback del composable como red.
 const settled = ref(ui.sidebarCollapsed)
 // Al expandir, los labels vuelven de `display:none`. Los mostramos un cuadro
 // en opacidad 0 y recién en el siguiente la subimos a 1, para que la
@@ -103,7 +104,7 @@ const systemRows = computed<NavRow[]>(() => [
   },
   {
     key: 'settings',
-    label: 'Settings',
+    label: 'Configuración',
     icon: Settings,
     active: ui.viewMode === 'settings',
     select: () => ui.setViewMode('settings'),
@@ -115,7 +116,13 @@ const fadeClass = computed(() =>
 )
 const hideClass = computed(() => (ui.sidebarCollapsed && settled.value ? 'hidden' : ''))
 const textFade = computed(() => [fadeClass.value, hideClass.value])
-const logoFade = computed(() => [fadeClass.value, hideClass.value, 'text-ink'])
+const logoDuration = computed(() =>
+  // Colapsando el logo fadea rápido (100ms) para que no se lo vea viajar a
+  // la izquierda mientras el ancho aún se anima; en reposo y al expandir el
+  // fade es suave (250ms).
+  ui.sidebarCollapsed && !settled.value ? 'duration-100' : 'duration-[250ms]'
+)
+const logoFade = computed(() => [fadeClass.value, hideClass.value, 'text-ink', logoDuration.value])
 const centered = computed(() => ui.sidebarCollapsed && settled.value)
 
 const rowBase = computed(
@@ -131,7 +138,7 @@ const rowActive = 'bg-surface-3 text-ink'
 <template>
   <aside
     :class="[
-      'glass-strong flex h-full flex-col rounded-xl transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+      'glass-strong flex h-full flex-col overflow-hidden rounded-xl transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
       ui.sidebarCollapsed ? 'w-14' : 'w-44',
     ]"
     @transitionend="handleTransitionEnd"
@@ -144,7 +151,7 @@ const rowActive = 'bg-surface-3 text-ink'
       <span
         data-testid="sidebar-logo"
         aria-hidden="true"
-        class="pointer-events-none absolute left-1/2 top-1/2 h-5 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-[250ms] [&>svg]:h-full [&>svg]:w-auto"
+        class="pointer-events-none absolute left-1/2 top-1/2 h-5 -translate-x-1/2 -translate-y-1/2 transition-opacity [&>svg]:h-full [&>svg]:w-auto"
         :class="logoFade"
         v-html="logoWordmark"
       />
@@ -173,7 +180,7 @@ const rowActive = 'bg-surface-3 text-ink'
       </button>
     </div>
 
-    <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-1">
+    <nav class="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-2 py-1">
       <Text
         variant="eyebrow"
         color="subtle"

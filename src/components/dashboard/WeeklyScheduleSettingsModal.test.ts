@@ -122,6 +122,58 @@ describe('WeeklyScheduleSettingsModal', () => {
     expect(lunes!.getAttribute('aria-pressed')).toBe('true')
   })
 
+  it('granularidad es un segmented control de selección única', async () => {
+    wrapper = mount(WeeklyScheduleSettingsModal, {
+      props: { open: true },
+      attachTo: document.body,
+    })
+
+    const group = document.body.querySelector('[role="radiogroup"]')
+    expect(group).not.toBeNull()
+
+    const options = Array.from(group!.querySelectorAll('[role="radio"]'))
+    expect(options).toHaveLength(3)
+
+    const selected = options.find((b) => b.textContent?.includes('30 min'))
+    expect(selected!.getAttribute('aria-checked')).toBe('true')
+    expect(selected!.className).toContain('bg-primary')
+
+    const unselected = options.find((b) => b.textContent?.includes('15 min'))
+    expect(unselected!.getAttribute('aria-checked')).toBe('false')
+    expect(unselected!.className).not.toContain('bg-primary')
+  })
+
+  it('días activos son toggles tipo pill con on/off distinguible del CTA', async () => {
+    mockStore.settings.enabled_days = [0, 1, 2, 3, 4]
+    wrapper = mount(WeeklyScheduleSettingsModal, {
+      props: { open: false },
+      attachTo: document.body,
+    })
+    await wrapper.setProps({ open: true })
+
+    const buttons = Array.from(document.body.querySelectorAll('button'))
+    const lunes = buttons.find((b) => b.textContent?.trim() === 'Lun')!
+    const sabado = buttons.find((b) => b.textContent?.trim() === 'Sáb')!
+    expect(lunes).toBeDefined()
+    expect(sabado).toBeDefined()
+
+    // Semántica de toggle
+    expect(lunes.getAttribute('aria-pressed')).toBe('true')
+    expect(sabado.getAttribute('aria-pressed')).toBe('false')
+
+    // Forma pill
+    expect(lunes.className).toContain('rounded-full')
+    expect(sabado.className).toContain('rounded-full')
+
+    // Encendido: tintado con borde violeta, NO sólido como el CTA Guardar
+    expect(lunes.className).toContain('bg-accent-purple-tint')
+    expect(lunes.className).not.toContain('bg-primary')
+
+    // Apagado: superficie apagada sin tinte violeta
+    expect(sabado.className).not.toContain('bg-accent-purple-tint')
+    expect(sabado.className).not.toContain('bg-primary')
+  })
+
   it('no usa colores de paleta cruda de Tailwind', () => {
     wrapper = mount(WeeklyScheduleSettingsModal, {
       props: { open: true },

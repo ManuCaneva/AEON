@@ -64,6 +64,12 @@ describe('Sidebar', () => {
     expect(setViewMode).toHaveBeenCalledWith('pomodoro')
   })
 
+  it('muestra la fila de sistema como Configuración (no Settings)', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.get('[data-testid="nav-settings"]').text()).toContain('Configuración')
+    expect(wrapper.get('[data-testid="nav-settings"]').text()).not.toContain('Settings')
+  })
+
   it('renders a section eyebrow per group and no decorative dots', () => {
     const wrapper = mountSidebar()
     const eyebrows = wrapper.findAll('.text-eyebrow')
@@ -183,20 +189,18 @@ describe('Sidebar', () => {
     expect(aside.classes()).not.toContain('transition-all')
   })
 
-  it('labels y textos de sección funden 300ms; el logo 250ms', () => {
-    const wrapper = mountSidebar()
-
-    const label = wrapper.get('[data-testid="nav-label-dashboard"]')
-    expect(label.classes()).toContain('transition-opacity')
-    expect(label.classes()).toContain('duration-300')
-
-    const eyebrow = wrapper.get('.text-eyebrow')
-    expect(eyebrow.classes()).toContain('transition-opacity')
-    expect(eyebrow.classes()).toContain('duration-300')
-
+  it('el logo desaparece rápido al colapsar y vuelve suave al expandir', async () => {
+    const wrapper = mountWithReactiveUi(false)
     const logo = wrapper.get('[data-testid="sidebar-logo"]')
     expect(logo.classes()).toContain('transition-opacity')
+    // En reposo expandido el fade es suave.
     expect(logo.classes()).toContain('duration-[250ms]')
+
+    // Colapsando: fade-out rápido para que no se lo vea viajar a la izquierda.
+    uiState.sidebarCollapsed = true
+    await nextTick()
+    expect(logo.classes()).toContain('duration-100')
+    expect(logo.classes()).not.toContain('duration-[250ms]')
   })
 
   it('el ícono del toggle hace crossfade de 150ms entre colapsar y expandir', async () => {
@@ -397,5 +401,11 @@ describe('Sidebar', () => {
 
     expect(() => vi.advanceTimersByTime(LAYOUT_TRANSITION_FALLBACK_MS * 2)).not.toThrow()
     await nextTick()
+  })
+
+  it('no muestra scrollbar horizontal durante el colapso (overflow-x oculto)', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.get('aside').classes()).toContain('overflow-hidden')
+    expect(wrapper.get('nav').classes()).toContain('overflow-x-hidden')
   })
 })

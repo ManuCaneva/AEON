@@ -20,6 +20,22 @@ describe('WallpaperSettingsSchema', () => {
     expect(defaultWallpaperSettings.dataUrl).toBeNull()
   })
 
+  it('tiene presetId null por defecto y lo completa en configs viejas', () => {
+    expect(WallpaperSettingsSchema.parse({}).presetId).toBeNull()
+    expect(defaultWallpaperSettings.presetId).toBeNull()
+    expect(WallpaperSettingsSchema.parse({ dataUrl: pngDataUrl }).presetId).toBeNull()
+  })
+
+  it('acepta presetId explícito y null', () => {
+    expect(WallpaperSettingsSchema.parse({ presetId: 'fondo-01' }).presetId).toBe('fondo-01')
+    expect(WallpaperSettingsSchema.parse({ presetId: null }).presetId).toBeNull()
+  })
+
+  it('rechaza presetId vacío o no string', () => {
+    expect(() => WallpaperSettingsSchema.parse({ presetId: '' })).toThrow()
+    expect(() => WallpaperSettingsSchema.parse({ presetId: 42 })).toThrow()
+  })
+
   it('acepta dataUrl null explícito', () => {
     const result = WallpaperSettingsSchema.parse({ dataUrl: null })
     expect(result.dataUrl).toBeNull()
@@ -75,13 +91,36 @@ describe('parseWallpaperSettingsJson', () => {
     const json = JSON.stringify({ dataUrl: pngDataUrl })
     expect(parseWallpaperSettingsJson(json)).toEqual({
       dataUrl: pngDataUrl,
+      presetId: null,
       widgetGlassAlpha: 0.8,
     })
   })
 
   it('parsea JSON con alpha persistido', () => {
     const json = JSON.stringify({ dataUrl: null, widgetGlassAlpha: 0.6 })
-    expect(parseWallpaperSettingsJson(json)).toEqual({ dataUrl: null, widgetGlassAlpha: 0.6 })
+    expect(parseWallpaperSettingsJson(json)).toEqual({
+      dataUrl: null,
+      presetId: null,
+      widgetGlassAlpha: 0.6,
+    })
+  })
+
+  it('parsea JSON con presetId persistido', () => {
+    const json = JSON.stringify({ dataUrl: null, presetId: 'fondo-03', widgetGlassAlpha: 0.8 })
+    expect(parseWallpaperSettingsJson(json)).toEqual({
+      dataUrl: null,
+      presetId: 'fondo-03',
+      widgetGlassAlpha: 0.8,
+    })
+  })
+
+  it('completa presetId null en JSON viejo sin presetId', () => {
+    const json = JSON.stringify({ dataUrl: pngDataUrl })
+    expect(parseWallpaperSettingsJson(json)).toEqual({
+      dataUrl: pngDataUrl,
+      presetId: null,
+      widgetGlassAlpha: 0.8,
+    })
   })
 
   it('devuelve el default con JSON null', () => {

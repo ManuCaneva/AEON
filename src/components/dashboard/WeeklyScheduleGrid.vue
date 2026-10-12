@@ -193,13 +193,13 @@ function slotsForDay(day: number): VisibleSlot[] {
 
 <template>
   <div ref="containerRef" class="relative flex h-full min-h-0 w-full select-none flex-col">
-    <div class="relative min-h-0 flex-1 overflow-hidden bg-canvas">
+    <div class="relative min-h-0 flex-1 overflow-hidden bg-transparent">
       <div
         ref="headerRef"
-        class="schedule-header flex flex-shrink-0 border-b border-hairline bg-surface-2"
+        class="schedule-header flex flex-shrink-0 border-b border-hairline bg-transparent"
       >
-        <div :style="{ width: labelWidthStyle }" class="flex-shrink-0 bg-surface-2" />
-        <div class="grid flex-1 border-l border-hairline bg-surface-2" :style="dayGridStyle">
+        <div :style="{ width: labelWidthStyle }" class="flex-shrink-0 bg-transparent" />
+        <div class="grid flex-1 border-l border-hairline bg-transparent" :style="dayGridStyle">
           <div
             v-for="dayIndex in enabledDays"
             :key="dayIndex"
@@ -207,7 +207,7 @@ function slotsForDay(day: number): VisibleSlot[] {
             :class="
               dayIndex === todayIndex
                 ? 'bg-accent-purple-tint text-accent-purple'
-                : 'bg-surface-2 text-ink-muted'
+                : 'bg-transparent text-ink-muted'
             "
             :data-testid="dayIndex === todayIndex ? 'schedule-today-header' : undefined"
           >
@@ -217,7 +217,7 @@ function slotsForDay(day: number): VisibleSlot[] {
       </div>
 
       <div class="flex" :style="{ height: gridHeightStyle }">
-        <div :style="{ width: labelWidthStyle }" class="flex-shrink-0 select-none bg-surface-1/50">
+        <div :style="{ width: labelWidthStyle }" class="flex-shrink-0 select-none bg-transparent">
           <div
             v-for="hl in hourLabels"
             :key="hl.minute"

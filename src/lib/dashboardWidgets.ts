@@ -77,7 +77,7 @@ export const widgets: DashboardWidget[] = [
     icon: 'calendar',
     component: YearCalendarWidget,
     minW: 1,
-    minH: 3,
+    minH: 2,
     defaultX: 11,
     defaultY: 0,
     defaultW: 1,

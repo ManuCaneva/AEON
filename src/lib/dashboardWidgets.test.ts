@@ -115,7 +115,7 @@ describe('dashboardWidgets', () => {
       tasks: { minW: 1, minH: 1 },
       goals: { minW: 1, minH: 1 },
       pomodoro: { minW: 2, minH: 3 },
-      'year-calendar': { minW: 1, minH: 3 },
+      'year-calendar': { minW: 1, minH: 2 },
       'weekly-schedule': { minW: 5, minH: 4 },
       notes: { minW: 1, minH: 2 },
     }

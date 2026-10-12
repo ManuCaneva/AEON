@@ -528,6 +528,17 @@ describe('useCalendarStore', () => {
     expect(store.connected).toBe(false)
   })
 
+  it('configReady resolves after restoring the persisted connection (cold start)', async () => {
+    dbStore.set('gcal_access_token', 'restored_at')
+    dbStore.set('gcal_refresh_token', 'restored_rt')
+    dbStore.set('gcal_token_expiry', '9999999999999')
+
+    const store = useCalendarStore()
+    await store.configReady
+
+    expect(store.connected).toBe(true)
+  })
+
   it('syncYear() populates calendars ref', async () => {
     mockFetch
       .mockResolvedValueOnce({

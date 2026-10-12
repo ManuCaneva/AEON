@@ -63,6 +63,13 @@ describe('WeeklyScheduleWidget', () => {
     expect(header.find('[aria-label="Nuevo bloque"]').exists()).toBe(true)
   })
 
+  it('el header usa el mismo fondo que los demás widgets (bg-surface-2)', () => {
+    const wrapper = mount(WeeklyScheduleWidget)
+    const header = wrapper.get('.schedule-widget-header')
+    expect(header.classes()).toContain('bg-surface-2')
+    expect(header.classes()).not.toContain('bg-transparent')
+  })
+
   it('no usa colores de paleta cruda de Tailwind', () => {
     const wrapper = mount(WeeklyScheduleWidget)
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)

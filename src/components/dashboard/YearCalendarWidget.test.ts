@@ -24,6 +24,7 @@ const mockStore: {
   goNextYear: ReturnType<typeof vi.fn>
   goPrevYear: ReturnType<typeof vi.fn>
   loadPersistedConfig: ReturnType<typeof vi.fn>
+  configReady: Promise<void>
 } = {
   connected: false,
   currentYear: 2026,
@@ -37,6 +38,7 @@ const mockStore: {
   goNextYear: vi.fn(),
   goPrevYear: vi.fn(),
   loadPersistedConfig: vi.fn().mockResolvedValue(undefined),
+  configReady: Promise.resolve(),
 }
 
 vi.mock('@/stores/calendar', () => ({
@@ -52,6 +54,16 @@ describe('YearCalendarWidget', () => {
     mockStore.syncing = false
     mockStore.eventsByDate = new Map()
     mockStore.syncError = null
+    mockStore.configReady = Promise.resolve()
+    // Los tests históricos cubren el modo meses: lo pinean explícito.
+    // El comportamiento de auto/tira tiene sus propios tests abajo.
+    const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    })
   })
 
   afterEach(() => {
@@ -59,6 +71,8 @@ describe('YearCalendarWidget', () => {
     // lo cerramos para no contaminar el siguiente.
     const { end } = useLayoutTransition()
     end()
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
   })
 
   it('renderiza 12 meses', async () => {
@@ -92,8 +106,25 @@ describe('YearCalendarWidget', () => {
     wrapper.unmount()
   })
 
-  it('llama syncYear al montarse', () => {
+  it('llama syncYear al montarse', async () => {
     mount(YearCalendarWidget)
+    await mockStore.configReady
+    await Promise.resolve()
+    expect(mockStore.syncYear).toHaveBeenCalledWith(2026)
+  })
+
+  it('espera a configReady antes del primer syncYear (cold start con tokens)', async () => {
+    let resolveReady!: () => void
+    mockStore.configReady = new Promise<void>((resolve) => {
+      resolveReady = resolve
+    })
+    mount(YearCalendarWidget)
+    await Promise.resolve()
+    expect(mockStore.syncYear).not.toHaveBeenCalled()
+    resolveReady()
+    await mockStore.configReady
+    await Promise.resolve()
+    await Promise.resolve()
     expect(mockStore.syncYear).toHaveBeenCalledWith(2026)
   })
 
@@ -201,13 +232,24 @@ describe('YearCalendarWidget', () => {
     expect(header.find("[data-testid='sync-spinner']").exists()).toBe(true)
   })
 
+  it('el título iguala al resto de los widgets (card-title, sin tamaño pineado)', () => {
+    const wrapper = mount(YearCalendarWidget)
+    const title = wrapper.get('.ycw__title')
+    expect(title.classes()).toContain('text-card-title')
+    // Sin override inline: el tamaño lo da la regla de widgets × --text-scale.
+    expect(wrapper.get('.ycw__header').attributes('style') ?? '').not.toContain('--title-font-size')
+    expect(wrapper.get('[data-testid="year-calendar-widget"]').classes()).toContain(
+      'container-widget'
+    )
+  })
+
   it('no muestra flechas de paginación cuando caben los 12 meses', () => {
     const wrapper = mount(YearCalendarWidget)
     expect(wrapper.find("[data-testid='month-up']").exists()).toBe(false)
     expect(wrapper.find("[data-testid='month-down']").exists()).toBe(false)
   })
 
-  it('muestra flechas de paginación cuando no caben los 12 meses', async () => {
+  it('no pagina por semestre: cuerpo chico muestra los 12 meses con scroll y sin flechas', async () => {
     let resizeCallback: (() => void) | null = null
     vi.stubGlobal(
       'ResizeObserver',
@@ -235,10 +277,90 @@ describe('YearCalendarWidget', () => {
     await flushRaf()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find("[data-testid='month-up']").exists()).toBe(true)
-    expect(wrapper.find("[data-testid='month-down']").exists()).toBe(true)
+    expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+    expect(wrapper.find("[data-testid='month-up']").exists()).toBe(false)
+    expect(wrapper.find("[data-testid='month-down']").exists()).toBe(false)
+    expect(wrapper.find("[data-testid='year-grid-viewport']").exists()).toBe(true)
+    const style = wrapper.find('.ycw').attributes('style') ?? ''
+    const cellMatch = style.match(/--cell-size:\s*([\d.]+)px/)
+    expect(cellMatch).not.toBeNull()
+    expect(parseFloat(cellMatch![1])).toBeGreaterThanOrEqual(10)
 
     vi.unstubAllGlobals()
+    wrapper.unmount()
+  })
+
+  it('el viewport es scrolleable con celdas legibles (sin viewport-h pineado)', async () => {
+    let resizeCallback: (() => void) | null = null
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resizeCallback = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+
+    const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
+    const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+    Object.defineProperty(bodyEl, 'clientWidth', { value: 300, configurable: true })
+    Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+
+    if (resizeCallback) {
+      ;(resizeCallback as () => void)()
+    }
+    await flushRaf()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find("[data-testid='year-grid-viewport']").exists()).toBe(true)
+    const style = wrapper.find('.ycw').attributes('style') ?? ''
+    const cellMatch = style.match(/--cell-size:\s*([\d.]+)px/)
+    expect(cellMatch).not.toBeNull()
+    expect(parseFloat(cellMatch![1])).toBeGreaterThanOrEqual(10)
+
+    vi.unstubAllGlobals()
+    wrapper.unmount()
+  })
+
+  it('al abrir scrollea al mes actual (octubre queda visible)', async () => {
+    const getMonthSpy = vi.spyOn(Date.prototype, 'getMonth').mockReturnValue(9)
+    const getFullYearSpy = vi.spyOn(Date.prototype, 'getFullYear').mockReturnValue(2026)
+    mockStore.currentYear = 2026
+    let resizeCallback: (() => void) | null = null
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resizeCallback = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+
+    const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
+    const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+    Object.defineProperty(bodyEl, 'clientWidth', { value: 300, configurable: true })
+    Object.defineProperty(bodyEl, 'clientHeight', { value: 500, configurable: true })
+
+    if (resizeCallback) {
+      ;(resizeCallback as () => void)()
+    }
+    await flushRaf()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    // Sin paginado: los 12 meses renderizados y el viewport scrolleado abajo.
+    expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+    const viewport = wrapper.find("[data-testid='year-grid-viewport']").element as HTMLElement
+    expect(viewport.scrollTop).toBeGreaterThan(0)
+
+    getMonthSpy.mockRestore()
+    getFullYearSpy.mockRestore()
+    vi.unstubAllGlobals()
+    wrapper.unmount()
   })
 
   it('difiere el recompute a rAF y no vuelve a calcular en cada frame del resize', async () => {
@@ -407,5 +529,247 @@ describe('YearCalendarWidget', () => {
 
     vi.unstubAllGlobals()
     wrapper.unmount()
+  })
+
+  describe('modos meses / tira', () => {
+    function stubResize() {
+      let resizeCallback: (() => void) | null = null
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(callback: () => void) {
+            resizeCallback = callback
+          }
+          observe() {}
+          disconnect() {}
+        }
+      )
+      return () => resizeCallback
+    }
+
+    async function mountWithSize(w: number, h: number, item?: { w: number; h: number }) {
+      const getCallback = stubResize()
+      const wrapper = mount(YearCalendarWidget, {
+        attachTo: document.body,
+        props: item ? { item: { i: 'year-calendar', x: 0, y: 0, w: item.w, h: item.h } } : {},
+      })
+      const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+      Object.defineProperty(bodyEl, 'clientWidth', { value: w, configurable: true })
+      Object.defineProperty(bodyEl, 'clientHeight', { value: h, configurable: true })
+      const cb = getCallback()
+      if (cb) (cb as () => void)()
+      await flushRaf()
+      await wrapper.vm.$nextTick()
+      return wrapper
+    }
+
+    it('en auto y ancho > alto muestra la tira y oculta los meses', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'auto')
+      const wrapper = await mountWithSize(1200, 600)
+      expect(wrapper.find("[data-testid='year-strip']").exists()).toBe(true)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(0)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en auto y alto >= ancho muestra los meses', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'auto')
+      const wrapper = await mountWithSize(500, 900)
+      expect(wrapper.find("[data-testid='year-strip']").exists()).toBe(false)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en auto y tamaño 1x1 siempre muestra meses aunque sea ancho', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'auto')
+      const wrapper = await mountWithSize(2000, 200, { w: 1, h: 1 })
+      expect(wrapper.find("[data-testid='year-strip']").exists()).toBe(false)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('el engranaje abre los ajustes y guardar tira cambia la vista', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+
+      await wrapper.find("[data-testid='yearcal-settings']").trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const tiraOption = document.body.querySelector(
+        "[data-testid='strip-mode-option'][data-value='tira']"
+      ) as HTMLElement
+      expect(tiraOption).not.toBeNull()
+      tiraOption.click()
+      await wrapper.vm.$nextTick()
+      ;(document.body.querySelector("[data-testid='strip-mode-save']") as HTMLElement).click()
+      await flushRaf()
+      await wrapper.vm.$nextTick()
+
+      expect(localStorage.getItem('aeon:yearcal-mode')).toBe('tira')
+      expect(wrapper.find("[data-testid='year-strip']").exists()).toBe(true)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(0)
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+      document.body.innerHTML = ''
+    })
+
+    it('en tira el año se controla desde el header y no hay footer', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+      const header = wrapper.find('.ycw__header')
+      expect(header.find("[data-testid='year-prev']").exists()).toBe(true)
+      expect(header.find("[data-testid='year-next']").exists()).toBe(true)
+      expect(header.text()).toContain('2026')
+      expect(wrapper.find('.ycw__footer').exists()).toBe(false)
+
+      await header.find("[data-testid='year-next']").trigger('click')
+      expect(mockStore.goNextYear).toHaveBeenCalled()
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira angosto el engranaje sigue accesible (título trunca, controles fijos)', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(160, 800)
+      const header = wrapper.find('.ycw__header')
+      expect(header.find("[data-testid='year-prev']").exists()).toBe(true)
+      const settings = header.find("[data-testid='yearcal-settings']")
+      expect(settings.exists()).toBe(true)
+      // El título debe poder encogerse con ellipsis para no expulsar los controles.
+      expect(wrapper.find('.ycw__title').classes()).toContain('truncate')
+      // Año y engranaje no deben encogerse ni ser expulsados del header.
+      expect(header.find('.ycw__head-year').classes()).toContain('shrink-0')
+      expect(settings.classes()).toContain('shrink-0')
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en meses el footer con el año sigue existiendo', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+      expect(wrapper.find('.ycw__footer').exists()).toBe(true)
+      expect(wrapper.find('.ycw__footer').text()).toContain('2026')
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira el popup muestra la lista de eventos del día clickeado', async () => {
+      const evt = {
+        id: 'e1',
+        title: 'Dentista',
+        date: '2026-10-11',
+        color: '#ff0000',
+        calendarId: 'local',
+      }
+      mockStore.events = [evt]
+      mockStore.eventsByDate = new Map([['2026-10-11', [evt]]])
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+      const cell = wrapper.find("[data-date='2026-10-11']")
+      expect(cell.exists()).toBe(true)
+      await cell.trigger('click')
+      await wrapper.vm.$nextTick()
+      const modal = wrapper.findComponent(DayDetailsModal)
+      expect(modal.props('open')).toBe(true)
+      expect(modal.props('date')).toBe('2026-10-11')
+      await wrapper.vm.$nextTick()
+      expect(document.body.textContent).toContain('Dentista')
+
+      mockStore.events = []
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+      document.body.innerHTML = ''
+    })
+
+    it('en tira, el select-day abre el modal igual que en meses', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+      const strip = wrapper.find("[data-testid='year-strip']")
+      expect(strip.exists()).toBe(true)
+      const cell = wrapper.find("[data-testid='strip-cell']")
+      await cell.trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.findComponent(DayDetailsModal).props('open')).toBe(true)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+  })
+
+  describe('modo meses scrolleable', () => {
+    function stubResize() {
+      let resizeCallback: (() => void) | null = null
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(callback: () => void) {
+            resizeCallback = callback
+          }
+          observe() {}
+          disconnect() {}
+        }
+      )
+      return () => resizeCallback
+    }
+
+    async function mountScrollable(w: number, h: number, itemW: number) {
+      const getCallback = stubResize()
+      const wrapper = mount(YearCalendarWidget, {
+        attachTo: document.body,
+        props: { item: { i: 'year-calendar', x: 0, y: 0, w: itemW, h: 10 } },
+      })
+      const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+      Object.defineProperty(bodyEl, 'clientWidth', { value: w, configurable: true })
+      Object.defineProperty(bodyEl, 'clientHeight', { value: h, configurable: true })
+      const cb = getCallback()
+      if (cb) (cb as () => void)()
+      await flushRaf()
+      await wrapper.vm.$nextTick()
+      return wrapper
+    }
+
+    it('w=2 angosto y alto muestra 2 columnas legibles (>=10px) con los 12 meses y sin paginado', async () => {
+      const wrapper = await mountScrollable(280, 800, 2)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+      const style = wrapper.find('.ycw').attributes('style') ?? ''
+      expect(style).toMatch(/--cols:\s*2/)
+      const cellMatch = style.match(/--cell-size:\s*([\d.]+)px/)
+      expect(cellMatch).not.toBeNull()
+      expect(parseFloat(cellMatch![1])).toBeGreaterThanOrEqual(10)
+      expect(wrapper.find("[data-testid='month-up']").exists()).toBe(false)
+      expect(wrapper.find("[data-testid='month-down']").exists()).toBe(false)
+      const viewport = wrapper.find("[data-testid='year-grid-viewport']")
+      expect(viewport.exists()).toBe(true)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('w=1 angosto muestra 1 columna legible con scroll vertical', async () => {
+      const wrapper = await mountScrollable(150, 800, 1)
+      const style = wrapper.find('.ycw').attributes('style') ?? ''
+      expect(style).toMatch(/--cols:\s*1/)
+      const cellMatch = style.match(/--cell-size:\s*([\d.]+)px/)
+      expect(cellMatch).not.toBeNull()
+      expect(parseFloat(cellMatch![1])).toBeGreaterThanOrEqual(10)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('al cambiar item.w en vivo (preview de resize) cambia las columnas sin remontar', async () => {
+      const wrapper = await mountScrollable(280, 800, 1)
+      expect(wrapper.find('.ycw').attributes('style')).toMatch(/--cols:\s*1/)
+      await wrapper.setProps({ item: { i: 'year-calendar', x: 0, y: 0, w: 2, h: 10 } })
+      await flushRaf()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.ycw').attributes('style')).toMatch(/--cols:\s*2/)
+      expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
   })
 })

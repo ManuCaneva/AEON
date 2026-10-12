@@ -12,6 +12,24 @@ vi.mock('@/lib/wallpaper', async (importOriginal) => {
   }
 })
 
+vi.mock('@/lib/presetWallpapers', () => ({
+  PRESET_WALLPAPERS: [
+    { id: 'fondo-01', label: 'Fondo 1', url: '/preset/fondo-01.jpg' },
+    { id: 'fondo-02', label: 'Fondo 2', url: '/preset/fondo-02.jpg' },
+    { id: 'fondo-03', label: 'Fondo 3', url: '/preset/fondo-03.jpg' },
+  ],
+  isPresetWallpaperId: (id: unknown): boolean =>
+    typeof id === 'string' && ['fondo-01', 'fondo-02', 'fondo-03'].includes(id),
+  presetWallpaperUrl: (id: string | null | undefined): string | null => {
+    const known: Record<string, string> = {
+      'fondo-01': '/preset/fondo-01.jpg',
+      'fondo-02': '/preset/fondo-02.jpg',
+      'fondo-03': '/preset/fondo-03.jpg',
+    }
+    return typeof id === 'string' ? (known[id] ?? null) : null
+  },
+}))
+
 import { fileToDataUrl } from '@/lib/wallpaper'
 
 const PNG_DATA_URL =
@@ -19,8 +37,10 @@ const PNG_DATA_URL =
 
 const uiMock = {
   wallpaperUrl: null as string | null,
+  wallpaperPresetId: null as string | null,
   widgetGlassAlpha: 0.8,
   setWallpaper: vi.fn().mockResolvedValue(undefined),
+  setWallpaperPreset: vi.fn().mockResolvedValue(undefined),
   removeWallpaper: vi.fn().mockResolvedValue(undefined),
   setWidgetGlassAlpha: vi.fn().mockResolvedValue(undefined),
 }
@@ -48,8 +68,10 @@ describe('WallpaperCard', () => {
     vi.clearAllMocks()
     vi.mocked(fileToDataUrl).mockResolvedValue(PNG_DATA_URL)
     uiMock.wallpaperUrl = null
+    uiMock.wallpaperPresetId = null
     uiMock.widgetGlassAlpha = 0.8
     uiMock.setWallpaper.mockClear().mockResolvedValue(undefined)
+    uiMock.setWallpaperPreset.mockClear().mockResolvedValue(undefined)
     uiMock.removeWallpaper.mockClear().mockResolvedValue(undefined)
     uiMock.setWidgetGlassAlpha.mockClear().mockResolvedValue(undefined)
   })
@@ -58,7 +80,17 @@ describe('WallpaperCard', () => {
     const w = mount(WallpaperCard)
     expect(w.find("[data-testid='wallpaper-upload-btn']").exists()).toBe(true)
     expect(w.find("[data-testid='wallpaper-remove-btn']").exists()).toBe(false)
-    expect(w.find("[data-testid='wallpaper-preview']").exists()).toBe(false)
+  })
+
+  it('la vista previa siempre es visible, con o sin fondo', () => {
+    expect(mount(WallpaperCard).find("[data-testid='wallpaper-preview']").exists()).toBe(true)
+    uiMock.wallpaperUrl = PNG_DATA_URL
+    expect(mount(WallpaperCard).find("[data-testid='wallpaper-preview']").exists()).toBe(true)
+  })
+
+  it('la vista previa incluye el mock de UI desenfocado', () => {
+    const w = mount(WallpaperCard)
+    expect(w.find("[data-testid='wallpaper-preview-mock']").exists()).toBe(true)
   })
 
   it('input file oculto acepta solo imágenes', () => {
@@ -81,13 +113,68 @@ describe('WallpaperCard', () => {
     const w = mount(WallpaperCard)
     const preview = w.find("[data-testid='wallpaper-preview']")
     expect(preview.exists()).toBe(true)
-    expect((preview.element as HTMLElement).style.backgroundImage).toContain(PNG_DATA_URL)
-    // el preview lleva el mismo tratamiento blur+scrim que la capa de fondo
-    expect(preview.classes()).toContain('wallpaper-image-blur')
+    // el marco delimita la previa: borde visible + esquinas redondeadas
+    expect(preview.classes()).toContain('border-hairline-strong')
+    expect(preview.classes()).toContain('rounded-md')
+    // la imagen de fondo lleva el blur en su propia capa, igual que WallpaperLayer;
+    // el mock del esqueleto queda nítido por encima
+    const image = w.find("[data-testid='wallpaper-preview-image']")
+    expect(image.exists()).toBe(true)
+    expect((image.element as HTMLElement).style.backgroundImage).toContain(PNG_DATA_URL)
+    expect(image.classes()).toContain('wallpaper-image-blur')
+    expect(preview.classes()).not.toContain('wallpaper-image-blur')
     expect(preview.find('.wallpaper-scrim').exists()).toBe(true)
     expect(w.find("[data-testid='wallpaper-remove-btn']").exists()).toBe(true)
     await w.find("[data-testid='wallpaper-remove-btn']").trigger('click')
     expect(uiMock.removeWallpaper).toHaveBeenCalled()
+  })
+
+  it('con preset: muestra quitar aunque no haya data URL custom', () => {
+    uiMock.wallpaperUrl = '/preset/fondo-01.jpg'
+    uiMock.wallpaperPresetId = 'fondo-01'
+    const w = mount(WallpaperCard)
+    expect(w.find("[data-testid='wallpaper-remove-btn']").exists()).toBe(true)
+  })
+
+  it('renderiza un círculo por cada preset con su imagen', () => {
+    const w = mount(WallpaperCard)
+    const group = w.find("[data-testid='wallpaper-preset-group']")
+    expect(group.exists()).toBe(true)
+    expect(group.attributes('role')).toBe('radiogroup')
+    const options = w.findAll("[data-testid^='wallpaper-preset-']")
+    const presets = options.filter((o) => o.attributes('data-testid') !== 'wallpaper-preset-group')
+    expect(presets).toHaveLength(3)
+    for (const option of presets) {
+      expect(option.attributes('role')).toBe('radio')
+      expect((option.element as HTMLElement).style.backgroundImage).toContain('/preset/')
+    }
+  })
+
+  it('elegir un preset llama setWallpaperPreset con su id', async () => {
+    const w = mount(WallpaperCard)
+    await w.find("[data-testid='wallpaper-preset-fondo-02']").trigger('click')
+    expect(uiMock.setWallpaperPreset).toHaveBeenCalledWith('fondo-02')
+    expect(uiMock.setWallpaper).not.toHaveBeenCalled()
+  })
+
+  it('el preset seleccionado se marca como checked', () => {
+    uiMock.wallpaperPresetId = 'fondo-02'
+    uiMock.wallpaperUrl = '/preset/fondo-02.jpg'
+    const w = mount(WallpaperCard)
+    expect(w.find("[data-testid='wallpaper-preset-fondo-02']").attributes('aria-checked')).toBe(
+      'true'
+    )
+    expect(w.find("[data-testid='wallpaper-preset-fondo-01']").attributes('aria-checked')).toBe(
+      'false'
+    )
+  })
+
+  it('fallo al guardar preset: feedback visible', async () => {
+    uiMock.setWallpaperPreset.mockRejectedValueOnce(new Error('db down'))
+    const w = mount(WallpaperCard)
+    await w.find("[data-testid='wallpaper-preset-fondo-01']").trigger('click')
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('guardar')
   })
 
   it('archivo no imagen: feedback visible y no persiste', async () => {

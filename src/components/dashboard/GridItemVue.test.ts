@@ -79,6 +79,17 @@ describe('GridItemVue', () => {
     expect(style).toContain('grid-row: 4 / span 4')
   })
 
+  it('aplica un inset uniforme en las 4 direcciones para centrar la card en su celda', () => {
+    for (const editMode of [false, true]) {
+      const wrapper = mount(GridItemVue, {
+        props: { item: makeItem({ x: 2, y: 3, w: 6, h: 4 }), editMode },
+      })
+      const style = (wrapper.element as HTMLElement).getAttribute('style') ?? ''
+      // GRID_GAP (4px) repartido: 2px por lado, en reposo y en edición.
+      expect(style).toContain('padding: 2px')
+    }
+  })
+
   it('no aplica position: absolute en reposo (lo posiciona la grilla)', () => {
     const wrapper = mount(GridItemVue, {
       props: { item: makeItem(), editMode: false },
@@ -154,7 +165,7 @@ describe('GridItemVue', () => {
 
     const emitted = wrapper.emitted('moved') as unknown[][]
     expect(emitted).toHaveLength(1)
-    // Con el gap de 4px el paso es ~100.33px por col y ~60.4px por fila:
+    // Sin gap CSS el paso es 100px por col y 60px por fila:
     // 100px cruza a la col 1 y 60px a la fila 1.
     expect(emitted[0]).toEqual(['habits', 1, 1])
   })
@@ -178,8 +189,8 @@ describe('GridItemVue', () => {
     const emitted = wrapper.emitted('resized') as unknown[][]
     expect(emitted).toHaveLength(1)
     // x/y intactos: la arista opuesta (izquierda/arriba) queda anclada.
-    // Con gap, el paso es ~100.33×60.4: 6 + 150/100.33 ≈ 7.5 → 7; 4 + 60/60.4 ≈ 5.
-    expect(emitted[0]).toEqual(['habits', 0, 0, 7, 5])
+    // Sin gap, el paso es 100×60: 6 + 150/100 = 7.5 → 8; 4 + 60/60 = 5.
+    expect(emitted[0]).toEqual(['habits', 0, 0, 8, 5])
   })
 
   it('emite preview con las celdas de destino en vivo durante el drag', async () => {
@@ -215,9 +226,9 @@ describe('GridItemVue', () => {
     await wrapper.vm.$nextTick()
 
     const previews = wrapper.emitted('preview') as unknown[][]
-    // Al borde inferior derecho: x+w = 12 y y+h = 10. El snap descuenta el gap,
-    // así que a esa distancia el ítem mapea a 3 celdas de alto anclándose al piso.
-    expect(previews[previews.length - 1]).toEqual(['habits', 6, 7, 6, 3])
+    // Al borde inferior derecho: x+w = 12 y y+h = 10. Sin gap el ítem mapea
+    // a 6×4 anclándose al borde (clamp de posición).
+    expect(previews[previews.length - 1]).toEqual(['habits', 6, 6, 6, 4])
   })
 
   it('el preview y el movimiento comparten la misma zona (se suelta donde se previsualizó)', async () => {
@@ -475,8 +486,8 @@ describe('GridItemVue', () => {
     // La grilla posiciona el item; el preview crece hacia la izquierda vía transform.
     expect(el.style.left).toBe('')
     expect(el.style.top).toBe('')
-    // Geometría real: 4 celdas de 1200 son 4*(1204/12) - 4 = 397.33px; +100 del gesto.
-    expect(el.style.width).toBe('497.333333px')
+    // Geometría real: 4 celdas de 1200 son 4*100 = 400px; +100 del gesto.
+    expect(el.style.width).toBe('500px')
     expect(el.style.transform).toContain('translate(-100px, 0px)')
     dragCallbacks.onResizeEnd?.()
     expect(el.style.transform).toBe('')
@@ -486,8 +497,8 @@ describe('GridItemVue', () => {
     const { el } = mountResizable({ x: 0, y: 5, w: 6, h: 3 })
     dragCallbacks.onResizeStart?.()
     dragCallbacks.onResizeMove?.(0, 80, 0, -80)
-    // Geometría real: 3 filas de 800 son 3*(804/10) - 4 = 237.2px; +80 del gesto.
-    expect(el.style.height).toBe('317.2px')
+    // Geometría real: 3 filas de 800 son 3*80 = 240px; +80 del gesto.
+    expect(el.style.height).toBe('320px')
     expect(el.style.transform).toContain('translate(0px, -80px)')
     dragCallbacks.onResizeEnd?.()
   })

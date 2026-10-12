@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { monthGrid, formatYyyyMmDd, yearBounds, DAY_LABELS, dayIndexOfWeek } from './calendarDates'
+import {
+  monthGrid,
+  formatYyyyMmDd,
+  formatLongDateEs,
+  yearBounds,
+  DAY_LABELS,
+  dayIndexOfWeek,
+} from './calendarDates'
+
+describe('formatLongDateEs', () => {
+  it('formatea “Jueves, 4 de junio de 2026” con mayúscula inicial', () => {
+    expect(formatLongDateEs('2026-06-04')).toBe('Jueves, 4 de junio de 2026')
+  })
+
+  it('devuelve vacío sin fecha', () => {
+    expect(formatLongDateEs(null)).toBe('')
+  })
+})
 
 describe('calendarDates', () => {
   describe('DAY_LABELS', () => {

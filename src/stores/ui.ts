@@ -11,6 +11,7 @@ import {
   defaultWallpaperSettings,
   type WallpaperSettings,
 } from '@/schemas/wallpaper'
+import { isPresetWallpaperId, presetWallpaperUrl } from '@/lib/presetWallpapers'
 
 export const WALLPAPER_SETTINGS_KEY = 'wallpaper-settings'
 
@@ -88,7 +89,10 @@ export const useUiStore = defineStore('ui', () => {
     },
   })
 
-  const viewMode = ref<ViewMode>(stored.value)
+  const viewMode = ref<ViewMode>('dashboard')
+  // La app siempre abre en el dashboard: se ignora cualquier vista
+  // persistida de la sesión anterior solo en memoria, sin pisar el
+  // almacenamiento. La navegación posterior sí se persiste vía watch.
 
   watch(viewMode, (v) => {
     stored.value = v
@@ -220,6 +224,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const wallpaperUrl = ref<string | null>(null)
+  const wallpaperPresetId = ref<string | null>(null)
   const widgetGlassAlpha = ref(defaultWallpaperSettings.widgetGlassAlpha)
 
   function applyGlassAlphaVar(alpha: number): void {
@@ -233,7 +238,10 @@ export const useUiStore = defineStore('ui', () => {
   async function loadWallpaper(): Promise<void> {
     const raw = await db.loadConfig(WALLPAPER_SETTINGS_KEY)
     const settings = parseWallpaperSettingsJson(raw)
-    wallpaperUrl.value = settings.dataUrl
+    // Preset desconocido (asset eliminado): se descarta sin lanzar.
+    const presetId = isPresetWallpaperId(settings.presetId) ? settings.presetId : null
+    wallpaperPresetId.value = presetId
+    wallpaperUrl.value = presetWallpaperUrl(presetId) ?? settings.dataUrl
     widgetGlassAlpha.value = settings.widgetGlassAlpha
     applyGlassAlphaVar(settings.widgetGlassAlpha)
   }
@@ -241,24 +249,42 @@ export const useUiStore = defineStore('ui', () => {
   async function setWallpaper(dataUrl: string): Promise<void> {
     const settings = WallpaperSettingsSchema.parse({
       dataUrl,
+      presetId: null,
       widgetGlassAlpha: widgetGlassAlpha.value,
     })
     await persistWallpaperSettings(settings)
+    wallpaperPresetId.value = settings.presetId
     wallpaperUrl.value = settings.dataUrl
+  }
+
+  async function setWallpaperPreset(presetId: string): Promise<void> {
+    const url = presetWallpaperUrl(presetId)
+    if (!url) throw new Error(`setWallpaperPreset: preset desconocido (${presetId})`)
+    const settings = WallpaperSettingsSchema.parse({
+      dataUrl: null,
+      presetId,
+      widgetGlassAlpha: widgetGlassAlpha.value,
+    })
+    await persistWallpaperSettings(settings)
+    wallpaperPresetId.value = settings.presetId
+    wallpaperUrl.value = url
   }
 
   async function removeWallpaper(): Promise<void> {
     const settings = WallpaperSettingsSchema.parse({
       dataUrl: null,
+      presetId: null,
       widgetGlassAlpha: widgetGlassAlpha.value,
     })
     await persistWallpaperSettings(settings)
+    wallpaperPresetId.value = settings.presetId
     wallpaperUrl.value = settings.dataUrl
   }
 
   async function setWidgetGlassAlpha(alpha: number): Promise<void> {
     const settings = WallpaperSettingsSchema.parse({
-      dataUrl: wallpaperUrl.value,
+      dataUrl: wallpaperPresetId.value ? null : wallpaperUrl.value,
+      presetId: wallpaperPresetId.value,
       widgetGlassAlpha: alpha,
     })
     await persistWallpaperSettings(settings)
@@ -298,9 +324,11 @@ export const useUiStore = defineStore('ui', () => {
     resolveExitDialog,
     cancelExitDialog,
     wallpaperUrl,
+    wallpaperPresetId,
     widgetGlassAlpha,
     loadWallpaper,
     setWallpaper,
+    setWallpaperPreset,
     removeWallpaper,
     setWidgetGlassAlpha,
     openCreate: habits.openCreate,

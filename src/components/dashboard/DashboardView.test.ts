@@ -76,14 +76,17 @@ describe('DashboardView', () => {
     expect(wrapper.find("[data-testid='dashboard-view']").exists()).toBe(true)
   })
 
-  it('el contenedor de la grilla usa display: grid con 12 columnas y 10 filas sin mínimo implícito', () => {
+  it('el contenedor de la grilla usa display: grid con 12 columnas y 10 filas sin gap CSS', () => {
     const wrapper = mount(DashboardView)
     const grid = wrapper.find('.dashboard-grid')
     const style = grid.attributes('style') ?? ''
     expect(style).toContain('display: grid')
     expect(style).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))')
     expect(style).toContain('grid-template-rows: repeat(10, minmax(0, 1fr))')
-    expect(style).toContain('gap: 4px')
+    // El aire entre widgets lo aporta el inset uniforme de cada item
+    // (GRID_ITEM_INSET por lado), no un gap: así la card queda centrada en
+    // su celda con el mismo padding en las 4 direcciones.
+    expect(style).not.toContain('gap')
   })
 
   it('renderiza GridItemVue para cada item del layout sin prop dims', () => {
@@ -178,14 +181,47 @@ describe('DashboardView', () => {
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
   })
 
-  it('en modo edición dibuja las líneas de la grilla cerradas por abajo y por la derecha', () => {
+  it('en modo edición dibuja las líneas de la grilla: cada celda aporta su borde completo', () => {
     editModeValue = true
     const wrapper = mount(DashboardView)
     const lines = wrapper.find('[data-testid="dashboard-grid-lines"]')
     expect(lines.exists()).toBe(true)
-    expect(lines.classes()).toEqual(
-      expect.arrayContaining(['border-r', 'border-b', 'border-hairline/60'])
-    )
+    // El cierre no va en el wrapper (duplicaría el pintado con las celdas
+    // del borde y oscurecería la línea por apilado del alfa): lo aportan las
+    // celdas de la última fila/columna con su propio borde.
+    for (const cls of lines.classes()) {
+      expect(cls.startsWith('border')).toBe(false)
+    }
+    const cells = lines.findAll('[data-testid="dashboard-grid-cell"]')
+    expect(cells.length).toBe(120)
+    for (const cell of cells) {
+      expect(cell.classes()).toEqual(expect.arrayContaining(['border', 'border-hairline/60']))
+    }
+  })
+
+  it('las líneas usan la misma grilla que los widgets para calzar exacto con los bordes de celda', () => {
+    editModeValue = true
+    const wrapper = mount(DashboardView)
+    const lines = wrapper.find('[data-testid="dashboard-grid-lines"]')
+    const linesStyle = lines.attributes('style') ?? ''
+    // Mismo motor de layout y mismo template que el contenedor: así las
+    // líneas caen sobre los bordes reales de celda aunque el ancho no sea
+    // divisible por 12 (un gradiente con calc(100%/12) se desvía).
+    expect(linesStyle).toContain('display: grid')
+    expect(linesStyle).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))')
+    expect(linesStyle).toContain('grid-template-rows: repeat(10, minmax(0, 1fr))')
+    const cells = lines.findAll('[data-testid="dashboard-grid-cell"]')
+    expect(cells.length).toBe(120)
+    for (const cell of cells) {
+      // Borde completo: cada borde interior lo pintan las dos celdas vecinas
+      // con mitades adyacentes ([B-1,B] + [B,B+1]), así la línea de 2px queda
+      // centrada sobre el borde real y la card dista 1px de cada lado.
+      // Una línea de 1px (border-l) se pinta de un solo lado del borde y deja
+      // 2px de un lado contra 1px del otro.
+      expect(cell.classes()).toEqual(expect.arrayContaining(['border']))
+      expect(cell.classes()).not.toContain('border-l')
+      expect(cell.classes()).not.toContain('border-t')
+    }
   })
 
   it('fuera del modo edición no queda rastro de las líneas de la grilla', () => {
@@ -279,5 +315,44 @@ describe('DashboardView', () => {
     item.vm.$emit('preview', 'habits', 1, 1, 2, 2)
     await wrapper.vm.$nextTick()
     expect(wrapper.findComponent({ name: 'DropZonePreview' }).exists()).toBe(false)
+  })
+
+  it('durante el gesto el contenido interno previsualiza la geometría destino (WYSIWYG)', async () => {
+    editModeValue = true
+    layoutValue = [{ i: 'habits', x: 0, y: 0, w: 1, h: 10 }]
+    const wrapper = mount(DashboardView)
+    const gridItem = wrapper.findComponent({ name: 'GridItemVue' })
+    gridItem.vm.$emit('preview', 'habits', 0, 0, 2, 10)
+    await wrapper.vm.$nextTick()
+    // El posicionamiento conserva la geometría origen (el salto lo muestra DropZonePreview).
+    expect(gridItem.props('item')).toMatchObject({ x: 0, y: 0, w: 1, h: 10 })
+    // Pero el contenido interno ya ve el destino: así el calendario anual
+    // calcula las mismas columnas/celdas que tras soltar.
+    const inner = wrapper.findComponent({ name: 'HabitsWidget' })
+    expect(inner.exists()).toBe(true)
+    expect((inner.vm.$attrs as Record<string, unknown>).item).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 2,
+      h: 10,
+    })
+  })
+
+  it('al terminar el gesto el contenido interno vuelve a la geometría real', async () => {
+    editModeValue = true
+    layoutValue = [{ i: 'habits', x: 0, y: 0, w: 1, h: 10 }]
+    const wrapper = mount(DashboardView)
+    const gridItem = wrapper.findComponent({ name: 'GridItemVue' })
+    gridItem.vm.$emit('preview', 'habits', 0, 0, 2, 10)
+    await wrapper.vm.$nextTick()
+    gridItem.vm.$emit('preview-end')
+    await wrapper.vm.$nextTick()
+    const inner = wrapper.findComponent({ name: 'HabitsWidget' })
+    expect((inner.vm.$attrs as Record<string, unknown>).item).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 10,
+    })
   })
 })

@@ -124,6 +124,13 @@ describe('SettingsView', () => {
     expect(main.classes()).toContain('overflow-y-auto')
   })
 
+  it('el encabezado dice Configuración (no Settings)', () => {
+    const wrapper = mount(SettingsView)
+    const header = wrapper.find('[data-testid="settings-view"] header')
+    expect(header.text()).toContain('Configuración')
+    expect(header.text()).not.toContain('Settings')
+  })
+
   it('muestra la card de Google Calendar', () => {
     const wrapper = mount(SettingsView)
     expect(wrapper.text()).toContain('Google Calendar')
@@ -223,7 +230,7 @@ describe('SettingsView', () => {
     const wrapper = mount(SettingsView)
     const eyebrows = wrapper.findAll('.text-eyebrow')
     expect(eyebrows.map((e) => e.text())).toEqual([
-      'Configuración',
+      'Sistema',
       'Apariencia',
       'Integraciones',
       'Datos',

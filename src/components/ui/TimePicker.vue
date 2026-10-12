@@ -1,291 +1,363 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { Clock } from 'lucide-vue-next'
+import Button from '@/components/ui/Button.vue'
+import TimeDrums from '@/components/ui/TimeDrums.vue'
+import MiniClock from '@/components/ui/MiniClock.vue'
 
-const props = defineProps<{
-  modelValue: string // "HH:MM"
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: string // "HH:MM"
+    label?: string
+    align?: 'left' | 'right'
+  }>(),
+  { label: '', align: 'left' }
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
-const hoursContainer = ref<HTMLElement | null>(null)
-const minutesContainer = ref<HTMLElement | null>(null)
+const pad = (n: number) => String(n).padStart(2, '0')
+const clampNum = (n: number, max: number) => (isNaN(n) ? 0 : Math.max(0, Math.min(max, n)))
+const fmt = (h: number, m: number) => `${pad(h)}:${pad(m)}`
 
-const selectedHour = ref(12)
-const selectedMinute = ref(0)
-
-// Parse input modelValue
-function parseTime(val: string) {
-  const [hStr, mStr] = (val || '12:00').split(':')
-  const h = parseInt(hStr, 10)
-  const m = parseInt(mStr, 10)
-  return {
-    h: isNaN(h) ? 12 : Math.max(0, Math.min(23, h)),
-    m: isNaN(m) ? 0 : Math.max(0, Math.min(59, m)),
-  }
-}
-
-function updateFromProps() {
-  const { h, m } = parseTime(props.modelValue)
-  selectedHour.value = h
-  selectedMinute.value = m
-  scrollToSelected()
-}
-
-let isScrolling = false
-let hasDragged = false
-
-function scrollToSelected() {
-  nextTick(() => {
-    isScrolling = true
-    if (hoursContainer.value) {
-      hoursContainer.value.scrollTop = selectedHour.value * 32
+function parseText(s: string): { h: number; m: number } {
+  const clean = (s || '').replace(/[^0-9:]/g, '')
+  let hs = ''
+  let ms = ''
+  if (clean.includes(':')) {
+    const [a = '', b = ''] = clean.split(':')
+    hs = a.replace(/\D/g, '')
+    ms = b.replace(/\D/g, '')
+  } else {
+    const d = clean.replace(/\D/g, '')
+    if (d.length <= 2) {
+      hs = d
+    } else {
+      hs = d.slice(0, -2)
+      ms = d.slice(-2)
     }
-    if (minutesContainer.value) {
-      minutesContainer.value.scrollTop = selectedMinute.value * 32
-    }
-    setTimeout(() => {
-      isScrolling = false
-    }, 150)
-  })
+  }
+  return { h: clampNum(parseInt(hs || '0', 10), 23), m: clampNum(parseInt(ms || '0', 10), 59) }
 }
 
-onMounted(() => {
-  updateFromProps()
-  if (hoursContainer.value) {
-    makeGrabScrollable(hoursContainer.value, onHoursScroll, handleScrollEndHours)
-  }
-  if (minutesContainer.value) {
-    makeGrabScrollable(minutesContainer.value, onMinutesScroll, handleScrollEndMinutes)
-  }
-})
+const hourInputEl = ref<HTMLInputElement | null>(null)
+const minuteInputEl = ref<HTMLInputElement | null>(null)
+const clockButtonEl = ref<HTMLElement | null>(null)
+const popupEl = ref<HTMLElement | null>(null)
+
+const parsed = parseText(props.modelValue)
+const hourText = ref(pad(parsed.h))
+const minuteText = ref(pad(parsed.m))
+
+function isFocused(): boolean {
+  return (
+    document.activeElement === hourInputEl.value || document.activeElement === minuteInputEl.value
+  )
+}
 
 watch(
   () => props.modelValue,
-  () => {
-    const { h, m } = parseTime(props.modelValue)
-    if (h !== selectedHour.value || m !== selectedMinute.value) {
-      selectedHour.value = h
-      selectedMinute.value = m
-      scrollToSelected()
-    }
+  (val) => {
+    if (isFocused()) return
+    const { h, m } = parseText(val)
+    hourText.value = pad(h)
+    minuteText.value = pad(m)
   }
 )
 
-function emitTime() {
-  const hStr = String(selectedHour.value).padStart(2, '0')
-  const mStr = String(selectedMinute.value).padStart(2, '0')
-  emit('update:modelValue', `${hStr}:${mStr}`)
+function normModel(): string {
+  const { h, m } = parseText(props.modelValue)
+  return fmt(h, m)
 }
 
-function selectHour(h: number) {
-  if (hasDragged) return
-  selectedHour.value = h
-  scrollToSelected()
-  emitTime()
+function currentText(): string {
+  const h = clampNum(parseInt(hourText.value || '0', 10), 23)
+  const m = clampNum(parseInt(minuteText.value || '0', 10), 59)
+  return fmt(h, m)
 }
 
-function selectMinute(m: number) {
-  if (hasDragged) return
-  selectedMinute.value = m
-  scrollToSelected()
-  emitTime()
-}
-
-function onHoursScroll() {
-  if (isScrolling || !hoursContainer.value) return
-  const top = hoursContainer.value.scrollTop
-  const idx = Math.round(top / 32)
-  const clamped = Math.max(0, Math.min(23, idx))
-  if (clamped !== selectedHour.value) {
-    selectedHour.value = clamped
-    emitTime()
+function commitSegments() {
+  const next = currentText()
+  hourText.value = next.slice(0, 2)
+  minuteText.value = next.slice(3, 5)
+  if (next !== normModel()) {
+    emit('update:modelValue', next)
   }
 }
 
-function onMinutesScroll() {
-  if (isScrolling || !minutesContainer.value) return
-  const top = minutesContainer.value.scrollTop
-  const idx = Math.round(top / 32)
-  const clamped = Math.max(0, Math.min(59, idx))
-  if (clamped !== selectedMinute.value) {
-    selectedMinute.value = clamped
-    emitTime()
+function digitsOnly(v: string): string {
+  return v.replace(/\D/g, '').slice(0, 2)
+}
+
+function onHourInput(e: Event) {
+  const el = e.target as HTMLInputElement
+  const filtered = digitsOnly(el.value)
+  hourText.value = filtered
+  el.value = filtered
+  if (filtered.length === 2) {
+    commitSegments()
+    nextTick(() => {
+      minuteInputEl.value?.focus()
+      minuteInputEl.value?.select()
+    })
   }
 }
 
-// Ensure snapping after scroll ends
-let scrollTimeoutHours: ReturnType<typeof setTimeout> | null = null
-let scrollTimeoutMinutes: ReturnType<typeof setTimeout> | null = null
-
-function clearScrollTimeout(timer: ReturnType<typeof setTimeout> | null) {
-  if (timer !== null) clearTimeout(timer)
+function onMinuteInput(e: Event) {
+  const el = e.target as HTMLInputElement
+  const filtered = digitsOnly(el.value)
+  minuteText.value = filtered
+  el.value = filtered
 }
 
-function handleHoursScroll() {
-  onHoursScroll()
-  handleScrollEndHours()
+function selectAll(e: Event) {
+  ;(e.target as HTMLInputElement).select()
 }
 
-function handleMinutesScroll() {
-  onMinutesScroll()
-  handleScrollEndMinutes()
-}
-
-function handleScrollEndHours() {
-  if (!hoursContainer.value) return
-  clearScrollTimeout(scrollTimeoutHours)
-  scrollTimeoutHours = setTimeout(() => {
-    if (isScrolling || !hoursContainer.value) return
-    const top = hoursContainer.value.scrollTop
-    const idx = Math.round(top / 32)
-    isScrolling = true
-    hoursContainer.value.scrollTo({ top: idx * 32, behavior: 'smooth' })
-    setTimeout(() => {
-      isScrolling = false
-    }, 150)
-  }, 100)
-}
-
-function handleScrollEndMinutes() {
-  if (!minutesContainer.value) return
-  clearScrollTimeout(scrollTimeoutMinutes)
-  scrollTimeoutMinutes = setTimeout(() => {
-    if (isScrolling || !minutesContainer.value) return
-    const top = minutesContainer.value.scrollTop
-    const idx = Math.round(top / 32)
-    isScrolling = true
-    minutesContainer.value.scrollTo({ top: idx * 32, behavior: 'smooth' })
-    setTimeout(() => {
-      isScrolling = false
-    }, 150)
-  }, 100)
-}
-
-function makeGrabScrollable(el: HTMLElement, onScrollFn: () => void, onScrollEndFn: () => void) {
-  let isDown = false
-  let startY = 0
-  let scrollTop = 0
-
-  el.style.cursor = 'grab'
-
-  el.addEventListener('mousedown', (e) => {
-    isDown = true
-    hasDragged = false
-    el.style.cursor = 'grabbing'
-    startY = e.pageY - el.offsetTop
-    scrollTop = el.scrollTop
-
-    // Disable scroll snapping and smooth behavior during active drag
-    el.style.scrollSnapType = 'none'
-    el.style.scrollBehavior = 'auto'
-  })
-
-  const handleDragEnd = () => {
-    if (!isDown) return
-    isDown = false
-    el.style.cursor = 'grab'
-
-    // Restore snap and smooth behavior, then snap
-    el.style.scrollSnapType = 'y mandatory'
-    el.style.scrollBehavior = 'smooth'
-    onScrollEndFn()
-
-    setTimeout(() => {
-      hasDragged = false
-    }, 50)
-  }
-
-  el.addEventListener('mouseleave', handleDragEnd)
-  el.addEventListener('mouseup', handleDragEnd)
-
-  el.addEventListener('mousemove', (e) => {
-    if (!isDown) return
+function onMinuteBackspace(e: KeyboardEvent) {
+  if (e.key === 'Backspace' && minuteText.value === '') {
     e.preventDefault()
-    const y = e.pageY - el.offsetTop
-    const walk = (y - startY) * 1.5
-    if (Math.abs(walk) > 5) {
-      hasDragged = true
-    }
-    el.scrollTop = scrollTop - walk
-    onScrollFn()
+    hourInputEl.value?.focus()
+    hourInputEl.value?.select()
+  }
+}
+
+function adjustHour(d: number) {
+  const { h, m } = parseText(currentText())
+  const next = fmt((((h + d) % 24) + 24) % 24, m)
+  hourText.value = next.slice(0, 2)
+  minuteText.value = next.slice(3, 5)
+  if (next !== normModel()) {
+    emit('update:modelValue', next)
+  }
+}
+
+function adjustMinute(d: number) {
+  const { h, m } = parseText(currentText())
+  const next = fmt(h, (((m + d) % 60) + 60) % 60)
+  hourText.value = next.slice(0, 2)
+  minuteText.value = next.slice(3, 5)
+  if (next !== normModel()) {
+    emit('update:modelValue', next)
+  }
+}
+
+function onHourKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    commitSegments()
+    minuteInputEl.value?.focus()
+    return
+  }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault()
+    adjustHour(e.key === 'ArrowUp' ? 1 : -1)
+  }
+}
+
+function onMinuteKeydown(e: KeyboardEvent) {
+  if (e.key === 'Backspace' && minuteText.value === '') {
+    onMinuteBackspace(e)
+    return
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    commitSegments()
+    minuteInputEl.value?.blur()
+    return
+  }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault()
+    const d = e.key === 'ArrowUp' ? 1 : -1
+    if (e.shiftKey) adjustHour(d)
+    else adjustMinute(d)
+  }
+}
+
+// ── Popup chico con drums ──
+
+const POPUP_WIDTH = 248
+
+const open = ref(false)
+const view = ref<'hour' | 'minute'>('hour')
+const draftH = ref(6)
+const draftM = ref(0)
+const pos = ref({ top: 0, left: 0 })
+
+function computePos() {
+  const rect = clockButtonEl.value?.getBoundingClientRect()
+  const h = popupEl.value?.offsetHeight || 0
+  const vw = window.innerWidth || 1024
+  const vh = window.innerHeight || 768
+  let top = (rect?.bottom ?? 0) + 8
+  if (top + h > vh - 8) top = Math.max(8, (rect?.top ?? vh) - h - 8)
+  let left = props.align === 'left' ? (rect?.left ?? 0) : (rect?.right ?? 0) - POPUP_WIDTH
+  left = Math.max(8, Math.min(vw - POPUP_WIDTH - 8, left))
+  pos.value = { top, left }
+}
+
+function openClock() {
+  const { h, m } = parseText(props.modelValue)
+  draftH.value = h
+  draftM.value = m
+  view.value = 'hour'
+  open.value = true
+  nextTick(() => {
+    computePos()
+    popupEl.value?.querySelector<HTMLElement>('[data-hour-column]')?.focus({ preventScroll: true })
   })
 }
+
+function closeClock(commit: boolean) {
+  if (commit) emit('update:modelValue', fmt(draftH.value, draftM.value))
+  open.value = false
+  nextTick(() => clockButtonEl.value?.focus())
+}
+
+function onSelectHour(h: number) {
+  draftH.value = h
+  view.value = 'minute'
+}
+
+function toggleClock() {
+  if (open.value) closeClock(false)
+  else openClock()
+}
+
+function onDocumentPointerDown(e: Event) {
+  if (!open.value) return
+  const t = e.target as Node | null
+  if (t && popupEl.value?.contains(t)) return
+  if (t && clockButtonEl.value?.contains(t)) return
+  closeClock(false)
+}
+
+function onWindowChange(e: Event) {
+  if (!open.value) return
+  // El scroll interno de los drums no debe cerrar el popup, solo el de fuera.
+  if (e.type === 'scroll' && e.target instanceof Node && popupEl.value?.contains(e.target)) return
+  closeClock(false)
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  window.addEventListener('scroll', onWindowChange, true)
+  window.addEventListener('resize', onWindowChange)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  window.removeEventListener('scroll', onWindowChange, true)
+  window.removeEventListener('resize', onWindowChange)
+})
 </script>
 
 <template>
   <div
-    class="relative mx-auto flex h-40 w-full max-w-[140px] select-none items-center justify-center gap-2 overflow-hidden rounded-lg border border-hairline bg-surface-2 px-4 py-2"
+    class="flex h-10 w-full items-center gap-0.5 rounded-lg border border-hairline bg-surface-2 pl-3 pr-1.5 transition-colors duration-150 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20"
   >
-    <!-- Highlight overlay in the middle -->
-    <div
-      class="pointer-events-none absolute left-0 right-0 top-[64px] z-0 h-8 rounded-sm border-y border-primary/20 bg-primary/5"
+    <input
+      ref="hourInputEl"
+      v-model="hourText"
+      data-hour-input
+      :aria-label="label ? `Hora de ${label.toLowerCase()}` : 'Hora'"
+      inputmode="numeric"
+      autocomplete="off"
+      maxlength="2"
+      placeholder="HH"
+      spellcheck="false"
+      class="w-8 bg-transparent text-center text-body-sm font-semibold tabular-nums text-ink outline-none placeholder:text-ink-tertiary"
+      @input="onHourInput"
+      @focus="selectAll"
+      @blur="commitSegments"
+      @keydown="onHourKeydown"
     />
-
-    <!-- Hours Column -->
-    <div
-      ref="hoursContainer"
-      class="scrollbar-none z-10 h-full flex-1 snap-y snap-mandatory overflow-y-auto scroll-smooth"
-      @scroll="handleHoursScroll"
+    <span class="font-semibold text-ink-subtle" aria-hidden="true">:</span>
+    <input
+      ref="minuteInputEl"
+      v-model="minuteText"
+      data-minute-input
+      :aria-label="label ? `Minutos de ${label.toLowerCase()}` : 'Minutos'"
+      inputmode="numeric"
+      autocomplete="off"
+      maxlength="2"
+      placeholder="MM"
+      spellcheck="false"
+      class="w-8 bg-transparent text-center text-body-sm font-semibold tabular-nums text-ink outline-none placeholder:text-ink-tertiary"
+      @input="onMinuteInput"
+      @focus="selectAll"
+      @blur="commitSegments"
+      @keydown="onMinuteKeydown"
+    />
+    <span class="flex-1" />
+    <button
+      ref="clockButtonEl"
+      type="button"
+      data-clock-button
+      :aria-label="`Elegir hora${label ? ' de ' + label.toLowerCase() : ''}`"
+      aria-haspopup="dialog"
+      :aria-expanded="open"
+      class="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-3 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      @click="toggleClock"
     >
-      <div class="h-16" />
-      <!-- padding top -->
-      <button
-        v-for="h in 24"
-        :key="h"
-        type="button"
-        :class="[
-          'flex h-8 w-full snap-center items-center justify-center rounded-sm text-body-sm font-semibold transition-colors duration-150 focus-visible:bg-surface-3 focus-visible:outline-none active:bg-surface-3',
-          selectedHour === h - 1
-            ? 'scale-110 font-bold text-primary'
-            : 'text-ink-subtle hover:bg-surface-3 hover:text-ink',
-        ]"
-        @click="selectHour(h - 1)"
-      >
-        {{ String(h - 1).padStart(2, '0') }}
-      </button>
-      <div class="h-16" />
-      <!-- padding bottom -->
-    </div>
-
-    <!-- Separator -->
-    <div class="z-10 select-none pb-0.5 text-card-title font-semibold text-ink-subtle">:</div>
-
-    <!-- Minutes Column -->
-    <div
-      ref="minutesContainer"
-      class="scrollbar-none z-10 h-full flex-1 snap-y snap-mandatory overflow-y-auto scroll-smooth"
-      @scroll="handleMinutesScroll"
-    >
-      <div class="h-16" />
-      <!-- padding top -->
-      <button
-        v-for="m in 60"
-        :key="m"
-        type="button"
-        :class="[
-          'flex h-8 w-full snap-center items-center justify-center rounded-sm text-body-sm font-semibold transition-colors duration-150 focus-visible:bg-surface-3 focus-visible:outline-none active:bg-surface-3',
-          selectedMinute === m - 1
-            ? 'scale-110 font-bold text-primary'
-            : 'text-ink-subtle hover:bg-surface-3 hover:text-ink',
-        ]"
-        @click="selectMinute(m - 1)"
-      >
-        {{ String(m - 1).padStart(2, '0') }}
-      </button>
-      <div class="h-16" />
-      <!-- padding bottom -->
-    </div>
+      <Clock :size="16" />
+    </button>
   </div>
-</template>
 
-<style scoped>
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-</style>
+  <Teleport to="body">
+    <div
+      v-if="open"
+      ref="popupEl"
+      data-clock-popup
+      role="dialog"
+      :aria-label="`Elegir hora${label ? ' de ' + label.toLowerCase() : ''}`"
+      class="fixed z-[80] rounded-xl border border-hairline bg-surface-1 p-3 shadow-2xl"
+      :style="{ top: `${pos.top}px`, left: `${pos.left}px`, width: `${POPUP_WIDTH}px` }"
+      @keydown.escape.stop="closeClock(false)"
+    >
+      <div
+        class="mb-2 flex items-center justify-center gap-1 text-card-title font-bold tabular-nums"
+      >
+        <button
+          type="button"
+          :class="[
+            'rounded-md px-2 py-1 transition-colors',
+            view === 'hour' ? 'bg-primary/15 text-primary' : 'text-ink-subtle hover:text-ink',
+          ]"
+          @click="view = 'hour'"
+        >
+          {{ pad(draftH) }}
+        </button>
+        <span class="text-ink-subtle">:</span>
+        <button
+          type="button"
+          :class="[
+            'rounded-md px-2 py-1 transition-colors',
+            view === 'minute' ? 'bg-primary/15 text-primary' : 'text-ink-subtle hover:text-ink',
+          ]"
+          @click="view = 'minute'"
+        >
+          {{ pad(draftM) }}
+        </button>
+      </div>
+
+      <div class="flex items-center justify-center gap-2">
+        <TimeDrums
+          :hour="draftH"
+          :minute="draftM"
+          :active="view"
+          @select-hour="onSelectHour"
+          @select-minute="draftM = $event"
+        />
+        <MiniClock :hour="draftH" :minute="draftM" class="text-ink-subtle" />
+      </div>
+
+      <div class="mt-3 flex justify-end gap-2">
+        <Button size="sm" variant="ghost" @click="closeClock(false)">Cancelar</Button>
+        <Button size="sm" @click="closeClock(true)">Aceptar</Button>
+      </div>
+    </div>
+  </Teleport>
+</template>

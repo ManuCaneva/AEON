@@ -1,14 +1,17 @@
 import type { LayoutResult } from './calendarLayout'
-import { spacingFor } from './calendarLayout'
+import { monthFontRem, spacingFor } from './calendarLayout'
 
 /**
- * Cuantiza un tamaño de celda a pasos discretos proporcionales al tamaño
- * (>=10px → paso 1, luego paso ~10%). Garantiza al menos 1px de avance para
- * que el algoritmo nunca se congele en celdas chicas.
+ * Cuantiza un tamaño de celda al paso discreto INFERIOR proporcional al tamaño
+ * (>=10px → paso 1, luego paso ~10%). Siempre redondea hacia abajo para que el
+ * resultado nunca exceda un ajuste exacto ya verificado (ver
+ * computeFittedLayout): redondear hacia arriba desbordaría el cuerpo y
+ * cortaría el último mes. Garantiza al menos 1px de avance para que el
+ * algoritmo nunca se congele en celdas chicas.
  */
 export function quantizeCellSize(cs: number): number {
   const step = Math.max(1, Math.round(cs * 0.1))
-  return Math.max(1, Math.round(cs / step) * step)
+  return Math.max(1, Math.floor(cs / step) * step)
 }
 
 /**
@@ -49,10 +52,18 @@ export type ChangeKind = 'structure' | 'size' | 'none'
 
 /**
  * Decide si un candidato de layout es significativo. 'structure' cambia la
- * grilla visible (columnas/slots); 'size' solo escala las celdas dentro de un
- * paso discreto. Ambos actualizan el layout reactivamente — el costo de
- * re-render del shell es despreciable porque los MonthMini no cambian de props.
+ * grilla visible (columnas/slots); 'size' re-escala celdas o redistribuye el
+ * sobrante en los gaps (el llenado exacto depende del tamaño medido al px).
+ * Ambos actualizan el layout reactivamente — el costo de re-render del shell
+ * es despreciable porque los MonthMini no cambian de props (solo variables
+ * CSS). El épsilon evita updates por jitter sub-pixel del ResizeObserver.
  */
+const GAP_EPSILON = 0.5
+
+function gapDiffers(a: number, b: number): boolean {
+  return Math.abs(a - b) > GAP_EPSILON
+}
+
 export function significantChange(
   prev: LayoutResult | null,
   next: LayoutResult | null
@@ -61,6 +72,12 @@ export function significantChange(
   if (prev === null) return 'structure'
   if (!sameStructure(prev, next)) return 'structure'
   if (quantizeCellSize(prev.cellSize) !== quantizeCellSize(next.cellSize)) return 'size'
+  if (
+    gapDiffers(prev.gridGap, next.gridGap) ||
+    gapDiffers(prev.cellGapX, next.cellGapX) ||
+    gapDiffers(prev.cellGapY, next.cellGapY)
+  )
+    return 'size'
   return 'none'
 }
 
@@ -84,7 +101,7 @@ export function layoutVars(l: LayoutResult): Record<string, string> {
     '--month-step': `${monthStep}px`,
     '--month-header': `${l.monthHeader}px`,
     '--name-gap': `${l.nameGap}px`,
-    '--font-size': `${Math.max(0.72, cs * 0.075)}rem`,
+    '--font-size': `${monthFontRem(cs)}rem`,
     '--title-font-size': `${Math.max(0.55, cs * 0.042)}rem`,
     '--viewport-h': l.showsAll ? 'auto' : `${rows * monthStep - l.gridGap}px`,
   }

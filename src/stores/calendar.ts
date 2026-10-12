@@ -530,7 +530,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   initTauriEvent()
-  loadPersistedConfig().catch((error) => {
+  const configReady = loadPersistedConfig().catch((error) => {
     connectError.value =
       error instanceof Error ? error.message : 'Failed to load calendar configuration'
   })
@@ -741,6 +741,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     goNextYear,
     goPrevYear,
     loadPersistedConfig,
+    configReady,
     accessToken,
     refreshToken,
     tokenExpiry,
