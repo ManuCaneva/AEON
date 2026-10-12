@@ -333,6 +333,8 @@ export async function createExam(
       grade: row.grade ?? null,
       block_id: row.block_id ?? null,
       fallback_color: row.fallback_color ?? 'lavender',
+      calendar_id: row.calendar_id ?? null,
+      event_id: row.event_id ?? null,
       topics: row.topics,
       sort_order: row.sort_order ?? 0,
       created_at,
@@ -366,6 +368,10 @@ export async function updateExam(
       grade: validated.grade,
       block_id: validated.block_id,
       fallback_color: row.fallback_color,
+      // El par se envía junto: undefined omite ambas columnas (no toca el
+      // vínculo); null las limpia (desvincula); un objeto las fija.
+      calendar_id: row.calendar_id,
+      event_id: row.event_id,
       topics: validated.topics !== undefined ? row.topics : undefined,
       sort_order: row.sort_order,
       updated_at,

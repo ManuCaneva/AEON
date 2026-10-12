@@ -795,6 +795,34 @@ describe('db.createExam - shape hacia Rust', () => {
     )
   })
 
+  it('sin vínculo envía calendar_id y event_id null', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('envía el vínculo (calendarId, eventId) cuando el draft lo incluye', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
+
   it('rechaza draft inválido sin invocar', async () => {
     await expect(
       createExam(
@@ -961,6 +989,39 @@ describe('db.updateExam - shape hacia Rust', () => {
     )
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.block_id).toBeUndefined()
+  })
+
+  it('envía el vínculo cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { event_link: { calendarId: 'local', eventId: 'evt-1' } },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
+
+  it('envía null en ambas columnas para desvincular', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { event_link: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('omite el vínculo cuando el patch no lo trae (no pisa el vínculo persistido)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeUndefined()
+    expect(payload.input.event_id).toBeUndefined()
   })
 
   it('omite la nota cuando el patch no la trae (no pisa la persistida)', async () => {
