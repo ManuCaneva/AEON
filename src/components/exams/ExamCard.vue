@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { MoreHorizontal } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { MoreHorizontal, Check } from 'lucide-vue-next'
 import type { Exam } from '@/schemas/exams'
 import { useUiStore } from '@/stores/ui'
+import { useExamsStore } from '@/stores/exams'
 import { daysLabel } from '@/lib/examDays'
 import { examStatusLabel, examStatusVariant, shouldShowGrade, formatGrade } from '@/lib/examStatus'
 import { blockColorRgb } from '@/lib/scheduleColors'
@@ -15,6 +16,7 @@ const props = defineProps<{
   exam: Exam
 }>()
 
+const exams = useExamsStore()
 const ui = useUiStore()
 
 const isMenuOpen = computed(() => ui.menuOpenForExamId === props.exam.id)
@@ -24,6 +26,19 @@ const statusLabel = computed(() => examStatusLabel(props.exam.status))
 const statusVariant = computed(() => examStatusVariant(props.exam.status))
 const showGrade = computed(() => shouldShowGrade(props.exam.status, props.exam.grade))
 const gradeText = computed(() => (props.exam.grade !== null ? formatGrade(props.exam.grade) : ''))
+
+const expanded = ref(false)
+const completedTopics = computed(() => props.exam.topics.filter((t) => t.completed).length)
+const totalTopics = computed(() => props.exam.topics.length)
+const hasTopics = computed(() => totalTopics.value > 0)
+
+function toggleExpand() {
+  expanded.value = !expanded.value
+}
+
+function handleToggleTopic(topicId: string) {
+  exams.toggleTopic(props.exam.id, topicId)
+}
 </script>
 
 <template>
@@ -40,7 +55,7 @@ const gradeText = computed(() => (props.exam.grade !== null ? formatGrade(props.
         :style="{ backgroundColor: color }"
       />
 
-      <div class="min-w-0 flex-1">
+      <div data-testid="exam-card-body" class="min-w-0 flex-1 cursor-pointer" @click="toggleExpand">
         <div class="mb-1 flex items-center gap-2">
           <Text as="div" variant="body" weight="500" class="truncate">
             {{ exam.title }}
@@ -69,8 +84,80 @@ const gradeText = computed(() => (props.exam.grade !== null ? formatGrade(props.
             Nota {{ gradeText }}
           </Badge>
         </div>
+
+        <div
+          v-if="hasTopics"
+          data-testid="exam-topics"
+          class="mt-1 flex items-center gap-1 text-caption text-ink-muted"
+        >
+          <span>{{ completedTopics }}/{{ totalTopics }}</span>
+        </div>
+
+        <div class="topics-expand mt-2" :class="{ open: expanded }">
+          <div>
+            <div v-if="expanded" data-testid="exam-topics-list" class="flex flex-col gap-1 py-1">
+              <div
+                v-for="topic in exam.topics"
+                :key="topic.id"
+                data-testid="exam-topic-item"
+                class="flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface-2"
+              >
+                <label
+                  class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+                  @click.stop
+                >
+                  <input
+                    type="checkbox"
+                    :checked="topic.completed"
+                    data-testid="exam-topic-checkbox"
+                    class="peer absolute inset-0 cursor-pointer opacity-0"
+                    @click.stop="handleToggleTopic(topic.id)"
+                  />
+                  <span
+                    :class="[
+                      'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
+                      topic.completed
+                        ? 'border-primary bg-primary'
+                        : 'border-hairline-strong bg-surface-1',
+                      'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
+                    ]"
+                  >
+                    <Check
+                      v-if="topic.completed"
+                      :size="12"
+                      class="text-on-primary"
+                      stroke-width="3"
+                    />
+                  </span>
+                </label>
+                <Text
+                  as="span"
+                  variant="body-sm"
+                  :class="['truncate', topic.completed ? 'text-ink-muted line-through' : '']"
+                >
+                  {{ topic.title }}
+                </Text>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <ExamContextMenu v-if="isMenuOpen" :exam-id="exam.id" />
   </Container>
 </template>
+
+<style scoped>
+.topics-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+  overflow: hidden;
+}
+.topics-expand.open {
+  grid-template-rows: 1fr;
+}
+.topics-expand > div {
+  min-height: 0;
+}
+</style>

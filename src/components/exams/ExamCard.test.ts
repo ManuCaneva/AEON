@@ -7,6 +7,7 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 
 const examsMock = {
   deleteExam: vi.fn().mockResolvedValue(undefined),
+  toggleTopic: vi.fn().mockResolvedValue(undefined),
 }
 const uiMock = {
   menuOpenForExamId: null as string | null,
@@ -34,9 +35,20 @@ const baseExam: Exam = {
   status: 'pendiente',
   grade: null,
   fallback_color: 'lavender',
+  topics: [],
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
+}
+
+const topicId1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const topicId2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const examWithTopics: Exam = {
+  ...baseExam,
+  topics: [
+    { id: topicId1, title: 'Límites', completed: true },
+    { id: topicId2, title: 'Derivadas', completed: false },
+  ],
 }
 
 describe('ExamCard', () => {
@@ -140,6 +152,38 @@ describe('ExamCard', () => {
     uiMock.menuOpenForExamId = 'exam-2'
     const wrapper = mount(ExamCard, { props: { exam: baseExam } })
     expect(wrapper.findComponent({ name: 'ExamContextMenu' }).exists()).toBe(false)
+  })
+
+  it('sin temas no muestra el resumen de progreso', () => {
+    const wrapper = mount(ExamCard, { props: { exam: baseExam } })
+    expect(wrapper.find("[data-testid='exam-topics']").exists()).toBe(false)
+  })
+
+  it('muestra el progreso de temas completados/total', () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    expect(wrapper.find("[data-testid='exam-topics']").text()).toContain('1/2')
+  })
+
+  it('colapsada no muestra la lista de temas', () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    expect(wrapper.find("[data-testid='exam-topics-list']").exists()).toBe(false)
+  })
+
+  it('al expandir despliega la lista de temas', async () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    await wrapper.find("[data-testid='exam-card-body']").trigger('click')
+    const items = wrapper.findAll("[data-testid='exam-topic-item']")
+    expect(items).toHaveLength(2)
+    expect(items[0].text()).toContain('Límites')
+    expect(items[1].text()).toContain('Derivadas')
+  })
+
+  it('marca un tema desde la tarjeta y persiste', async () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    await wrapper.find("[data-testid='exam-card-body']").trigger('click')
+    const checkboxes = wrapper.findAll("[data-testid='exam-topic-checkbox']")
+    await checkboxes[1].trigger('click')
+    expect(examsMock.toggleTopic).toHaveBeenCalledWith('exam-1', topicId2)
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {
