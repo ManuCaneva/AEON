@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import ExamFormModal from './ExamFormModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { eventKey } from '@/lib/examEventLink'
 
 const examsState = ref<
   {
@@ -14,6 +15,7 @@ const examsState = ref<
     grade: number | null
     block_id: string | null
     fallback_color: string
+    event_link?: { calendarId: string; eventId: string } | null
     topics: { id: string; title: string; completed: boolean }[]
     sort_order: number
     created_at: string
@@ -44,6 +46,22 @@ const weeklyMock = {
   },
   loadAll: vi.fn().mockResolvedValue(undefined),
 }
+const calendarEvents = ref<
+  {
+    id: string
+    date: string
+    title: string
+    color: string
+    calendarId: string
+    start: string
+    end: string
+  }[]
+>([])
+const calendarMock = {
+  get events() {
+    return calendarEvents.value
+  },
+}
 const uiState = {
   createExamOpen: ref(true),
   editingExamId: ref<string | null>(null),
@@ -69,6 +87,9 @@ vi.mock('@/stores/exams', () => ({
 }))
 vi.mock('@/stores/weeklySchedule', () => ({
   useWeeklyScheduleStore: () => weeklyMock,
+}))
+vi.mock('@/stores/calendar', () => ({
+  useCalendarStore: () => calendarMock,
 }))
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => uiMock,
@@ -145,6 +166,41 @@ function colorPreview(): HTMLElement {
   return document.body.querySelector("[data-testid='exam-color-preview']") as HTMLElement
 }
 
+function eventSelect(): HTMLSelectElement {
+  return document.body.querySelector("[data-testid='exam-event-select']") as HTMLSelectElement
+}
+
+function selectEvent(value: string) {
+  const select = eventSelect()
+  select.value = value
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function makeCalendarEvent(
+  id: string,
+  date: string,
+  title: string,
+  calendarId = 'local'
+): {
+  id: string
+  date: string
+  title: string
+  color: string
+  calendarId: string
+  start: string
+  end: string
+} {
+  return {
+    id,
+    date,
+    title,
+    color: '#6e56cf',
+    calendarId,
+    start: `${date}T10:00:00`,
+    end: `${date}T11:00:00`,
+  }
+}
+
 function makeBlock(id: string, title: string, color = 'green') {
   return {
     id,
@@ -164,6 +220,7 @@ describe('ExamFormModal', () => {
     setActivePinia(createPinia())
     examsState.value = []
     weeklyBlocks.value = []
+    calendarEvents.value = []
     uiState.createExamOpen.value = true
     uiState.editingExamId.value = null
     vi.clearAllMocks()
@@ -217,6 +274,7 @@ describe('ExamFormModal', () => {
       status: 'pendiente',
       grade: null,
       block_id: null,
+      event_link: null,
       topics: [],
     })
   })
@@ -249,6 +307,7 @@ describe('ExamFormModal', () => {
       status: 'pendiente',
       grade: null,
       block_id: null,
+      event_link: null,
       topics: [],
     })
   })
@@ -309,6 +368,7 @@ describe('ExamFormModal', () => {
       status: 'rendido',
       grade: 8.5,
       block_id: null,
+      event_link: null,
       topics: [],
     })
   })
@@ -345,6 +405,7 @@ describe('ExamFormModal', () => {
       status: 'pendiente',
       grade: null,
       block_id: null,
+      event_link: null,
       topics: [],
     })
   })
@@ -377,6 +438,7 @@ describe('ExamFormModal', () => {
       status: 'rendido',
       grade: 7.5,
       block_id: null,
+      event_link: null,
       topics: [],
     })
   })
@@ -566,5 +628,128 @@ describe('ExamFormModal', () => {
   it('sin bloque la vista previa usa el color de respaldo', async () => {
     await flushPromises()
     expect(colorPreview().getAttribute('style')).toContain('rgb(var(--color-block-lavender))')
+  })
+
+  it('al elegir la fecha lista los eventos de ese día', async () => {
+    calendarEvents.value = [
+      makeCalendarEvent('evt-1', '2026-08-15', 'Consulta de Análisis'),
+      makeCalendarEvent('evt-2', '2026-08-16', 'Otro evento'),
+    ]
+    fillDate('2026-08-15')
+    await flushPromises()
+    const values = Array.from(eventSelect().options).map((o) => o.value)
+    expect(values).toContain(eventKey('local', 'evt-1'))
+    expect(values).not.toContain(eventKey('local', 'evt-2'))
+    expect(eventSelect().textContent).toContain('Consulta de Análisis')
+  })
+
+  it('vincular un evento es opcional: sin elegir envía event_link null', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledWith(
+      expect.objectContaining({ event_link: null })
+    )
+  })
+
+  it('al crear con un evento vinculado envía el par (calendarId, eventId)', async () => {
+    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    selectEvent(eventKey('local', 'evt-1'))
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledWith(
+      expect.objectContaining({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
+    )
+  })
+
+  it('al editar prefilla el vínculo actual', async () => {
+    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(eventSelect().value).toBe(eventKey('local', 'evt-1'))
+  })
+
+  it('desvincular el evento envía event_link null al guardar', async () => {
+    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    selectEvent('')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({ event_link: null })
+    )
+  })
+
+  it('un vínculo huérfano se prefilla como no disponible y se puede limpiar', async () => {
+    calendarEvents.value = []
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(eventSelect().value).toBe(eventKey('local', 'evt-ausente'))
+    expect(eventSelect().textContent).toContain('Evento no disponible')
+    selectEvent('')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({ event_link: null })
+    )
   })
 })

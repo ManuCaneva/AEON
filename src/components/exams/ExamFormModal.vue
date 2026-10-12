@@ -3,10 +3,12 @@ import { computed, ref, watch } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
-import { ExamStatusSchema, type ExamStatus, type ExamTopic } from '@/schemas/exams'
+import { useCalendarStore } from '@/stores/calendar'
+import { ExamStatusSchema, type ExamStatus, type ExamTopic, type ExamEventLink } from '@/schemas/exams'
 import type { BlockColorToken } from '@/schemas/weeklySchedule'
 import { examStatusLabel } from '@/lib/examStatus'
 import { blockColorRgb } from '@/lib/scheduleColors'
+import { eventKey } from '@/lib/examEventLink'
 import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
@@ -16,6 +18,7 @@ import { X } from 'lucide-vue-next'
 const ui = useUiStore()
 const exams = useExamsStore()
 const weekly = useWeeklyScheduleStore()
+const calendar = useCalendarStore()
 
 const editing = computed(() => {
   if (!ui.editingExamId) return null
@@ -35,6 +38,9 @@ const status = ref<ExamStatus>('pendiente')
 const gradeInput = ref('')
 const blockId = ref('')
 const fallbackColor = ref<BlockColorToken>('lavender')
+// Vínculo opcional a un evento del calendario, codificado como clave del par.
+// '' = sin vínculo. La fecha sigue siendo la única fuente de la fecha.
+const linkedEventKey = ref('')
 const topics = ref<ExamTopic[]>([])
 const error = ref<string | null>(null)
 const saving = ref(false)
@@ -44,6 +50,29 @@ const blocks = computed(() => weekly.blocksWithSlots)
 const previewColor = computed<BlockColorToken>(
   () => blocks.value.find((b) => b.id === blockId.value)?.color ?? fallbackColor.value
 )
+
+// Eventos del día elegido. Si el vínculo actual no está entre ellos (huérfano,
+// p.ej. el calendario se desconectó) se conserva como opción "no disponible"
+// para poder limpiarlo sin perderlo en silencio.
+const dayEvents = computed(() => calendar.events.filter((e) => e.date === date.value))
+const eventOptions = computed(() => {
+  const options = dayEvents.value.map((e) => ({
+    key: eventKey(e.calendarId, e.id),
+    label: e.title,
+  }))
+  if (linkedEventKey.value && !options.some((o) => o.key === linkedEventKey.value)) {
+    options.unshift({ key: linkedEventKey.value, label: 'Evento no disponible' })
+  }
+  return options
+})
+
+/** Traduce la clave elegida al par persistible (o null si no hay vínculo). */
+function resolveEventLink(): ExamEventLink | null {
+  if (!linkedEventKey.value) return null
+  const [calendarId, eventId] = linkedEventKey.value.split('\u0000')
+  if (!calendarId || !eventId) return null
+  return { calendarId, eventId }
+}
 
 watch(
   () => [ui.createExamOpen, ui.editingExamId] as const,
@@ -59,6 +88,9 @@ watch(
         gradeInput.value = editing.value.grade !== null ? String(editing.value.grade) : ''
         blockId.value = editing.value.block_id ?? ''
         fallbackColor.value = editing.value.fallback_color
+        linkedEventKey.value = editing.value.event_link
+          ? eventKey(editing.value.event_link.calendarId, editing.value.event_link.eventId)
+          : ''
         topics.value = [...editing.value.topics]
       } else {
         title.value = ''
@@ -67,6 +99,7 @@ watch(
         gradeInput.value = ''
         blockId.value = ''
         fallbackColor.value = 'lavender'
+        linkedEventKey.value = ''
         topics.value = []
       }
       error.value = null
@@ -139,6 +172,7 @@ async function handleSubmit(e: Event) {
         status: status.value,
         grade,
         block_id: blockId.value || null,
+        event_link: resolveEventLink(),
         topics: validTopics,
       })
     } else {
@@ -148,6 +182,7 @@ async function handleSubmit(e: Event) {
         status: status.value,
         grade,
         block_id: blockId.value || null,
+        event_link: resolveEventLink(),
         topics: validTopics,
       })
     }
@@ -181,6 +216,26 @@ async function handleSubmit(e: Event) {
         />
 
         <Input v-model="date" data-testid="exam-date-input" type="date" label="Fecha" />
+
+        <div class="flex flex-col gap-1.5">
+          <label for="exam-event-select" class="select-none text-body-sm text-ink-muted">
+            Evento del día (opcional)
+          </label>
+          <select
+            id="exam-event-select"
+            v-model="linkedEventKey"
+            data-testid="exam-event-select"
+            class="h-10 min-w-0 rounded-md border border-hairline bg-surface-1 px-3 text-body text-ink transition-colors duration-150 hover:border-hairline-strong focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Sin evento</option>
+            <option v-for="option in eventOptions" :key="option.key" :value="option.key">
+              {{ option.label }}
+            </option>
+          </select>
+          <p v-if="date && dayEvents.length === 0" class="text-caption text-ink-subtle">
+            No hay eventos ese día.
+          </p>
+        </div>
 
         <div class="flex flex-col gap-1.5">
           <label for="exam-block-select" class="select-none text-body-sm text-ink-muted">
