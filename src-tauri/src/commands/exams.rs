@@ -5,7 +5,8 @@ use tauri::State;
 
 // Commands delgados de Examen: solo persisten. Cero lógica de negocio.
 // El walking skeleton (#133) cablea título, fecha, estado, color de
-// respaldo y orden; el resto de las columnas T1 usan los defaults del SQL.
+// respaldo y orden; #138 agrega la nota (0–10, nullable). El resto de las
+// columnas T1 usan los defaults del SQL.
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateExamInput {
@@ -14,6 +15,8 @@ pub struct CreateExamInput {
     pub date: String,
     #[serde(default = "default_status")]
     pub status: String,
+    #[serde(default)]
+    pub grade: Option<f64>,
     #[serde(default = "default_fallback_color")]
     pub fallback_color: String,
     #[serde(default)]
@@ -36,6 +39,8 @@ pub struct UpdateExamInput {
     pub title: Option<String>,
     pub date: Option<String>,
     pub status: Option<String>,
+    // Double-Option: None no toca la nota; Some(None) la limpia; Some(n) la fija.
+    pub grade: Option<Option<f64>>,
     pub fallback_color: Option<String>,
     pub sort_order: Option<i32>,
     pub updated_at: String,
@@ -82,13 +87,14 @@ pub fn create_exam(db: State<'_, Db>, input: CreateExamInput) -> Result<ExamRow,
         let conn = db.conn.lock().unwrap();
 
         conn.execute(
-            "INSERT INTO exams (id, title, date, status, fallback_color, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO exams (id, title, date, status, grade, fallback_color, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 input.id,
                 input.title,
                 input.date,
                 input.status,
+                input.grade,
                 input.fallback_color,
                 input.sort_order,
                 input.created_at,
@@ -135,15 +141,18 @@ pub fn update_exam(db: State<'_, Db>, input: UpdateExamInput) -> Result<ExamRow,
                 title          = COALESCE(?2, title),
                 date           = COALESCE(?3, date),
                 status         = COALESCE(?4, status),
-                fallback_color = COALESCE(?5, fallback_color),
-                sort_order     = COALESCE(?6, sort_order),
-                updated_at     = ?7
+                grade          = CASE WHEN ?5 = 1 THEN ?6 ELSE grade END,
+                fallback_color = COALESCE(?7, fallback_color),
+                sort_order     = COALESCE(?8, sort_order),
+                updated_at     = ?9
              WHERE id = ?1",
             params![
                 input.id,
                 input.title,
                 input.date,
                 input.status,
+                input.grade.is_some() as i32,
+                input.grade.flatten(),
                 input.fallback_color,
                 input.sort_order,
                 input.updated_at,

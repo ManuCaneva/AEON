@@ -691,3 +691,47 @@ fn exams_schema_applies_expected_defaults_on_a_fresh_database() {
     assert_eq!(topics, "[]");
     assert_eq!(grade, None);
 }
+
+#[test]
+fn exams_grade_round_trips_and_enforces_range() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, status, grade, created_at, updated_at)
+         VALUES ('exam-grade', 'Parcial', '2026-07-01', 'rendido', 8.5,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with grade");
+
+    let grade: Option<f64> = conn
+        .query_row(
+            "SELECT grade FROM exams WHERE id = 'exam-grade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read grade");
+    assert_eq!(grade, Some(8.5));
+
+    // "Sin nota" se representa como NULL: limpiarla la deja sin valor.
+    conn.execute("UPDATE exams SET grade = NULL WHERE id = 'exam-grade'", [])
+        .expect("clear grade");
+    let cleared: Option<f64> = conn
+        .query_row(
+            "SELECT grade FROM exams WHERE id = 'exam-grade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read cleared grade");
+    assert_eq!(cleared, None);
+
+    // El CHECK rechaza una nota fuera del rango 0–10.
+    let out_of_range = conn.execute(
+        "INSERT INTO exams (id, title, date, status, grade, created_at, updated_at)
+         VALUES ('exam-bad', 'Parcial', '2026-07-01', 'rendido', 11,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(out_of_range.is_err(), "grade > 10 debe violar el CHECK");
+}

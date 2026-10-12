@@ -726,6 +726,18 @@ describe('db.createExam - shape hacia Rust', () => {
     })
   })
 
+  it('envía la nota cuando el draft la incluye', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01', status: 'rendido', grade: 8.5 },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({ status: 'rendido', grade: 8.5 }),
+    })
+  })
+
   it('rechaza draft inválido sin invocar', async () => {
     await expect(
       createExam(
@@ -842,6 +854,36 @@ describe('db.updateExam - shape hacia Rust', () => {
     )
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.status).toBe('rendido')
+  })
+
+  it('envía la nota cuando el patch la incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { status: 'rendido', grade: 7.5 },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBe(7.5)
+  })
+
+  it('envía null para limpiar la nota', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { grade: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBeNull()
+  })
+
+  it('omite la nota cuando el patch no la trae (no pisa la persistida)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBeUndefined()
   })
 })
 

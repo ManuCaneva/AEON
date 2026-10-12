@@ -330,6 +330,7 @@ export async function createExam(
       title: row.title,
       date: row.date,
       status: row.status ?? 'pendiente',
+      grade: row.grade ?? null,
       fallback_color: row.fallback_color ?? 'lavender',
       sort_order: row.sort_order ?? 0,
       created_at,
@@ -355,10 +356,12 @@ export async function updateExam(
   const raw = await invoke<unknown>('update_exam', {
     input: {
       id,
-      // undefined se omite al serializar (no toca el campo persistido).
+      // undefined se omite al serializar (no toca el campo persistido);
+      // null limpia la nota (double-Option, ver updateNote).
       title: row.title,
       date: row.date,
       status: row.status,
+      grade: validated.grade,
       fallback_color: row.fallback_color,
       sort_order: row.sort_order,
       updated_at,
