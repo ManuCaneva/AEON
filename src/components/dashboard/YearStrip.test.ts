@@ -85,6 +85,33 @@ describe('YearStrip', () => {
     expect(highlighted).toHaveLength(2)
   })
 
+  it('pinta el overlay de exámenes como un punto extra idéntico al de un evento', () => {
+    const overlayByDate = new Map([
+      ['2026-06-04', [{ id: 'exam_1', color: 'rgb(var(--color-block-cyan))' }]],
+    ])
+    const wrapper = mount(YearStrip, {
+      props: {
+        year: 2026,
+        eventsByDate: new Map(),
+        overlayByDate,
+        monthNames: MONTH_NAMES,
+        cellSize: 10,
+      },
+    })
+    const cell = wrapper.find("[data-date='2026-06-04']")
+    expect(cell.exists()).toBe(true)
+    const dots = cell.findAll("[data-testid='event-dot']")
+    expect(dots).toHaveLength(1)
+    // Mismo markup que un evento: misma clase y mismo testid.
+    expect(dots[0].classes()).toContain('ys__dot')
+    expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-cyan))')
+  })
+
+  it('sin overlay la tira no agrega puntos', () => {
+    const wrapper = mountStrip()
+    expect(wrapper.findAll("[data-testid='event-dot']")).toHaveLength(0)
+  })
+
   it('muestra dots de eventos igual que el modo meses', async () => {
     const eventsByDate = new Map([
       [

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
 import { useDayTooltip } from '@/composables/useDayTooltip'
-import type { CalendarEvent } from '@/schemas/calendar'
+import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 import DayTooltip from './DayTooltip.vue'
 
 const props = withDefaults(
@@ -10,11 +10,15 @@ const props = withDefaults(
     year: number
     month: number
     eventsByDate: Map<string, CalendarEvent[]>
+    // Capa derivada (ej. exámenes): puntos extra idénticos a los de un evento,
+    // sin entrar en el CRUD del calendario.
+    overlayByDate?: DayOverlayByDate
     monthName?: string
     showHeader?: boolean
     today?: string
   }>(),
   {
+    overlayByDate: () => new Map(),
     monthName: '',
     showHeader: false,
   }
@@ -47,6 +51,12 @@ function visibleDots(date: string | null): CalendarEvent[] {
 
 function overflowCount(date: string | null): number {
   return Math.max(0, getEvents(date).length - MAX_DOTS)
+}
+
+/** Puntos derivados (exámenes) del día: se pintan como un evento más. */
+function getOverlay(date: string | null): DayOverlayDot[] {
+  if (!date) return []
+  return props.overlayByDate.get(date) ?? []
 }
 
 const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
@@ -106,6 +116,13 @@ function onDaySelect(date: string | null) {
             <span v-if="overflowCount(cell.date) > 0" class="overflow"
               >+{{ overflowCount(cell.date) }}</span
             >
+            <span
+              v-for="dot in getOverlay(cell.date)"
+              :key="dot.id"
+              class="event-dot"
+              :style="{ backgroundColor: dot.color }"
+              data-testid="event-dot"
+            />
           </template>
         </div>
       </template>

@@ -12,18 +12,22 @@ import {
   stripGap,
   type MonthDivider,
 } from '@/lib/calendarHeatmap'
-import type { CalendarEvent } from '@/schemas/calendar'
+import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 
 const props = withDefaults(
   defineProps<{
     year: number
     eventsByDate: Map<string, CalendarEvent[]>
+    // Capa derivada (ej. exámenes): puntos extra idénticos a los de un evento,
+    // sin entrar en el CRUD del calendario.
+    overlayByDate?: DayOverlayByDate
     monthNames?: string[]
     highlightMonth?: number | null
     today?: string
     cellSize?: number | null
   }>(),
   {
+    overlayByDate: () => new Map(),
     monthNames: () => [
       'enero',
       'febrero',
@@ -95,6 +99,12 @@ function visibleDots(date: string | null): CalendarEvent[] {
 
 function overflowCount(date: string | null): number {
   return Math.max(0, getEvents(date).length - MAX_DOTS)
+}
+
+/** Puntos derivados (exámenes) del día: se pintan como un evento más. */
+function getOverlay(date: string | null): DayOverlayDot[] {
+  if (!date) return []
+  return props.overlayByDate.get(date) ?? []
 }
 
 function shortMonthLabel(name: string): string {
@@ -235,6 +245,13 @@ onUnmounted(() => {
                 <span v-if="overflowCount(cellData.date) > 0" class="ys__overflow"
                   >+{{ overflowCount(cellData.date) }}</span
                 >
+                <span
+                  v-for="dot in getOverlay(cellData.date)"
+                  :key="dot.id"
+                  class="ys__dot"
+                  :style="{ backgroundColor: dot.color }"
+                  data-testid="event-dot"
+                />
               </template>
             </div>
           </template>
