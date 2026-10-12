@@ -108,10 +108,7 @@ export function rowToExam(row: ExamRow): Exam {
 }
 
 /** Reconstruye el par (calendarId, eventId) sólo si ambas columnas existen. */
-function linkFromColumns(
-  calendarId: string | null,
-  eventId: string | null
-): ExamEventLink | null {
+function linkFromColumns(calendarId: string | null, eventId: string | null): ExamEventLink | null {
   if (!calendarId || !eventId) return null
   return { calendarId, eventId }
 }

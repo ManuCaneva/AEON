@@ -4,7 +4,12 @@ import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useCalendarStore } from '@/stores/calendar'
-import { ExamStatusSchema, type ExamStatus, type ExamTopic, type ExamEventLink } from '@/schemas/exams'
+import {
+  ExamStatusSchema,
+  type ExamStatus,
+  type ExamTopic,
+  type ExamEventLink,
+} from '@/schemas/exams'
 import type { BlockColorToken } from '@/schemas/weeklySchedule'
 import { examStatusLabel } from '@/lib/examStatus'
 import { blockColorRgb } from '@/lib/scheduleColors'

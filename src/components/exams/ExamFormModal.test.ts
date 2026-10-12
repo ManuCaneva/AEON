@@ -649,9 +649,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith(
-      expect.objectContaining({ event_link: null })
-    )
+    expect(examsMock.createExam).toHaveBeenCalledWith(expect.objectContaining({ event_link: null }))
   })
 
   it('al crear con un evento vinculado envía el par (calendarId, eventId)', async () => {

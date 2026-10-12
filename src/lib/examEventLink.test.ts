@@ -75,9 +75,7 @@ describe('resolvedLinkKeys', () => {
 describe('omitLinkedEvents', () => {
   it('omite el evento vinculado y conserva el resto del día', () => {
     const other = makeEvent({ id: 'evt-2' })
-    const eventsByDate = new Map([
-      ['2026-07-01', [makeEvent(), other]],
-    ])
+    const eventsByDate = new Map([['2026-07-01', [makeEvent(), other]]])
     const result = omitLinkedEvents(eventsByDate, new Set([eventKey('local', 'evt-1')]))
     expect(result.get('2026-07-01')).toEqual([other])
   })

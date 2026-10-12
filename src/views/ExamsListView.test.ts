@@ -87,7 +87,10 @@ describe('ExamsListView', () => {
 
   it('lista un examen con vínculo huérfano sin romper', () => {
     examsState.value = [
-      { ...makeExam('exam-1', 'Parcial 1'), event_link: { calendarId: 'local', eventId: 'evt-ausente' } },
+      {
+        ...makeExam('exam-1', 'Parcial 1'),
+        event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+      },
     ]
     const wrapper = mount(ExamsListView)
     expect(wrapper.text()).toContain('Parcial 1')
