@@ -74,6 +74,41 @@ export const useExamsStore = defineStore('exams', () => {
     exams.value = exams.value.filter((e) => e.id !== id)
   }
 
+  /** Temas: lista embebida. Cada acción persiste vía updateExam. */
+
+  async function addTopic(examId: string, title: string): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: [...exam.topics, { id: uuidv4(), title, completed: false }],
+    })
+  }
+
+  async function updateTopic(examId: string, topicId: string, title: string): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) => (t.id === topicId ? { ...t, title } : t)),
+    })
+  }
+
+  async function removeTopic(examId: string, topicId: string): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.filter((t) => t.id !== topicId),
+    })
+  }
+
+  /** Invierte `completed` del tema; NO cambia el estado del examen. */
+  async function toggleTopic(examId: string, topicId: string): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) => (t.id === topicId ? { ...t, completed: !t.completed } : t)),
+    })
+  }
+
   return {
     exams,
     loading,
@@ -83,5 +118,9 @@ export const useExamsStore = defineStore('exams', () => {
     createExam,
     updateExam,
     deleteExam,
+    addTopic,
+    updateTopic,
+    removeTopic,
+    toggleTopic,
   }
 })

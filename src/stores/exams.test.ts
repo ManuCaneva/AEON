@@ -162,6 +162,123 @@ describe('exams store - deleteExam', () => {
   })
 })
 
+describe('exams store - temas', () => {
+  const examId = '11111111-1111-4111-8111-111111111111'
+  const topicA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const topicB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
+  function topicsRow(topics: unknown) {
+    return makeRow({ id: examId, topics: JSON.stringify(topics) })
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.listExams).mockResolvedValue([
+      topicsRow([
+        { id: topicA, title: 'Límites', completed: false },
+        { id: topicB, title: 'Derivadas', completed: true },
+      ]),
+    ])
+    vi.mocked(db.updateExam).mockImplementation(async (id, patch) =>
+      makeRow({
+        id,
+        topics: patch.topics !== undefined ? JSON.stringify(patch.topics) : '[]',
+      })
+    )
+  })
+
+  it('toggleTopic invierte completed y persiste la lista', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.toggleTopic(examId, topicA)
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    expect(db.updateExam).toHaveBeenCalledWith(
+      examId,
+      {
+        topics: [
+          { id: topicA, title: 'Límites', completed: true },
+          { id: topicB, title: 'Derivadas', completed: true },
+        ],
+      },
+      expect.any(String)
+    )
+    expect(store.exams[0].topics[0].completed).toBe(true)
+  })
+
+  it('toggleTopic no cambia el estado del examen', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+    await store.toggleTopic(examId, topicB)
+    expect(store.exams[0].status).toBe('pendiente')
+  })
+
+  it('toggleTopic con un examen inexistente no persiste', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+    await store.toggleTopic('99999999-9999-4999-8999-999999999999', topicA)
+    expect(db.updateExam).not.toHaveBeenCalled()
+  })
+
+  it('addTopic agrega un tema sin completar con id generado', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.addTopic(examId, 'Integrales')
+
+    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as { topics: unknown[] }
+    expect(patch.topics).toHaveLength(3)
+    const added = patch.topics[2] as { id: string; title: string; completed: boolean }
+    expect(added.title).toBe('Integrales')
+    expect(added.completed).toBe(false)
+    expect(typeof added.id).toBe('string')
+    expect(store.exams[0].topics).toHaveLength(3)
+  })
+
+  it('updateTopic cambia el título del tema', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.updateTopic(examId, topicA, 'Sucesiones')
+
+    expect(db.updateExam).toHaveBeenCalledWith(
+      examId,
+      {
+        topics: [
+          { id: topicA, title: 'Sucesiones', completed: false },
+          { id: topicB, title: 'Derivadas', completed: true },
+        ],
+      },
+      expect.any(String)
+    )
+    expect(store.exams[0].topics[0].title).toBe('Sucesiones')
+  })
+
+  it('removeTopic quita el tema de la lista', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.removeTopic(examId, topicA)
+
+    expect(db.updateExam).toHaveBeenCalledWith(
+      examId,
+      { topics: [{ id: topicB, title: 'Derivadas', completed: true }] },
+      expect.any(String)
+    )
+    expect(store.exams[0].topics).toHaveLength(1)
+  })
+
+  it('reemplaza el array de temas (inmutabilidad)', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+    const before = store.exams[0].topics
+    await store.toggleTopic(examId, topicA)
+    expect(store.exams[0].topics).not.toBe(before)
+  })
+})
+
 describe('exams store - reset', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
