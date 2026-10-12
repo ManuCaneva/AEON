@@ -32,6 +32,7 @@ describe('ExamSchema', () => {
     title: 'Parcial 1 de Análisis',
     date: validDate,
     status: 'pendiente' as const,
+    grade: null,
     fallback_color: 'lavender' as const,
     sort_order: 0,
     created_at: validIso,
@@ -40,6 +41,19 @@ describe('ExamSchema', () => {
 
   it('acepta un examen válido', () => {
     expect(ExamSchema.parse(validExam)).toEqual(validExam)
+  })
+
+  it('acepta una nota nula (sin nota) y notas con decimales de 0 a 10', () => {
+    expect(ExamSchema.parse({ ...validExam, grade: null }).grade).toBeNull()
+    expect(ExamSchema.parse({ ...validExam, grade: 0 }).grade).toBe(0)
+    expect(ExamSchema.parse({ ...validExam, grade: 10 }).grade).toBe(10)
+    expect(ExamSchema.parse({ ...validExam, grade: 8.5 }).grade).toBe(8.5)
+  })
+
+  it('rechaza una nota fuera del rango 0–10', () => {
+    expect(() => ExamSchema.parse({ ...validExam, grade: -0.5 })).toThrow()
+    expect(() => ExamSchema.parse({ ...validExam, grade: 10.5 })).toThrow()
+    expect(() => ExamSchema.parse({ ...validExam, grade: 100 })).toThrow()
   })
 
   it('rechaza título vacío', () => {
@@ -82,6 +96,21 @@ describe('CreateExamDraftSchema', () => {
     expect(parsed).not.toHaveProperty('id')
     expect(parsed).not.toHaveProperty('created_at')
     expect(parsed).not.toHaveProperty('updated_at')
+  })
+
+  it('acepta una nota opcional válida y rechaza una fuera de rango', () => {
+    expect(
+      CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, grade: 9.5 }).grade
+    ).toBe(9.5)
+    expect(
+      CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, grade: null }).grade
+    ).toBeNull()
+    expect(() =>
+      CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, grade: 11 })
+    ).toThrow()
+    expect(() =>
+      CreateExamDraftSchema.parse({ title: 'Parcial', date: validDate, grade: -1 })
+    ).toThrow()
   })
 })
 
@@ -148,11 +177,17 @@ describe('rowToExam', () => {
     expect(exam.created_at).toBe('2026-06-27T10:00:00Z')
   })
 
-  it('no expone columnas fuera del alcance del walking skeleton', () => {
+  it('mapea la nota nula y una nota con decimales', () => {
+    expect(rowToExam(rawRow).grade).toBeNull()
+    expect(rowToExam({ ...rawRow, grade: 7.5 }).grade).toBe(7.5)
+  })
+
+  it('no expone columnas fuera del alcance de este ticket', () => {
     const exam = rowToExam(rawRow)
     expect(exam).not.toHaveProperty('topics')
-    expect(exam).not.toHaveProperty('grade')
     expect(exam).not.toHaveProperty('block_id')
+    expect(exam).not.toHaveProperty('calendar_id')
+    expect(exam).not.toHaveProperty('event_id')
   })
 
   it('lanza con fecha inválida', () => {
@@ -185,5 +220,14 @@ describe('examToRow', () => {
     expect(row.title).toBeUndefined()
     expect(row.date).toBeUndefined()
     expect(row.status).toBe('rendido')
+  })
+
+  it('incluye la nota cuando está presente, incluido null para limpiarla', () => {
+    expect(examToRow({ grade: 8.5 }).grade).toBe(8.5)
+    expect(examToRow({ grade: null }).grade).toBeNull()
+  })
+
+  it('omite la nota cuando el patch no la trae (no la toca)', () => {
+    expect(examToRow({ title: 'Nuevo' }).grade).toBeUndefined()
   })
 })

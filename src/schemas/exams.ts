@@ -5,9 +5,9 @@ import { blockColorSchema } from './weeklySchedule'
 // Capa dual de validación de Examen: dominio (lo que consume el frontend)
 // + drafts (create/update) + fila permisiva (espejo de SQLite) + mappers.
 // Alcance de #133 (walking skeleton): id, título, fecha, estado, color de
-// respaldo, orden y timestamps. Las columnas T1 restantes (temas, bloque,
-// nota, vínculo al calendario) existen en SQL pero se cablean en tickets
-// posteriores.
+// respaldo, orden y timestamps. #138 agrega la nota. Las columnas T1
+// restantes (temas, bloque, vínculo al calendario) existen en SQL pero se
+// cablean en tickets posteriores.
 
 export const ExamStatusSchema = z.enum(['pendiente', 'estudiando', 'rendido'])
 export type ExamStatus = z.infer<typeof ExamStatusSchema>
@@ -17,6 +17,7 @@ export const ExamSchema = z.object({
   title: trimmed(1, 100),
   date: localDate,
   status: ExamStatusSchema,
+  grade: z.number().min(0).max(10).nullable(),
   fallback_color: blockColorSchema,
   sort_order: z.number().int().default(0),
   created_at: isoTimestamp,
@@ -28,6 +29,7 @@ export const CreateExamDraftSchema = z.object({
   title: trimmed(1, 100),
   date: localDate,
   status: ExamStatusSchema.default('pendiente'),
+  grade: z.number().min(0).max(10).nullable().optional(),
   fallback_color: blockColorSchema.default('lavender'),
   sort_order: z.number().int().optional(),
 })
@@ -64,6 +66,7 @@ export function rowToExam(row: ExamRow): Exam {
     title: row.title,
     date: row.date,
     status: row.status,
+    grade: row.grade,
     fallback_color: row.fallback_color,
     sort_order: row.sort_order,
     created_at: normalizeTimestamp(row.created_at),
@@ -75,6 +78,7 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
   title?: string
   date?: string
   status?: ExamStatus
+  grade?: number | null
   fallback_color?: string
   sort_order?: number
 } {
@@ -82,6 +86,7 @@ export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {
     ...('title' in e && e.title !== undefined ? { title: e.title } : {}),
     ...('date' in e && e.date !== undefined ? { date: e.date } : {}),
     ...('status' in e && e.status !== undefined ? { status: e.status } : {}),
+    ...('grade' in e && e.grade !== undefined ? { grade: e.grade } : {}),
     ...('fallback_color' in e && e.fallback_color !== undefined
       ? { fallback_color: e.fallback_color }
       : {}),

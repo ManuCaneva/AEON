@@ -44,6 +44,17 @@ describe('exams store - loadExams', () => {
     expect(store.exams[0].status).toBe('pendiente')
   })
 
+  it('expone la nota mapeada (nula y con decimales)', async () => {
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ status: 'rendido', grade: 8.5 }),
+      makeRow({ status: 'pendiente', grade: null }),
+    ])
+    const store = useExamsStore()
+    await store.loadExams()
+    expect(store.exams.find((e) => e.status === 'rendido')?.grade).toBe(8.5)
+    expect(store.exams.find((e) => e.status === 'pendiente')?.grade).toBeNull()
+  })
+
   it('ordena por fecha ascendente: el más próximo primero', async () => {
     vi.mocked(db.listExams).mockResolvedValue([
       makeRow({ date: '2026-09-01' }),
