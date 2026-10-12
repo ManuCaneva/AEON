@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { useHabitsStore } from '@/stores/habits'
 import { useTasksStore } from '@/stores/tasks'
 import { useGoalsStore } from '@/stores/goals'
+import { useExamsStore } from '@/stores/exams'
 import { useUiStore } from '@/stores/ui'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import DashboardView from '@/components/dashboard/DashboardView.vue'
@@ -15,6 +16,7 @@ import HabitFormModal from '@/components/habits/HabitFormModal.vue'
 import TaskFormModal from '@/components/tasks/TaskFormModal.vue'
 import GoalFormModal from '@/components/goals/GoalFormModal.vue'
 import NoteFormModal from '@/components/notes/NoteFormModal.vue'
+import ExamFormModal from '@/components/exams/ExamFormModal.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
 import UpdateModal from '@/components/layout/UpdateModal.vue'
@@ -24,6 +26,7 @@ import { useDesktopEntry } from '@/composables/useDesktopEntry'
 const habits = useHabitsStore()
 const tasks = useTasksStore()
 const goals = useGoalsStore()
+const exams = useExamsStore()
 const ui = useUiStore()
 const pomodoro = usePomodoroStore()
 
@@ -56,6 +59,7 @@ onMounted(async () => {
   await habits.loadInitialData()
   await tasks.loadTasks()
   await goals.loadGoals()
+  await exams.loadExams()
   const today = new Date()
   const ninetyDaysAgo = new Date(today)
   ninetyDaysAgo.setDate(today.getDate() - 90)
@@ -96,6 +100,7 @@ onBeforeUnmount(() => {
     <TaskFormModal />
     <GoalFormModal />
     <NoteFormModal />
+    <ExamFormModal />
 
     <ExitEditDialog />
 

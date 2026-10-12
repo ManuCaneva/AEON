@@ -35,6 +35,13 @@ vi.mock('@/stores/goals', () => ({
   }),
 }))
 
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => ({
+    loadExams: vi.fn(),
+    exams: [],
+  }),
+}))
+
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => uiState,
 }))
@@ -77,6 +84,10 @@ vi.mock('@/components/tasks/TaskFormModal.vue', () => ({
 
 vi.mock('@/components/goals/GoalFormModal.vue', () => ({
   default: { template: '<div data-testid="mock-goal-modal" />' },
+}))
+
+vi.mock('@/components/exams/ExamFormModal.vue', () => ({
+  default: { template: '<div data-testid="mock-exam-modal" />' },
 }))
 
 describe('App layout', () => {

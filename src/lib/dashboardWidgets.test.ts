@@ -45,6 +45,20 @@ describe('dashboardWidgets', () => {
     expect(widget?.defaultEnabled).not.toBe(false)
   })
 
+  it('expone el widget de Exámenes apagado por defecto y marcado como nuevo', () => {
+    const widget = getWidgetById('exams')
+    expect(widget).toBeDefined()
+    expect(widget?.title).toBe('Exámenes')
+    expect(widget?.defaultEnabled).toBe(false)
+    expect(widget?.isNew).toBe(true)
+  })
+
+  it('el widget de Exámenes no entra en la distribución por defecto', () => {
+    const enabled = widgets.filter((w) => w.defaultEnabled !== false)
+    expect(enabled.map((w) => w.id)).not.toContain('exams')
+    expect(enabled).toHaveLength(7)
+  })
+
   it('cada widget tiene dimensiones por defecto válidas (celdas enteras)', () => {
     widgets.forEach((w) => {
       expect(w.minW).toBeGreaterThan(0)
