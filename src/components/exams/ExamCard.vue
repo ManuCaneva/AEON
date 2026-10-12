@@ -5,8 +5,9 @@ import type { Exam } from '@/schemas/exams'
 import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
 import { daysLabel } from '@/lib/examDays'
+import { examInitials } from '@/lib/examInitials'
 import { examStatusLabel, examStatusVariant, shouldShowGrade, formatGrade } from '@/lib/examStatus'
-import { blockColorRgb } from '@/lib/scheduleColors'
+import { blockColorRgb, blockColorTint } from '@/lib/scheduleColors'
 import Badge from '@/components/ui/Badge.vue'
 import Container from '@/components/ui/Container.vue'
 import Text from '@/components/ui/Text.vue'
@@ -21,7 +22,12 @@ const ui = useUiStore()
 
 const isMenuOpen = computed(() => ui.menuOpenForExamId === props.exam.id)
 const daysText = computed(() => daysLabel(props.exam.date))
-const color = computed(() => blockColorRgb(props.exam.fallback_color))
+// Color vivo: el token del bloque mientras exista; si no, el de respaldo.
+const colorToken = computed(() => exams.colorFor(props.exam))
+const color = computed(() => blockColorRgb(colorToken.value))
+// Materia: sólo si hay bloque asociado; se muestra con sus iniciales.
+const block = computed(() => exams.blockFor(props.exam))
+const materiaLabel = computed(() => (block.value ? examInitials(block.value.title) : ''))
 const statusLabel = computed(() => examStatusLabel(props.exam.status))
 const statusVariant = computed(() => examStatusVariant(props.exam.status))
 const showGrade = computed(() => shouldShowGrade(props.exam.status, props.exam.grade))
@@ -74,6 +80,14 @@ function handleToggleTopic(topicId: string) {
           <Badge data-testid="exam-status" :variant="statusVariant">
             {{ statusLabel }}
           </Badge>
+          <span
+            v-if="materiaLabel"
+            data-testid="exam-materia"
+            class="inline-flex items-center rounded-full px-2 py-0.5 font-medium text-ink"
+            :style="{ backgroundColor: blockColorTint(colorToken, 0.16) }"
+          >
+            {{ materiaLabel }}
+          </span>
           <span
             data-testid="exam-days"
             class="inline-flex items-center rounded-full bg-accent-purple-tint px-2 py-0.5 font-medium text-accent-purple"

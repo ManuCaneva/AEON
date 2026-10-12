@@ -10,6 +10,7 @@ const examsState = ref<
     title: string
     date: string
     status: string
+    block_id: string | null
     fallback_color: string
     topics: { id: string; title: string; completed: boolean }[]
     sort_order: number
@@ -22,6 +23,8 @@ const examsMock = {
     return examsState.value
   },
   toggleTopic: vi.fn().mockResolvedValue(undefined),
+  blockFor: vi.fn().mockReturnValue(undefined),
+  colorFor: vi.fn().mockReturnValue('lavender'),
 }
 const uiMock = {
   menuOpenForExamId: null as string | null,
@@ -42,6 +45,7 @@ function makeExam(id: string, title: string, date = '2026-07-01') {
     title,
     date,
     status: 'pendiente',
+    block_id: null,
     fallback_color: 'lavender',
     topics: [],
     sort_order: 0,

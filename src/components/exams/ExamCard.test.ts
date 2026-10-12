@@ -8,6 +8,8 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 const examsMock = {
   deleteExam: vi.fn().mockResolvedValue(undefined),
   toggleTopic: vi.fn().mockResolvedValue(undefined),
+  blockFor: vi.fn().mockReturnValue(undefined),
+  colorFor: vi.fn().mockReturnValue('lavender'),
 }
 const uiMock = {
   menuOpenForExamId: null as string | null,
@@ -34,11 +36,24 @@ const baseExam: Exam = {
   date: localDate(),
   status: 'pendiente',
   grade: null,
+  block_id: null,
   fallback_color: 'lavender',
   topics: [],
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
+}
+
+function makeBlock(title: string, color = 'green') {
+  return {
+    id: 'block-1',
+    title,
+    color,
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    slots: [],
+  }
 }
 
 const topicId1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -55,6 +70,8 @@ describe('ExamCard', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     uiMock.menuOpenForExamId = null
+    examsMock.blockFor.mockReturnValue(undefined)
+    examsMock.colorFor.mockReturnValue('lavender')
     vi.clearAllMocks()
   })
 
@@ -125,15 +142,34 @@ describe('ExamCard', () => {
     expect(wrapper.find("[data-testid='exam-grade']").text()).toContain('8.5')
   })
 
-  it('ordena las etiquetas estado → días → nota', () => {
+  it('ordena las etiquetas estado → materia → días → nota', () => {
+    examsMock.blockFor.mockReturnValue(makeBlock('Física I'))
     const wrapper = mount(ExamCard, {
-      props: { exam: { ...baseExam, status: 'rendido', grade: 7 } },
+      props: { exam: { ...baseExam, block_id: 'block-1', status: 'rendido', grade: 7 } },
     })
     const ids = wrapper
       .find("[data-testid='exam-pills']")
       .findAll('[data-testid]')
       .map((el) => el.attributes('data-testid'))
-    expect(ids).toEqual(['exam-status', 'exam-days', 'exam-grade'])
+    expect(ids).toEqual(['exam-status', 'exam-materia', 'exam-days', 'exam-grade'])
+  })
+
+  it('sin bloque asociado no muestra la etiqueta de materia', () => {
+    const wrapper = mount(ExamCard, { props: { exam: baseExam } })
+    expect(wrapper.find("[data-testid='exam-materia']").exists()).toBe(false)
+  })
+
+  it('con bloque asociado muestra sólo las iniciales de la materia', () => {
+    examsMock.blockFor.mockReturnValue(makeBlock('Análisis Matemático II'))
+    const wrapper = mount(ExamCard, { props: { exam: { ...baseExam, block_id: 'block-1' } } })
+    expect(wrapper.find("[data-testid='exam-materia']").text()).toBe('AMI')
+  })
+
+  it('el indicador toma el color vivo del bloque cuando existe', () => {
+    examsMock.colorFor.mockReturnValue('green')
+    const wrapper = mount(ExamCard, { props: { exam: { ...baseExam, block_id: 'block-1' } } })
+    const indicator = wrapper.find("[data-testid='exam-color-indicator']")
+    expect(indicator.attributes('style')).toContain('rgb(var(--color-block-green))')
   })
 
   it('abre el menú de contexto al clickear el botón', async () => {

@@ -8,6 +8,8 @@ import {
   type UpdateExamDraft,
   type ExamRow,
 } from '@/schemas/exams'
+import { useWeeklyScheduleStore } from './weeklySchedule'
+import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
 
 function nowIsoUtc(): string {
   return new Date().toISOString()
@@ -109,6 +111,24 @@ export const useExamsStore = defineStore('exams', () => {
     })
   }
 
+  /**
+   * Bloque asociado (la materia), resuelto contra el Cronograma semanal.
+   * Degrada en silencio: si no hay asociación o el bloque ya no existe
+   * (borrado, SET NULL), devuelve undefined.
+   */
+  function blockFor(exam: Exam): ScheduleBlock | undefined {
+    if (!exam.block_id) return undefined
+    return useWeeklyScheduleStore().blocksWithSlots.find((b) => b.id === exam.block_id)
+  }
+
+  /**
+   * Color vivo del examen: el token del bloque mientras exista; si no, el
+   * color de respaldo propio. Nunca se persiste el color derivado.
+   */
+  function colorFor(exam: Exam): BlockColorToken {
+    return blockFor(exam)?.color ?? exam.fallback_color
+  }
+
   return {
     exams,
     loading,
@@ -122,5 +142,7 @@ export const useExamsStore = defineStore('exams', () => {
     updateTopic,
     removeTopic,
     toggleTopic,
+    blockFor,
+    colorFor,
   }
 })

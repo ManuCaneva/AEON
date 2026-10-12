@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useExamsStore } from './exams'
+import { useWeeklyScheduleStore } from './weeklySchedule'
+import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
 import * as db from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({
@@ -276,6 +278,82 @@ describe('exams store - temas', () => {
     const before = store.exams[0].topics
     await store.toggleTopic(examId, topicA)
     expect(store.exams[0].topics).not.toBe(before)
+  })
+})
+
+describe('exams store - color vivo del bloque', () => {
+  const blockId = '11111111-1111-4111-8111-111111111111'
+  const examId = '22222222-2222-4222-8222-222222222222'
+
+  function makeBlock(overrides: Partial<ScheduleBlockWithSlots> = {}): ScheduleBlockWithSlots {
+    return {
+      id: blockId,
+      title: 'Física',
+      color: 'green',
+      sort_order: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      slots: [],
+      ...overrides,
+    }
+  }
+
+  function setBlocks(blocks: ScheduleBlockWithSlots[]) {
+    useWeeklyScheduleStore().blocksWithSlots = blocks
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('sin bloque asociado usa el color de respaldo del examen', async () => {
+    setBlocks([])
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, block_id: null, fallback_color: 'pink' }),
+    ])
+    await store.loadExams()
+
+    expect(store.colorFor(store.exams[0])).toBe('pink')
+    expect(store.blockFor(store.exams[0])).toBeUndefined()
+  })
+
+  it('con bloque existente deriva en vivo el color del bloque', async () => {
+    setBlocks([makeBlock()])
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, block_id: blockId, fallback_color: 'lavender' }),
+    ])
+    await store.loadExams()
+
+    expect(store.colorFor(store.exams[0])).toBe('green')
+    expect(store.blockFor(store.exams[0])?.title).toBe('Física')
+  })
+
+  it('si el bloque ya no existe degrada en silencio al color de respaldo', async () => {
+    setBlocks([])
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, block_id: blockId, fallback_color: 'cyan' }),
+    ])
+    await store.loadExams()
+
+    expect(store.colorFor(store.exams[0])).toBe('cyan')
+    expect(store.blockFor(store.exams[0])).toBeUndefined()
+  })
+
+  it('no escribe el color derivado en el examen (sólo lo resuelve)', async () => {
+    setBlocks([makeBlock({ color: 'orange' })])
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, block_id: blockId, fallback_color: 'lavender' }),
+    ])
+    await store.loadExams()
+
+    store.colorFor(store.exams[0])
+    expect(store.exams[0].fallback_color).toBe('lavender')
+    expect(store.exams[0].block_id).toBe(blockId)
   })
 })
 
