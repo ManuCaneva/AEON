@@ -160,6 +160,16 @@ describe('ExamCard', () => {
     expect(wrapper.find("[data-testid='exam-materia']").exists()).toBe(false)
   })
 
+  it('un vínculo huérfano no rompe el render de la tarjeta', () => {
+    const exam: Exam = {
+      ...baseExam,
+      event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+    }
+    const wrapper = mount(ExamCard, { props: { exam } })
+    expect(wrapper.find("[data-testid='exam-card']").exists()).toBe(true)
+    expect(wrapper.text()).toContain('Parcial 1 de Análisis')
+  })
+
   it('con bloque asociado muestra sólo las iniciales de la materia', () => {
     examsMock.blockFor.mockReturnValue(makeBlock('Análisis Matemático II'))
     const wrapper = mount(ExamCard, { props: { exam: { ...baseExam, block_id: 'block-1' } } })

@@ -12,6 +12,7 @@ const examsState = ref<
     status: string
     block_id: string | null
     fallback_color: string
+    event_link?: { calendarId: string; eventId: string } | null
     topics: { id: string; title: string; completed: boolean }[]
     sort_order: number
     created_at: string
@@ -82,6 +83,15 @@ describe('ExamsListView', () => {
     examsState.value = [makeExam('exam-1', 'Parcial 1'), makeExam('exam-2', 'Parcial 2')]
     const wrapper = mount(ExamsListView)
     expect(wrapper.findAllComponents({ name: 'ExamCard' })).toHaveLength(2)
+  })
+
+  it('lista un examen con vínculo huérfano sin romper', () => {
+    examsState.value = [
+      { ...makeExam('exam-1', 'Parcial 1'), event_link: { calendarId: 'local', eventId: 'evt-ausente' } },
+    ]
+    const wrapper = mount(ExamsListView)
+    expect(wrapper.text()).toContain('Parcial 1')
+    expect(wrapper.findAllComponents({ name: 'ExamCard' })).toHaveLength(1)
   })
 
   it('muestra el empty state cuando no hay exámenes', () => {
