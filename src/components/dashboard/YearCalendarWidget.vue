@@ -152,7 +152,7 @@ function recomputeNow() {
 
   if (change === 'none') {
     // Sin cambio de layout igual puede haberse asentado el viewport:
-    // reintenta la restauración pendiente (no toca nada si no hay).
+    // verifica o re-aplica la restauración pendiente (no toca nada si no hay).
     retryPendingRestore()
     return
   }
@@ -205,18 +205,30 @@ function saveViewportScroll() {
 }
 
 function onViewportScroll() {
-  // Si el usuario scrolleó, la posición pendiente de restauración ya no vale.
-  pendingRestore = null
+  // Mientras hay una restauración pendiente, el scroll es espurio del layout
+  // inicial (WebKitGTK lo emite al asentar): se ignora sin cancelar ni guardar.
+  if (pendingRestore !== null) return
   saveViewportScroll()
 }
 
 /**
  * Posición inicial: si hay una posición guardada (de una sesión anterior)
  * se restaura; si no, se scrollea al mes actual como siempre.
- * La restauración queda pendiente hasta que el viewport tiene su tamaño
- * final (la grilla del dashboard se asienta después del primer layout).
+ * La restauración queda pendiente unos segundos: WebKitGTK puede devolver
+ * el scroll a 0 (o reacomodarlo) mientras la grilla se asienta incluso
+ * después de haberla aplicado, así que cada recompute la re-aplica y los
+ * scrolls intermedios se ignoran (no cancelan ni guardan). El timeout la
+ * libera para no trabar nunca el guardado del scroll del usuario.
  */
 let pendingRestore: number | null = null
+let restoreTimer: number | null = null
+
+function clearRestoreTimer() {
+  if (restoreTimer !== null) {
+    clearTimeout(restoreTimer)
+    restoreTimer = null
+  }
+}
 
 function applyPendingRestore() {
   if (pendingRestore === null) return
@@ -225,7 +237,6 @@ function applyPendingRestore() {
   const max = maxScrollTop()
   if (max <= 0) return // todavía sin desborde: se reintenta en el próximo recompute
   el.scrollTop = pendingRestore * max
-  pendingRestore = null
 }
 
 function restoreInitialScroll() {
@@ -234,18 +245,19 @@ function restoreInitialScroll() {
     scrollToCurrentMonth()
     return
   }
+  clearRestoreTimer()
   pendingRestore = saved
   void nextTick(applyPendingRestore)
+  restoreTimer = window.setTimeout(() => {
+    pendingRestore = null
+    restoreTimer = null
+  }, 2000)
 }
 
-/** Reintento post-carga: si el usuario aún no scrolleó, aplica la posición pendiente. */
+/** Reintento post-carga: verifica o re-aplica la posición pendiente. */
 function retryPendingRestore() {
   if (pendingRestore === null) return
-  const el = viewportRef.value
-  if (!el || el.scrollTop !== 0) {
-    pendingRestore = null
-    return
-  }
+  if (!viewportRef.value) return
   void nextTick(applyPendingRestore)
 }
 
@@ -288,6 +300,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearRestoreTimer()
+  pendingRestore = null
   saveViewportScroll()
   resizeObserver?.disconnect()
   if (rafId !== null) {
@@ -314,6 +328,7 @@ watch(
     if (newYear !== oldYear) {
       store.syncYear(newYear)
       // Navegación explícita de año: manda sobre la posición pendiente.
+      clearRestoreTimer()
       pendingRestore = null
       scrollToCurrentMonth()
     }

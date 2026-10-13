@@ -800,5 +800,46 @@ describe('YearCalendarWidget', () => {
       vi.unstubAllGlobals()
       wrapper.unmount()
     })
+    it('un scroll espurio antes de asentar no cancela la restauración (WebKitGTK)', async () => {
+      localStorage.setItem('aeon:yearcal-scroll', '1')
+      // Viewport sin asentar: clientHeight gigante => max<=0 => apply conserva pending.
+      const protoDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        value: 100000,
+        configurable: true,
+      })
+      const getCallback = stubResize()
+      const wrapper = mount(YearCalendarWidget, {
+        attachTo: document.body,
+        props: { item: { i: 'year-calendar', x: 0, y: 0, w: 1, h: 10 } },
+      })
+      try {
+        const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+        Object.defineProperty(bodyEl, 'clientWidth', { value: 280, configurable: true })
+        Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+        const cb = getCallback()
+        if (cb) (cb as () => void)()
+        await flushRaf()
+        await wrapper.vm.$nextTick()
+        // Restauración pendiente (el viewport aún no asentó). Scroll espurio en 0:
+        const viewport = wrapper.find("[data-testid='year-grid-viewport']")
+        const el = viewport.element as HTMLElement
+        el.scrollTop = 0
+        await viewport.trigger('scroll')
+        // Se asienta el viewport y se reintenta tras un recompute:
+        if (protoDesc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', protoDesc)
+        const cb2 = getCallback()
+        if (cb2) (cb2 as () => void)()
+        await flushRaf()
+        await wrapper.vm.$nextTick()
+        await wrapper.vm.$nextTick()
+        expect(localStorage.getItem('aeon:yearcal-scroll')).toBe('1')
+        expect(el.scrollTop).toBe(contentHeight(wrapper))
+      } finally {
+        if (protoDesc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', protoDesc)
+        vi.unstubAllGlobals()
+        wrapper.unmount()
+      }
+    })
   })
 })
