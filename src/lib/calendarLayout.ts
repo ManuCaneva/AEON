@@ -319,7 +319,13 @@ function distributeSlack(
   const extraW = Math.max(0, contentW - (cols * monthWBase + (cols - 1) * space.gridGap))
   const cellGapX = Math.min(
     Math.round(space.cellGap + extraW / Math.max(1, cols * 6)),
-    space.cellGap * 2
+    space.cellGap * 2,
+    // El redondeo de arriba nunca puede hacer que el total supere el ancho:
+    // se clampea al gap máximo que entra.
+    Math.max(
+      space.cellGap,
+      Math.floor((contentW - (cols - 1) * space.gridGap - cols * 7 * cs) / (6 * cols))
+    )
   )
   const monthW = 7 * cs + 6 * cellGapX
   // Vertical (ver doc superior para el destino según columnas).
@@ -440,25 +446,32 @@ export function computeFittedLayout(
 /**
  * Layout scrolleable del modo meses: los 12 meses siempre visibles con
  * scroll vertical. La celda se dimensiona solo por el ancho (ocupa todo
- * el ancho disponible) con mínimo legible `MIN_SCROLL_CELL` (10px): el
- * alto no achica celdas, así 1360x768 y 1920x1080 se ven igual.
+ * el ancho disponible): prefiere el mínimo legible `MIN_SCROLL_CELL` (10px)
+ * pero, si ni eso entra (widget ultra-angosto), sigue encogiendo hasta que
+ * el contenido entra en el viewport. El alto no achica celdas, así 1360x768
+ * y 1920x1080 se ven igual.
  */
 export function computeScrollableLayout(availW: number, cols: number): LayoutResult | null {
   if (availW <= 0 || cols <= 0) return null
-  const safeCols = Math.max(1, Math.min(4, Math.round(cols)))
+  let safeCols = Math.max(1, Math.min(4, Math.round(cols)))
   const contentW = availW - 2 * LAYOUT_CHROME.bodyPadding
   if (contentW <= 0) return null
 
+  // Si ni con celdas de 1px entran las columnas pedidas, se baja la cantidad
+  // de columnas hasta que el contenido entra: el contenido nunca desborda en
+  // horizontal (nada queda recortado a la izquierda).
+  while (safeCols > 1 && fittedContentWidth(safeCols, 1) > contentW) safeCols--
+
   let best = -1
-  for (let cs = MAX_CELL_SIZE; cs >= MIN_SCROLL_CELL; cs--) {
+  for (let cs = MAX_CELL_SIZE; cs >= 1; cs--) {
     if (fittedContentWidth(safeCols, cs) <= contentW) {
       best = cs
       break
     }
   }
-  // Ni el mínimo entra (widget ultra-angosto): igual se devuelve al mínimo
-  // legible para no dejar la pantalla en blanco; el viewport scrollea en X.
-  if (best === -1) best = MIN_SCROLL_CELL
+  // Ancho absurdo (< 1 mes de 1px): igual se devuelve el mínimo absoluto
+  // para no dejar la pantalla en blanco.
+  if (best === -1) best = 1
 
   const cs = quantizeCellSize(Math.min(best, MAX_CELL_SIZE))
   const neededH = fittedContentHeight(12, safeCols, cs)

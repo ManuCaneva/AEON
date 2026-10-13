@@ -343,5 +343,17 @@ describe('calendarLayout', () => {
       const layout = computeScrollableLayout(150, 1)
       expect(layout!.cellSize).toBeGreaterThanOrEqual(10)
     })
+
+    it('widget ultra-angosto: nunca desborda el ancho (encoge celdas)', () => {
+      for (const availW of [80, 60, 40, 30]) {
+        for (const cols of [1, 2, 3, 4]) {
+          const layout = computeScrollableLayout(availW, cols)
+          expect(layout).not.toBeNull()
+          const totalW = layout!.cols * layout!.monthWidth + (layout!.cols - 1) * layout!.gridGap
+          const contentW = availW - 2 * LAYOUT_CHROME.bodyPadding
+          expect(totalW).toBeLessThanOrEqual(contentW)
+        }
+      }
+    })
   })
 })

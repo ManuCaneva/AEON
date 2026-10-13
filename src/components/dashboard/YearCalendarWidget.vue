@@ -11,6 +11,7 @@ import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-vue-next'
 import { computeScrollableLayout, colsForItemWidth, type LayoutResult } from '@/lib/calendarLayout'
 import { significantChange, layoutVars } from '@/lib/calendarResize'
+import { loadScrollFraction, saveScrollFraction } from '@/lib/calendarScroll'
 import {
   loadStripPreference,
   resolveStripMode,
@@ -137,8 +138,10 @@ function recomputeNow() {
   if (resolveMode(availW, availH) === 'tira') return
 
   // Modo meses scrolleable: columnas por el ancho del item del dashboard
-  // (w=1 -> 1, w=2 -> 2) y celda solo por ancho con mínimo legible 10px.
-  // El alto no achica celdas: el viewport scrollea en vertical.
+  // (w=1 -> 1, w=2 -> 2) y celda solo por ancho: prefiere el mínimo legible
+  // 10px pero encoge hasta entrar si el widget es ultra-angosto (nunca
+  // desborda en horizontal). El alto no achica celdas: el viewport scrollea
+  // en vertical.
   // Se reserva el ancho de la scrollbar para que la grilla nunca quede
   // debajo de ella (sin celdas recortadas a la derecha).
   const cols = colsForItemWidth(props.item?.w, availW)
@@ -147,7 +150,12 @@ function recomputeNow() {
 
   const change = significantChange(layout.value, candidate)
 
-  if (change === 'none') return
+  if (change === 'none') {
+    // Sin cambio de layout igual puede haberse asentado el viewport:
+    // reintenta la restauración pendiente (no toca nada si no hay).
+    retryPendingRestore()
+    return
+  }
 
   // 'layout' siempre es la fuente de verdad: se actualiza con cualquier cambio
   // significativo (estructura o tamaño en un paso discreto). Los 12 MonthMini
@@ -157,10 +165,12 @@ function recomputeNow() {
   layout.value = candidate
 
   if (isFirstLayout) {
-    // Al abrir, scrollear al mes actual para que quede visible (ej. octubre).
-    scrollToCurrentMonth()
+    // Al abrir, se restaura la posición guardada o se scrollea al mes actual.
+    restoreInitialScroll()
     return
   }
+  // El layout se asentó después (tamaño final): aplica la restauración pendiente.
+  retryPendingRestore()
 }
 
 function scrollToMonth(monthIndex: number) {
@@ -175,6 +185,68 @@ function scrollToCurrentMonth() {
   const now = new Date()
   const target = store.currentYear === now.getFullYear() ? now.getMonth() : 0
   void nextTick(() => scrollToMonth(target))
+}
+
+/** Tope de scroll del viewport calculado con el layout (no con scrollHeight,
+ * que con content-visibility:auto no es fiable al montar). */
+function maxScrollTop(): number {
+  const el = viewportRef.value
+  const l = layout.value
+  if (!el || !l) return 0
+  const rows = Math.max(1, Math.ceil(12 / l.cols))
+  return Math.max(0, rows * l.monthHeight + (rows - 1) * l.gridGap - el.clientHeight)
+}
+
+function saveViewportScroll() {
+  const el = viewportRef.value
+  if (!el) return
+  const max = maxScrollTop()
+  if (max > 0) saveScrollFraction(el.scrollTop / max)
+}
+
+function onViewportScroll() {
+  // Si el usuario scrolleó, la posición pendiente de restauración ya no vale.
+  pendingRestore = null
+  saveViewportScroll()
+}
+
+/**
+ * Posición inicial: si hay una posición guardada (de una sesión anterior)
+ * se restaura; si no, se scrollea al mes actual como siempre.
+ * La restauración queda pendiente hasta que el viewport tiene su tamaño
+ * final (la grilla del dashboard se asienta después del primer layout).
+ */
+let pendingRestore: number | null = null
+
+function applyPendingRestore() {
+  if (pendingRestore === null) return
+  const el = viewportRef.value
+  if (!el) return
+  const max = maxScrollTop()
+  if (max <= 0) return // todavía sin desborde: se reintenta en el próximo recompute
+  el.scrollTop = pendingRestore * max
+  pendingRestore = null
+}
+
+function restoreInitialScroll() {
+  const saved = loadScrollFraction()
+  if (saved === null) {
+    scrollToCurrentMonth()
+    return
+  }
+  pendingRestore = saved
+  void nextTick(applyPendingRestore)
+}
+
+/** Reintento post-carga: si el usuario aún no scrolleó, aplica la posición pendiente. */
+function retryPendingRestore() {
+  if (pendingRestore === null) return
+  const el = viewportRef.value
+  if (!el || el.scrollTop !== 0) {
+    pendingRestore = null
+    return
+  }
+  void nextTick(applyPendingRestore)
 }
 
 function flushRecompute() {
@@ -216,6 +288,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  saveViewportScroll()
   resizeObserver?.disconnect()
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
@@ -240,6 +313,8 @@ watch(
   (newYear, oldYear) => {
     if (newYear !== oldYear) {
       store.syncYear(newYear)
+      // Navegación explícita de año: manda sobre la posición pendiente.
+      pendingRestore = null
       scrollToCurrentMonth()
     }
   }
@@ -309,6 +384,7 @@ watch(
             ref="viewportRef"
             class="ycw__grid-viewport"
             data-testid="year-grid-viewport"
+            @scroll="onViewportScroll"
           >
             <div class="ycw__grid">
               <MonthMini
@@ -515,7 +591,7 @@ watch(
 
 .ycw__grid-header {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: var(--grid-gap, 12px);
   flex-shrink: 0;
   margin-bottom: 6px;
@@ -525,8 +601,9 @@ watch(
   display: grid;
   grid-template-columns: repeat(7, var(--cell-size, auto));
   column-gap: var(--cell-gap-x, 2px);
-  justify-content: center;
+  justify-content: safe center;
   width: 100%;
+  min-width: 0;
 }
 
 .ycw__day-label {
@@ -594,9 +671,9 @@ watch(
 
 .ycw__grid {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: var(--grid-gap, 12px);
   align-content: start;
-  justify-content: center;
+  justify-content: safe center;
 }
 </style>

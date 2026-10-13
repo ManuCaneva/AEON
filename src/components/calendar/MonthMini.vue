@@ -127,6 +127,7 @@ function onDaySelect(date: string | null) {
   height: var(--month-h, auto);
   box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   contain: layout style;
   content-visibility: auto;
   contain-intrinsic-size: auto var(--month-h, auto);
@@ -151,7 +152,7 @@ function onDaySelect(date: string | null) {
   grid-template-columns: repeat(7, var(--cell-size, auto));
   column-gap: var(--cell-gap-x, 2px);
   row-gap: var(--cell-gap-y, 2px);
-  justify-content: center;
+  justify-content: safe center;
 }
 
 .month-mini__header-label {
@@ -168,7 +169,7 @@ function onDaySelect(date: string | null) {
   grid-template-columns: repeat(7, var(--cell-size, auto));
   column-gap: var(--cell-gap-x, 2px);
   row-gap: var(--cell-gap-y, 2px);
-  justify-content: center;
+  justify-content: safe center;
 }
 
 .day-cell {

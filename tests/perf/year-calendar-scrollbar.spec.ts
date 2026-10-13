@@ -19,11 +19,13 @@ test('year calendar scrollbar stays slim on hover', async ({ page }) => {
   expect(await page.locator(SEL).count()).toBeGreaterThan(0)
   expect(await page.locator("[data-testid='month-mini']").count()).toBe(12)
 
-  // Forzar overflow para que la scrollbar exista.
+  // Forzar overflow para que la scrollbar exista. Las celdas encogen hasta
+  // entrar en el ancho (nunca desbordan en horizontal), así que el tope debe
+  // ser menor que el contenido encogido (~123px en este viewport).
   await page.evaluate((s) => {
     const el = document.querySelector(s) as HTMLElement
     el?.scrollTo({ top: 0 })
-    if (el) el.style.maxHeight = '220px'
+    if (el) el.style.maxHeight = '100px'
   }, SEL)
   await page.waitForTimeout(300)
 

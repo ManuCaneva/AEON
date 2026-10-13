@@ -771,5 +771,34 @@ describe('YearCalendarWidget', () => {
       vi.unstubAllGlobals()
       wrapper.unmount()
     })
+
+    function contentHeight(wrapper: ReturnType<typeof mount>): number {
+      const style = wrapper.find('.ycw').attributes('style') ?? ''
+      const monthH = parseFloat(style.match(/--month-h:\s*([\d.]+)px/)![1])
+      const gridGap = parseFloat(style.match(/--grid-gap:\s*([\d.]+)px/)![1])
+      // 1 columna: 12 filas; en happy-dom clientHeight es 0.
+      return 12 * monthH + 11 * gridGap
+    }
+
+    it('restaura la posición de scroll guardada al abrir (abajo del todo)', async () => {
+      localStorage.setItem('aeon:yearcal-scroll', '1')
+      const wrapper = await mountScrollable(280, 300, 1)
+      await wrapper.vm.$nextTick()
+      const viewport = wrapper.find("[data-testid='year-grid-viewport']").element as HTMLElement
+      expect(viewport.scrollTop).toBe(contentHeight(wrapper))
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('guarda la posición al hacer scroll', async () => {
+      const wrapper = await mountScrollable(280, 300, 1)
+      const viewport = wrapper.find("[data-testid='year-grid-viewport']")
+      const el = viewport.element as HTMLElement
+      el.scrollTop = 400
+      await viewport.trigger('scroll')
+      expect(localStorage.getItem('aeon:yearcal-scroll')).toBe(String(400 / contentHeight(wrapper)))
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
   })
 })
