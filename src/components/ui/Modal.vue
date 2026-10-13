@@ -31,7 +31,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4"
+        class="overlay-composited fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4"
         @click.self="emit('close')"
       >
         <div

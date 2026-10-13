@@ -85,6 +85,17 @@
     @apply border border-hairline bg-surface-1/80 backdrop-blur-md;
   }
 
+  /* Capa GPU propia para el overlay de los modales. En WebKitGTK
+     (Linux) el compositor re-sube la textura del overlay en cada
+     apertura/cierre y por un frame la capa con backdrop-filter
+     desaparece: se ve la página de atrás (parpadeo). translateZ(0) le
+     da al overlay su propia capa, compartida por scrim y diálogo, y
+     elimina el parpadeo sin tocar el blur. No usar `isolation`: crea
+     un backdrop root y el blur dejaría de samplear el contenido. */
+  .overlay-composited {
+    transform: translateZ(0);
+  }
+
   /* Gradiente de fábrica del wallpaper: primario/accent a baja
      alpha sobre canvas, estático (costo de GPU ~cero). */
   .wallpaper-fallback {
