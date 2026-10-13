@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { CalendarEvent } from '@/schemas/calendar'
-import { eventKey, omitLinkedEvents, resolveExamLink, resolvedLinkKeys } from './examEventLink'
+import { eventKey, resolveExamLink, resolvedLinkKeys } from './examEventLink'
 
 function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
   return {
@@ -69,25 +69,5 @@ describe('resolvedLinkKeys', () => {
       events
     )
     expect([...keys]).toEqual([eventKey('local', 'evt-1')])
-  })
-})
-
-describe('omitLinkedEvents', () => {
-  it('omite el evento vinculado y conserva el resto del día', () => {
-    const other = makeEvent({ id: 'evt-2' })
-    const eventsByDate = new Map([['2026-07-01', [makeEvent(), other]]])
-    const result = omitLinkedEvents(eventsByDate, new Set([eventKey('local', 'evt-1')]))
-    expect(result.get('2026-07-01')).toEqual([other])
-  })
-
-  it('quita el día cuando su único evento estaba vinculado', () => {
-    const eventsByDate = new Map([['2026-07-01', [makeEvent()]]])
-    const result = omitLinkedEvents(eventsByDate, new Set([eventKey('local', 'evt-1')]))
-    expect(result.has('2026-07-01')).toBe(false)
-  })
-
-  it('sin claves devuelve el mismo mapa (no copia innecesaria)', () => {
-    const eventsByDate = new Map([['2026-07-01', [makeEvent()]]])
-    expect(omitLinkedEvents(eventsByDate, new Set())).toBe(eventsByDate)
   })
 })

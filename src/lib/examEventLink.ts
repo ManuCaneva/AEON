@@ -41,21 +41,3 @@ export function resolvedLinkKeys(
   }
   return keys
 }
-
-/**
- * Dedupe: quita de `eventsByDate` los eventos vinculados a un examen, para que
- * ese día pinte un único punto (el del examen). Sin claves devuelve el mismo
- * mapa para no recalcular de más.
- */
-export function omitLinkedEvents(
-  eventsByDate: Map<string, CalendarEvent[]>,
-  linkedKeys: ReadonlySet<string>
-): Map<string, CalendarEvent[]> {
-  if (linkedKeys.size === 0) return eventsByDate
-  const out = new Map<string, CalendarEvent[]>()
-  for (const [date, list] of eventsByDate) {
-    const kept = list.filter((e) => !linkedKeys.has(eventKey(e.calendarId, e.id)))
-    if (kept.length > 0) out.set(date, kept)
-  }
-  return out
-}

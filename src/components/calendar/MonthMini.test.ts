@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import MonthMini from './MonthMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { eventKey } from '@/lib/examEventLink'
 import type { CalendarEvent } from '@/schemas/calendar'
 
 const dummyEvents: CalendarEvent[] = [
@@ -344,6 +345,21 @@ describe('MonthMini', () => {
       expect(tooltip).not.toBeNull()
       expect(tooltip!.textContent).toContain('16 de enero de 2026')
       expect(tooltip!.textContent).toContain('Sin eventos')
+      wrapper.unmount()
+    })
+
+    it('el tooltip sigue mostrando el evento vinculado aunque su punto se omita (dedup)', async () => {
+      const wrapper = mountAttached({
+        eventsByDate,
+        linkedEventKeys: new Set([eventKey('primary', 'e1')]),
+      })
+      const cell15 = hoverCell(wrapper, 14) // 15 de Enero
+      // El punto del evento vinculado no se pinta; el otro sí.
+      expect(cell15.findAll("[data-testid='event-dot']")).toHaveLength(1)
+      await cell15.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip!.textContent).toContain('Standup')
+      expect(tooltip!.textContent).toContain('Review')
       wrapper.unmount()
     })
 

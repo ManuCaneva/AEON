@@ -28,7 +28,14 @@ vi.mock('@/stores/calendar', () => ({
 }))
 
 const examsState = ref<
-  { id: string; title: string; date: string; status: string; fallback_color: string }[]
+  {
+    id: string
+    title: string
+    date: string
+    status: string
+    fallback_color: string
+    event_link?: { calendarId: string; eventId: string } | null
+  }[]
 >([])
 
 const examsMock = {
@@ -295,6 +302,56 @@ describe('DayDetailsModal', () => {
       examsState.value = []
       factory()
       expect(document.body.querySelector("[data-testid='day-exams']")).toBeNull()
+    })
+
+    it('oculta el examen vinculado a un evento del mismo día (sólo queda el evento)', () => {
+      examsState.value = [
+        {
+          ...makeExam('exam-1', 'Parcial de Análisis', '2026-07-22'),
+          event_link: { calendarId: 'primary', eventId: 'evt1' },
+        },
+      ]
+      factory()
+
+      const dialog = document.body.querySelector("[role='dialog']")
+      // El evento de Google representa al examen: se lista el evento…
+      expect(dialog!.textContent).toContain('Evento Test 1')
+      // …y el examen no se duplica en la sección de exámenes.
+      expect(dialog!.textContent).not.toContain('Parcial de Análisis')
+      expect(document.body.querySelector("[data-testid='day-exams']")).toBeNull()
+    })
+
+    it('muestra el examen si su vínculo es huérfano (evento ausente)', () => {
+      examsState.value = [
+        {
+          ...makeExam('exam-1', 'Parcial de Análisis', '2026-07-22'),
+          event_link: { calendarId: 'primary', eventId: 'evt-ausente' },
+        },
+      ]
+      factory()
+      expect(document.body.querySelector("[data-testid='day-exam-item']")).not.toBeNull()
+    })
+
+    it('muestra el examen si su evento vinculado es de otro día', () => {
+      examsState.value = [
+        {
+          ...makeExam('exam-1', 'Parcial de Análisis', '2026-07-22'),
+          event_link: { calendarId: 'primary', eventId: 'evt-otro-dia' },
+        },
+      ]
+      mockStore.events.value = [
+        {
+          id: 'evt-otro-dia',
+          date: '2026-07-23',
+          title: 'Evento de otro día',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-23T10:00:00-03:00',
+          end: '2026-07-23T11:00:00-03:00',
+        },
+      ]
+      factory()
+      expect(document.body.querySelector("[data-testid='day-exam-item']")).not.toBeNull()
     })
   })
 

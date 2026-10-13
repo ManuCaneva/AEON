@@ -732,9 +732,11 @@ describe('YearCalendarWidget', () => {
       const wrapper = await mountWithSize(500, 900)
 
       const month = wrapper.findComponent(MonthMini)
-      // El evento vinculado se omite de la capa de eventos…
-      expect(month.props('eventsByDate')?.get('2026-01-11')).toBeUndefined()
-      // …y sólo queda el punto del examen.
+      // El mapa de eventos se pasa completo (el tooltip lo necesita)…
+      expect(month.props('eventsByDate')?.get('2026-01-11')).toEqual([evt])
+      // …y el dedup se resuelve en el render por las claves vinculadas…
+      expect([...(month.props('linkedEventKeys') ?? [])]).toEqual([eventKey('local', 'evt-1')])
+      // …de modo que sólo queda el punto del examen.
       const dots = month.findAll("[data-testid='event-dot']")
       expect(dots).toHaveLength(1)
       expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-green))')

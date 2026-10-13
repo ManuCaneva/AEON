@@ -20,7 +20,6 @@ import {
   type StripModePreference,
 } from '@/lib/calendarHeatmap'
 import { DAY_LABELS } from '@/lib/calendarDates'
-import { omitLinkedEvents } from '@/lib/examEventLink'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import type { LayoutItem } from '@/stores/dashboard'
 
@@ -30,12 +29,6 @@ const props = defineProps<{
 
 const store = useCalendarStore()
 const exams = useExamsStore()
-
-// Dedup del vínculo: el evento ya vinculado a un examen del mismo día se omite
-// de la capa de eventos, así ese día pinta un solo punto (el del examen).
-const visibleEventsByDate = computed(() =>
-  omitLinkedEvents(store.eventsByDate, exams.linkedEventKeys)
-)
 
 const MONTH_NAMES = [
   'enero',
@@ -302,7 +295,8 @@ watch(
         <YearStrip
           v-if="resolvedMode === 'tira'"
           :year="store.currentYear"
-          :events-by-date="visibleEventsByDate"
+          :events-by-date="store.eventsByDate"
+          :linked-event-keys="exams.linkedEventKeys"
           :overlay-by-date="exams.overlayByDate"
           :month-names="MONTH_NAMES"
           @select-day="openDayModal"
@@ -327,7 +321,8 @@ watch(
                 :year="store.currentYear"
                 :month="m - 1"
                 :month-name="MONTH_NAMES[m - 1]"
-                :events-by-date="visibleEventsByDate"
+                :events-by-date="store.eventsByDate"
+                :linked-event-keys="exams.linkedEventKeys"
                 :overlay-by-date="exams.overlayByDate"
                 :show-header="false"
                 @select-day="openDayModal"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
+import { eventKey } from '@/lib/examEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
 import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 import DayTooltip from './DayTooltip.vue'
@@ -13,12 +14,16 @@ const props = withDefaults(
     // Capa derivada (ej. exámenes): puntos extra idénticos a los de un evento,
     // sin entrar en el CRUD del calendario.
     overlayByDate?: DayOverlayByDate
+    // Eventos ya representados por un examen vinculado del mismo día: no se
+    // pintan como punto (dedup), pero el tooltip los sigue mostrando.
+    linkedEventKeys?: ReadonlySet<string>
     monthName?: string
     showHeader?: boolean
     today?: string
   }>(),
   {
     overlayByDate: () => new Map(),
+    linkedEventKeys: () => new Set<string>(),
     monthName: '',
     showHeader: false,
   }
@@ -45,12 +50,17 @@ function getEvents(date: string | null): CalendarEvent[] {
   return props.eventsByDate.get(date) ?? []
 }
 
+/** Eventos que se pintan como punto: excluye los ya representados por un examen. */
+function dotEvents(date: string | null): CalendarEvent[] {
+  return getEvents(date).filter((e) => !props.linkedEventKeys.has(eventKey(e.calendarId, e.id)))
+}
+
 function visibleDots(date: string | null): CalendarEvent[] {
-  return getEvents(date).slice(0, MAX_DOTS)
+  return dotEvents(date).slice(0, MAX_DOTS)
 }
 
 function overflowCount(date: string | null): number {
-  return Math.max(0, getEvents(date).length - MAX_DOTS)
+  return Math.max(0, dotEvents(date).length - MAX_DOTS)
 }
 
 /** Puntos derivados (exámenes) del día: se pintan como un evento más. */

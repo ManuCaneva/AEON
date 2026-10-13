@@ -5,6 +5,7 @@ import { useExamsStore } from '@/stores/exams'
 import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
 import { blockColorRgb } from '@/lib/scheduleColors'
+import { resolveExamLink } from '@/lib/examEventLink'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -44,7 +45,11 @@ const filteredEvents = computed(() => {
 
 // Exámenes del día: se leen del store de exámenes (fuente única de su fecha).
 // Bloque aparte, no editable como evento: al clickear se abre el examen.
-const dayExams = computed(() => exams.exams.filter((e) => e.date === props.date))
+// Si el examen está vinculado a un evento del mismo día, ese evento ya lo
+// representa: no se lista por separado (mismo dedup que el punto del día).
+const dayExams = computed(() =>
+  exams.exams.filter((e) => e.date === props.date && !resolveExamLink(e, store.events))
+)
 
 function openExam(examId: string) {
   ui.openEditExam(examId)

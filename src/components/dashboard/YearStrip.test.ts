@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import YearStrip from './YearStrip.vue'
+import { eventKey } from '@/lib/examEventLink'
 import type { CalendarEvent } from '@/schemas/calendar'
 
 const MONTH_NAMES = [
@@ -240,6 +241,27 @@ describe('YearStrip', () => {
       expect(tooltip).not.toBeNull()
       expect(tooltip!.textContent).toContain('5 de junio de 2026')
       expect(tooltip!.textContent).toContain('Sin eventos')
+      wrapper.unmount()
+    })
+
+    it('el tooltip sigue mostrando el evento vinculado aunque su punto se omita (dedup)', async () => {
+      const events = new Map([['2026-06-04', dayEvents('2026-06-04', 2)]])
+      const wrapper = mount(YearStrip, {
+        attachTo: document.body,
+        props: {
+          year: 2026,
+          eventsByDate: events,
+          monthNames: MONTH_NAMES,
+          cellSize: 10,
+          linkedEventKeys: new Set([eventKey('primary', '2026-06-04-0')]),
+        },
+      })
+      const cell = wrapper.find("[data-date='2026-06-04']")
+      expect(cell.findAll("[data-testid='event-dot']")).toHaveLength(1)
+      await cell.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip!.textContent).toContain('Evento 0')
+      expect(tooltip!.textContent).toContain('Evento 1')
       wrapper.unmount()
     })
 
