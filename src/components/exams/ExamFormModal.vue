@@ -15,6 +15,7 @@ import type { BlockColorToken } from '@/schemas/weeklySchedule'
 import { examStatusLabel } from '@/lib/examStatus'
 import { blockColorRgb } from '@/lib/scheduleColors'
 import { eventKey } from '@/lib/examEventLink'
+import type { EventChoice } from '@/lib/entityEventLink'
 import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
@@ -49,7 +50,16 @@ const fallbackColor = ref<BlockColorToken>('lavender')
 const linkedEventKey = ref('')
 const topics = ref<ExamTopic[]>([])
 const error = ref<string | null>(null)
+const calendarError = ref<string | null>(null)
 const saving = ref(false)
+
+// Id del examen ya persistido cuando la creación del evento falló: un
+// reintento edita en vez de crear un examen duplicado.
+const savedExamId = ref<string | null>(null)
+
+// Opción de evento elegida (cuatro excluyentes; ver EventChoice).
+const eventMode = ref<'none' | 'local' | 'new' | 'existing'>('none')
+const newCalendarId = ref('')
 
 const blocks = computed(() => weekly.blocksWithSlots)
 // Color de la vista previa: el del bloque elegido; si no hay, el de respaldo.
@@ -57,9 +67,12 @@ const previewColor = computed<BlockColorToken>(
   () => blocks.value.find((b) => b.id === blockId.value)?.color ?? fallbackColor.value
 )
 
+const hasDate = computed(() => date.value !== '')
+const googleConnected = computed(() => calendar.connected)
+
 // Eventos del día elegido. Si el vínculo actual no está entre ellos (huérfano,
-// p.ej. el calendario se desconectó) se conserva como opción "no disponible"
-// para poder limpiarlo sin perderlo en silencio.
+// p.ej. el evento se borró) se conserva como "Evento no disponible" para poder
+// limpiarlo sin perderlo en silencio.
 const dayEvents = computed(() => calendar.events.filter((e) => e.date === date.value))
 const eventOptions = computed(() => {
   const options = dayEvents.value.map((e) => ({
@@ -72,12 +85,38 @@ const eventOptions = computed(() => {
   return options
 })
 
+function defaultCalendarId(): string {
+  const list = calendar.calendars
+  return list.find((c) => c.primary)?.id ?? list[0]?.id ?? ''
+}
+
+// El calendario destino por defecto es el principal; el modelo cae a ese valor
+// mientras el usuario no elija otro.
+const newCalendarIdModel = computed({
+  get: () => newCalendarId.value || defaultCalendarId(),
+  set: (value: string) => {
+    newCalendarId.value = value
+  },
+})
+
 /** Traduce la clave elegida al par persistible (o null si no hay vínculo). */
 function resolveEventLink(): ExamEventLink | null {
   if (!linkedEventKey.value) return null
   const [calendarId, eventId] = linkedEventKey.value.split('\u0000')
   if (!calendarId || !eventId) return null
   return { calendarId, eventId }
+}
+
+/** Traduce la opción elegida a la decisión que consume el store. */
+function resolveEventChoice(): EventChoice {
+  if (!hasDate.value) return { mode: 'none' }
+  if (eventMode.value === 'local') return { mode: 'local' }
+  if (eventMode.value === 'new') return { mode: 'new', calendarId: newCalendarIdModel.value }
+  if (eventMode.value === 'existing') {
+    const link = resolveEventLink()
+    return link ? { mode: 'existing', link } : { mode: 'none' }
+  }
+  return { mode: 'none' }
 }
 
 watch(
@@ -97,6 +136,7 @@ watch(
         linkedEventKey.value = editing.value.event_link
           ? eventKey(editing.value.event_link.calendarId, editing.value.event_link.eventId)
           : ''
+        eventMode.value = editing.value.event_link ? 'existing' : 'none'
         // Copia los temas con sus subtemas garantizados como lista.
         topics.value = editing.value.topics.map((t) => ({
           ...t,
@@ -110,12 +150,21 @@ watch(
         blockId.value = ''
         fallbackColor.value = 'lavender'
         linkedEventKey.value = ''
+        eventMode.value = 'none'
         topics.value = []
       }
+      newCalendarId.value = defaultCalendarId()
+      savedExamId.value = null
       error.value = null
+      calendarError.value = null
     }
   }
 )
+
+// Sin fecha no hay evento posible: el apartado vuelve a «No crear evento».
+watch(date, (value) => {
+  if (!value) eventMode.value = 'none'
+})
 
 function addTopic() {
   topics.value.push({
@@ -182,6 +231,17 @@ function resolveGrade(): number | null | 'invalid' {
   return parsed
 }
 
+/** Estilo de los botones de opción de evento (excluyentes). */
+function eventModeClass(mode: 'none' | 'local' | 'new' | 'existing'): string {
+  const base =
+    'rounded-md px-3 py-1.5 text-body-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas'
+  const active =
+    eventMode.value === mode
+      ? 'bg-primary text-on-primary shadow-sm'
+      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 hover:text-ink'
+  return `${base} ${active}`
+}
+
 async function handleSubmit(e: Event) {
   e.preventDefault()
   const trimmedTitle = title.value.trim()
@@ -205,28 +265,62 @@ async function handleSubmit(e: Event) {
 
   saving.value = true
   error.value = null
+  calendarError.value = null
+  const choice = resolveEventChoice()
 
   try {
     if (editing.value) {
-      await exams.updateExam(editing.value.id, {
-        title: trimmedTitle,
-        date: date.value,
-        status: status.value,
-        grade,
-        block_id: blockId.value || null,
-        event_link: resolveEventLink(),
-        topics: validTopics,
-      })
+      const { eventError } = await exams.updateExamWithEvent(
+        editing.value.id,
+        {
+          title: trimmedTitle,
+          date: date.value,
+          status: status.value,
+          grade,
+          block_id: blockId.value || null,
+          topics: validTopics,
+        },
+        choice
+      )
+      if (eventError) {
+        calendarError.value = eventError
+        return
+      }
+    } else if (savedExamId.value) {
+      // Reintento tras un fallo al crear el evento: el examen ya existe.
+      const { eventError } = await exams.updateExamWithEvent(
+        savedExamId.value,
+        {
+          title: trimmedTitle,
+          date: date.value,
+          status: status.value,
+          grade,
+          block_id: blockId.value || null,
+          topics: validTopics,
+        },
+        choice
+      )
+      if (eventError) {
+        calendarError.value = eventError
+        return
+      }
     } else {
-      await exams.createExam({
-        title: trimmedTitle,
-        date: date.value,
-        status: status.value,
-        grade,
-        block_id: blockId.value || null,
-        event_link: resolveEventLink(),
-        topics: validTopics,
-      })
+      const { exam, eventError } = await exams.createExamWithEvent(
+        {
+          title: trimmedTitle,
+          date: date.value,
+          status: status.value,
+          grade,
+          block_id: blockId.value || null,
+          topics: validTopics,
+        },
+        choice
+      )
+      if (eventError) {
+        savedExamId.value = exam.id
+        calendarError.value = eventError
+        return
+      }
     }
     ui.closeExamModal()
   } catch (err) {
@@ -259,23 +353,101 @@ async function handleSubmit(e: Event) {
 
         <Input v-model="date" data-testid="exam-date-input" type="date" label="Fecha" />
 
-        <div class="flex flex-col gap-1.5">
-          <label for="exam-event-select" class="select-none text-body-sm text-ink-muted">
-            Evento del día (opcional)
-          </label>
+        <div class="flex flex-col gap-2">
+          <Text variant="body-sm" color="muted">Evento</Text>
+
+          <p
+            v-if="!hasDate"
+            data-testid="exam-event-disabled-hint"
+            class="text-caption text-ink-subtle"
+          >
+            Elegí una fecha para poder agendar un evento.
+          </p>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="exam-event-mode-none"
+              :aria-pressed="eventMode === 'none'"
+              :disabled="!hasDate"
+              :class="eventModeClass('none')"
+              @click="eventMode = 'none'"
+            >
+              No crear evento
+            </button>
+            <button
+              type="button"
+              data-testid="exam-event-mode-local"
+              :aria-pressed="eventMode === 'local'"
+              :disabled="!hasDate"
+              :class="eventModeClass('local')"
+              @click="eventMode = 'local'"
+            >
+              Solo local
+            </button>
+            <button
+              type="button"
+              data-testid="exam-event-mode-new"
+              :aria-pressed="eventMode === 'new'"
+              :disabled="!hasDate || !googleConnected"
+              :class="eventModeClass('new')"
+              @click="eventMode = 'new'"
+            >
+              Evento nuevo
+            </button>
+            <button
+              type="button"
+              data-testid="exam-event-mode-existing"
+              :aria-pressed="eventMode === 'existing'"
+              :disabled="!hasDate"
+              :class="eventModeClass('existing')"
+              @click="eventMode = 'existing'"
+            >
+              Elegir un evento del día
+            </button>
+          </div>
+
+          <p
+            v-if="hasDate && !googleConnected"
+            data-testid="exam-event-new-hint"
+            class="text-caption text-ink-subtle"
+          >
+            Conectá Google Calendar para usar «Evento nuevo».
+          </p>
+
           <select
-            id="exam-event-select"
-            v-model="linkedEventKey"
-            data-testid="exam-event-select"
+            v-if="hasDate && eventMode === 'new'"
+            v-model="newCalendarIdModel"
+            data-testid="exam-event-calendar-select"
             class="h-10 min-w-0 rounded-md border border-hairline bg-surface-1 px-3 text-body text-ink transition-colors duration-150 hover:border-hairline-strong focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
-            <option value="">Sin evento</option>
-            <option v-for="option in eventOptions" :key="option.key" :value="option.key">
-              {{ option.label }}
+            <option v-for="cal in calendar.calendars" :key="cal.id" :value="cal.id">
+              {{ cal.summary }}
             </option>
           </select>
-          <p v-if="date && dayEvents.length === 0" class="text-caption text-ink-subtle">
-            No hay eventos ese día.
+
+          <div v-if="hasDate && eventMode === 'existing'" class="flex flex-col gap-1">
+            <select
+              v-model="linkedEventKey"
+              data-testid="exam-event-select"
+              class="h-10 min-w-0 rounded-md border border-hairline bg-surface-1 px-3 text-body text-ink transition-colors duration-150 hover:border-hairline-strong focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">Elegí un evento del día</option>
+              <option v-for="option in eventOptions" :key="option.key" :value="option.key">
+                {{ option.label }}
+              </option>
+            </select>
+            <p v-if="dayEvents.length === 0" class="text-caption text-ink-subtle">
+              No hay eventos ese día.
+            </p>
+          </div>
+
+          <p
+            v-if="calendarError"
+            data-testid="exam-calendar-error"
+            class="text-caption text-accent-red"
+          >
+            {{ calendarError }}
           </p>
         </div>
 

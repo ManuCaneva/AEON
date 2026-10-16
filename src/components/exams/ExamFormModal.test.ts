@@ -31,8 +31,14 @@ const examsMock = {
   get exams() {
     return examsState.value
   },
-  createExam: vi.fn().mockResolvedValue({}),
-  updateExam: vi.fn().mockResolvedValue({}),
+  createExamWithEvent: vi.fn().mockResolvedValue({
+    exam: { id: 'created-exam' },
+    eventError: null,
+  }),
+  updateExamWithEvent: vi.fn().mockResolvedValue({
+    exam: { id: 'edited-exam' },
+    eventError: null,
+  }),
 }
 const weeklyBlocks = ref<
   {
@@ -62,9 +68,17 @@ const calendarEvents = ref<
     end: string
   }[]
 >([])
+const calendarConnected = ref(false)
+const calendarCalendars = ref<{ id: string; summary: string; primary?: boolean }[]>([])
 const calendarMock = {
   get events() {
     return calendarEvents.value
+  },
+  get connected() {
+    return calendarConnected.value
+  },
+  get calendars() {
+    return calendarCalendars.value
   },
 }
 const uiState = {
@@ -217,6 +231,12 @@ function colorPreview(): HTMLElement {
   return document.body.querySelector("[data-testid='exam-color-preview']") as HTMLElement
 }
 
+function clickEventMode(mode: 'none' | 'local' | 'new' | 'existing') {
+  ;(
+    document.body.querySelector(`[data-testid='exam-event-mode-${mode}']`) as HTMLButtonElement
+  ).click()
+}
+
 function eventSelect(): HTMLSelectElement {
   return document.body.querySelector("[data-testid='exam-event-select']") as HTMLSelectElement
 }
@@ -225,6 +245,12 @@ function selectEvent(value: string) {
   const select = eventSelect()
   select.value = value
   select.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function calendarSelect(): HTMLSelectElement {
+  return document.body.querySelector(
+    "[data-testid='exam-event-calendar-select']"
+  ) as HTMLSelectElement
 }
 
 function makeCalendarEvent(
@@ -272,9 +298,17 @@ describe('ExamFormModal', () => {
     examsState.value = []
     weeklyBlocks.value = []
     calendarEvents.value = []
+    calendarConnected.value = false
+    calendarCalendars.value = []
     uiState.createExamOpen.value = true
     uiState.editingExamId.value = null
     vi.clearAllMocks()
+    examsMock.createExamWithEvent
+      .mockReset()
+      .mockResolvedValue({ exam: { id: 'created-exam' }, eventError: null })
+    examsMock.updateExamWithEvent
+      .mockReset()
+      .mockResolvedValue({ exam: { id: 'edited-exam' }, eventError: null })
     wrapper = mount(ExamFormModal, { attachTo: document.body })
   })
 
@@ -319,15 +353,17 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith({
-      title: 'Parcial 1 de Análisis',
-      date: '2026-08-15',
-      status: 'pendiente',
-      grade: null,
-      block_id: null,
-      event_link: null,
-      topics: [],
-    })
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledWith(
+      {
+        title: 'Parcial 1 de Análisis',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        topics: [],
+      },
+      { mode: 'none' }
+    )
   })
 
   it('al editar actualiza el examen', async () => {
@@ -352,15 +388,18 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith('exam-1', {
-      title: 'Nuevo título',
-      date: '2026-08-15',
-      status: 'pendiente',
-      grade: null,
-      block_id: null,
-      event_link: null,
-      topics: [],
-    })
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
+      'exam-1',
+      {
+        title: 'Nuevo título',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        topics: [],
+      },
+      { mode: 'none' }
+    )
   })
 
   it('rechaza un título vacío sin invocar al store', async () => {
@@ -368,7 +407,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).not.toHaveBeenCalled()
+    expect(examsMock.createExamWithEvent).not.toHaveBeenCalled()
     expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
       'El título no puede estar vacío'
     )
@@ -379,7 +418,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).not.toHaveBeenCalled()
+    expect(examsMock.createExamWithEvent).not.toHaveBeenCalled()
     expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
       'La fecha es obligatoria'
     )
@@ -413,15 +452,17 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith({
-      title: 'Final de Física',
-      date: '2026-12-01',
-      status: 'rendido',
-      grade: 8.5,
-      block_id: null,
-      event_link: null,
-      topics: [],
-    })
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledWith(
+      {
+        title: 'Final de Física',
+        date: '2026-12-01',
+        status: 'rendido',
+        grade: 8.5,
+        block_id: null,
+        topics: [],
+      },
+      { mode: 'none' }
+    )
   })
 
   it('rechaza una nota fuera del rango 0–10 sin invocar al store', async () => {
@@ -433,7 +474,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).not.toHaveBeenCalled()
+    expect(examsMock.createExamWithEvent).not.toHaveBeenCalled()
     expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
       'La nota debe ser un número entre 0 y 10'
     )
@@ -450,15 +491,17 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith({
-      title: 'Final',
-      date: '2026-12-01',
-      status: 'pendiente',
-      grade: null,
-      block_id: null,
-      event_link: null,
-      topics: [],
-    })
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledWith(
+      {
+        title: 'Final',
+        date: '2026-12-01',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        topics: [],
+      },
+      { mode: 'none' }
+    )
   })
 
   it('al editar prefilla el estado y la nota', async () => {
@@ -483,15 +526,18 @@ describe('ExamFormModal', () => {
     expect(gradeInput().disabled).toBe(false)
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith('exam-1', {
-      title: 'Final',
-      date: '2026-12-01',
-      status: 'rendido',
-      grade: 7.5,
-      block_id: null,
-      event_link: null,
-      topics: [],
-    })
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
+      'exam-1',
+      {
+        title: 'Final',
+        date: '2026-12-01',
+        status: 'rendido',
+        grade: 7.5,
+        block_id: null,
+        topics: [],
+      },
+      { mode: 'none' }
+    )
   })
 
   it('no usa colores de paleta cruda de Tailwind', async () => {
@@ -512,7 +558,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { id: string; title: string; completed: boolean }[]
     }
     expect(payload.topics).toHaveLength(1)
@@ -535,7 +581,7 @@ describe('ExamFormModal', () => {
     expect(topicInputs()).toHaveLength(1)
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { title: string }[]
     }
     expect(payload.topics.map((t) => t.title)).toEqual(['Derivadas'])
@@ -555,8 +601,10 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
-    const payload = examsMock.createExam.mock.calls[0][0] as { topics: { title: string }[] }
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
+      topics: { title: string }[]
+    }
     expect(payload.topics.map((t) => t.title)).toEqual(['Límites', 'Derivadas', 'Integrales'])
   })
 
@@ -568,8 +616,8 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
-    const payload = examsMock.createExam.mock.calls[0][0] as { topics: unknown[] }
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as { topics: unknown[] }
     expect(payload.topics).toEqual([])
   })
 
@@ -594,11 +642,12 @@ describe('ExamFormModal', () => {
     expect(topicInputs()[0].value).toBe('Límites')
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
         topics: [{ id: 't-1', title: 'Límites', completed: true, subtopics: [] }],
-      })
+      }),
+      expect.anything()
     )
   })
 
@@ -622,11 +671,12 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
         topics: [{ id: 't-1', title: 'Límites', completed: false, subtopics: [] }],
-      })
+      }),
+      expect.anything()
     )
   })
 
@@ -643,7 +693,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { subtopics: { id: string; title: string; completed: boolean }[] }[]
     }
     expect(payload.topics[0].subtopics).toHaveLength(1)
@@ -671,7 +721,7 @@ describe('ExamFormModal', () => {
     expect(subtopicInputs()).toHaveLength(1)
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { subtopics: { title: string }[] }[]
     }
     expect(payload.topics[0].subtopics.map((s) => s.title)).toEqual(['Uno editado'])
@@ -691,8 +741,8 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { subtopics: { title: string }[] }[]
     }
     expect(payload.topics[0].subtopics.map((s) => s.title)).toEqual(['Sucesiones'])
@@ -726,7 +776,7 @@ describe('ExamFormModal', () => {
     expect(subtopicInputs()[0].value).toBe('Sucesiones')
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
         topics: [
@@ -737,7 +787,8 @@ describe('ExamFormModal', () => {
             subtopics: [{ id: 's-1', title: 'Sucesiones', completed: true }],
           },
         ],
-      })
+      }),
+      expect.anything()
     )
   })
 
@@ -758,7 +809,7 @@ describe('ExamFormModal', () => {
     expect(subtopicCheckboxes().map((c) => c.checked)).toEqual([true, true])
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
     }
     expect(payload.topics[0].completed).toBe(true)
@@ -783,7 +834,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
     }
     expect(payload.topics[0].completed).toBe(false)
@@ -807,7 +858,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    const payload = examsMock.createExam.mock.calls[0][0] as {
+    const payload = examsMock.createExamWithEvent.mock.calls[0][0] as {
       topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
     }
     expect(payload.topics[0].completed).toBe(false)
@@ -875,7 +926,7 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
         topics: [
@@ -886,7 +937,8 @@ describe('ExamFormModal', () => {
             subtopics: [{ id: 's-1', title: 'Sucesiones', completed: true }],
           },
         ],
-      })
+      }),
+      expect.anything()
     )
   })
 
@@ -912,11 +964,12 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
         topics: [{ id: 't-1', title: 'Límites', completed: true, subtopics: [] }],
-      })
+      }),
+      expect.anything()
     )
   })
 
@@ -940,8 +993,9 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith(
-      expect.objectContaining({ block_id: 'block-1' })
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ block_id: 'block-1' }),
+      expect.anything()
     )
   })
 
@@ -951,7 +1005,10 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith(expect.objectContaining({ block_id: null }))
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ block_id: null }),
+      expect.anything()
+    )
   })
 
   it('al editar prefilla el bloque asociado', async () => {
@@ -999,9 +1056,10 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
-      expect.objectContaining({ block_id: null })
+      expect.objectContaining({ block_id: null }),
+      expect.anything()
     )
   })
 
@@ -1018,43 +1076,91 @@ describe('ExamFormModal', () => {
     expect(colorPreview().getAttribute('style')).toContain('rgb(var(--color-block-lavender))')
   })
 
-  it('al elegir la fecha lista los eventos de ese día', async () => {
+  it('el apartado de evento queda deshabilitado hasta elegir fecha', async () => {
+    await flushPromises()
+    expect(document.body.querySelector("[data-testid='exam-event-disabled-hint']")).not.toBeNull()
+    expect(
+      (document.body.querySelector("[data-testid='exam-event-mode-local']") as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+  })
+
+  it('por defecto no crea evento: el store recibe mode none', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExamWithEvent.mock.calls[0][1]).toEqual({ mode: 'none' })
+  })
+
+  it('con fecha y sin Google, «Evento nuevo» queda deshabilitada con hint', async () => {
+    calendarConnected.value = false
+    fillDate('2026-08-15')
+    await flushPromises()
+    expect(
+      (document.body.querySelector("[data-testid='exam-event-mode-new']") as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(document.body.querySelector("[data-testid='exam-event-new-hint']")).not.toBeNull()
+  })
+
+  it('solo local envía la elección local', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    clickEventMode('local')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExamWithEvent.mock.calls[0][1]).toEqual({ mode: 'local' })
+  })
+
+  it('evento nuevo usa el calendario principal por defecto', async () => {
+    calendarConnected.value = true
+    calendarCalendars.value = [
+      { id: 'primary', summary: 'Principal', primary: true },
+      { id: 'work', summary: 'Trabajo' },
+    ]
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    clickEventMode('new')
+    await flushPromises()
+    expect(calendarSelect().value).toBe('primary')
+    submit()
+    await flushPromises()
+    expect(examsMock.createExamWithEvent.mock.calls[0][1]).toEqual({
+      mode: 'new',
+      calendarId: 'primary',
+    })
+  })
+
+  it('elegir un evento del día lista los eventos de esa fecha y envía el vínculo', async () => {
     calendarEvents.value = [
       makeCalendarEvent('evt-1', '2026-08-15', 'Consulta de Análisis'),
       makeCalendarEvent('evt-2', '2026-08-16', 'Otro evento'),
     ]
+    fillTitle('Parcial')
     fillDate('2026-08-15')
+    await flushPromises()
+    clickEventMode('existing')
     await flushPromises()
     const values = Array.from(eventSelect().options).map((o) => o.value)
     expect(values).toContain(eventKey('local', 'evt-1'))
     expect(values).not.toContain(eventKey('local', 'evt-2'))
     expect(eventSelect().textContent).toContain('Consulta de Análisis')
-  })
-
-  it('vincular un evento es opcional: sin elegir envía event_link null', async () => {
-    fillTitle('Parcial')
-    fillDate('2026-08-15')
-    await flushPromises()
-    submit()
-    await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith(expect.objectContaining({ event_link: null }))
-  })
-
-  it('al crear con un evento vinculado envía el par (calendarId, eventId)', async () => {
-    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
-    fillTitle('Parcial')
-    fillDate('2026-08-15')
-    await flushPromises()
     selectEvent(eventKey('local', 'evt-1'))
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).toHaveBeenCalledWith(
-      expect.objectContaining({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
-    )
+    expect(examsMock.createExamWithEvent.mock.calls[0][1]).toEqual({
+      mode: 'existing',
+      link: { calendarId: 'local', eventId: 'evt-1' },
+    })
   })
 
-  it('al editar prefilla el vínculo actual', async () => {
+  it('al editar prefilla el vínculo vigente y preselecciona la opción de evento del día', async () => {
     calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
     examsState.value = [
       {
@@ -1077,37 +1183,7 @@ describe('ExamFormModal', () => {
     expect(eventSelect().value).toBe(eventKey('local', 'evt-1'))
   })
 
-  it('desvincular el evento envía event_link null al guardar', async () => {
-    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
-    examsState.value = [
-      {
-        id: 'exam-1',
-        title: 'Parcial',
-        date: '2026-08-15',
-        status: 'pendiente',
-        grade: null,
-        block_id: null,
-        fallback_color: 'lavender',
-        event_link: { calendarId: 'local', eventId: 'evt-1' },
-        topics: [],
-        sort_order: 0,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: '2026-01-01T00:00:00Z',
-      },
-    ]
-    uiMock.openEditExam('exam-1')
-    await flushPromises()
-    selectEvent('')
-    await flushPromises()
-    submit()
-    await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
-      'exam-1',
-      expect.objectContaining({ event_link: null })
-    )
-  })
-
-  it('un vínculo huérfano se prefilla como no disponible y se puede limpiar', async () => {
+  it('un vínculo huérfano se muestra como «Evento no disponible» y se puede limpiar', async () => {
     calendarEvents.value = []
     examsState.value = [
       {
@@ -1133,9 +1209,77 @@ describe('ExamFormModal', () => {
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.updateExam).toHaveBeenCalledWith(
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
       'exam-1',
-      expect.objectContaining({ event_link: null })
+      expect.objectContaining({ title: 'Parcial' }),
+      { mode: 'none' }
+    )
+  })
+
+  it('cambiar a «No crear evento» envía mode none al editar un vínculo vigente', async () => {
+    calendarEvents.value = [makeCalendarEvent('evt-1', '2026-08-15', 'Consulta')]
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+        topics: [],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    clickEventMode('none')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExamWithEvent.mock.calls[0][2]).toEqual({ mode: 'none' })
+  })
+
+  it('muestra el error de calendario devuelto por el store', async () => {
+    examsMock.createExamWithEvent.mockResolvedValue({
+      exam: { id: 'created-exam' },
+      eventError: 'No se pudo crear el evento',
+    })
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    clickEventMode('local')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    const error = document.body.querySelector("[data-testid='exam-calendar-error']")
+    expect(error?.textContent).toContain('No se pudo crear el evento')
+  })
+
+  it('un reintento tras fallar el evento edita el examen ya guardado en vez de duplicarlo', async () => {
+    examsMock.createExamWithEvent.mockResolvedValueOnce({
+      exam: { id: 'saved-exam' },
+      eventError: 'No se pudo crear el evento',
+    })
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    await flushPromises()
+    clickEventMode('local')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledTimes(1)
+
+    submit()
+    await flushPromises()
+    expect(examsMock.createExamWithEvent).toHaveBeenCalledTimes(1)
+    expect(examsMock.updateExamWithEvent).toHaveBeenCalledWith(
+      'saved-exam',
+      expect.objectContaining({ title: 'Parcial' }),
+      { mode: 'local' }
     )
   })
 })
