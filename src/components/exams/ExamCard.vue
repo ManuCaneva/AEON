@@ -45,6 +45,10 @@ function toggleExpand() {
 function handleToggleTopic(topicId: string) {
   exams.toggleTopic(props.exam.id, topicId)
 }
+
+function handleToggleSubtopic(topicId: string, subtopicId: string) {
+  exams.toggleSubtopic(props.exam.id, topicId, subtopicId)
+}
 </script>
 
 <template>
@@ -114,43 +118,93 @@ function handleToggleTopic(topicId: string) {
                 v-for="topic in exam.topics"
                 :key="topic.id"
                 data-testid="exam-topic-item"
-                class="flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface-2"
+                class="flex flex-col rounded-md px-1.5 py-1 transition-colors hover:bg-surface-2"
               >
-                <label
-                  class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
-                  @click.stop
-                >
-                  <input
-                    type="checkbox"
-                    :checked="topic.completed"
-                    data-testid="exam-topic-checkbox"
-                    class="peer absolute inset-0 cursor-pointer opacity-0"
-                    @click.stop="handleToggleTopic(topic.id)"
-                  />
-                  <span
-                    :class="[
-                      'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
-                      topic.completed
-                        ? 'border-primary bg-primary'
-                        : 'border-hairline-strong bg-surface-1',
-                      'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
-                    ]"
+                <div class="flex items-center gap-2">
+                  <label
+                    class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+                    @click.stop
                   >
-                    <Check
-                      v-if="topic.completed"
-                      :size="12"
-                      class="text-on-primary"
-                      stroke-width="3"
+                    <input
+                      type="checkbox"
+                      :checked="topic.completed"
+                      data-testid="exam-topic-checkbox"
+                      class="peer absolute inset-0 cursor-pointer opacity-0"
+                      @click.stop="handleToggleTopic(topic.id)"
                     />
-                  </span>
-                </label>
-                <Text
-                  as="span"
-                  variant="body-sm"
-                  :class="['truncate', topic.completed ? 'text-ink-muted line-through' : '']"
-                >
-                  {{ topic.title }}
-                </Text>
+                    <span
+                      :class="[
+                        'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
+                        topic.completed
+                          ? 'border-primary bg-primary'
+                          : 'border-hairline-strong bg-surface-1',
+                        'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
+                      ]"
+                    >
+                      <Check
+                        v-if="topic.completed"
+                        :size="12"
+                        class="text-on-primary"
+                        stroke-width="3"
+                      />
+                    </span>
+                  </label>
+                  <Text
+                    as="span"
+                    variant="body-sm"
+                    :class="['truncate', topic.completed ? 'text-ink-muted line-through' : '']"
+                  >
+                    {{ topic.title }}
+                  </Text>
+                </div>
+
+                <div v-if="topic.subtopics.length > 0" class="ml-6 flex flex-col">
+                  <div
+                    v-for="subtopic in topic.subtopics"
+                    :key="subtopic.id"
+                    data-testid="exam-subtopic-item"
+                    class="flex items-center gap-2 rounded-md px-1.5 py-1"
+                  >
+                    <label
+                      class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+                      @click.stop
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="subtopic.completed"
+                        data-testid="exam-subtopic-checkbox"
+                        class="peer absolute inset-0 cursor-pointer opacity-0"
+                        @click.stop="handleToggleSubtopic(topic.id, subtopic.id)"
+                      />
+                      <span
+                        :class="[
+                          'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
+                          subtopic.completed
+                            ? 'border-primary bg-primary'
+                            : 'border-hairline-strong bg-surface-1',
+                          'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
+                        ]"
+                      >
+                        <Check
+                          v-if="subtopic.completed"
+                          :size="12"
+                          class="text-on-primary"
+                          stroke-width="3"
+                        />
+                      </span>
+                    </label>
+                    <Text
+                      as="span"
+                      variant="body-sm"
+                      :class="[
+                        'truncate',
+                        subtopic.completed ? 'text-ink-muted line-through' : '',
+                      ]"
+                    >
+                      {{ subtopic.title }}
+                    </Text>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

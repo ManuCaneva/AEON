@@ -8,6 +8,7 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 const examsMock = {
   deleteExam: vi.fn().mockResolvedValue(undefined),
   toggleTopic: vi.fn().mockResolvedValue(undefined),
+  toggleSubtopic: vi.fn().mockResolvedValue(undefined),
   blockFor: vi.fn().mockReturnValue(undefined),
   colorFor: vi.fn().mockReturnValue('lavender'),
 }
@@ -59,11 +60,21 @@ function makeBlock(title: string, color = 'green') {
 
 const topicId1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const topicId2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const subtopicId1 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const subtopicId2 = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const examWithTopics: Exam = {
   ...baseExam,
   topics: [
-    { id: topicId1, title: 'Límites', completed: true },
-    { id: topicId2, title: 'Derivadas', completed: false },
+    { id: topicId1, title: 'Límites', completed: true, subtopics: [] },
+    {
+      id: topicId2,
+      title: 'Derivadas',
+      completed: false,
+      subtopics: [
+        { id: subtopicId1, title: 'Reglas de derivación', completed: true },
+        { id: subtopicId2, title: 'Regla de la cadena', completed: false },
+      ],
+    },
   ],
 }
 
@@ -231,6 +242,36 @@ describe('ExamCard', () => {
     const checkboxes = wrapper.findAll("[data-testid='exam-topic-checkbox']")
     await checkboxes[1].trigger('click')
     expect(examsMock.toggleTopic).toHaveBeenCalledWith('exam-1', topicId2)
+  })
+
+  it('al expandir muestra los subtemas de cada tema', async () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    await wrapper.find("[data-testid='exam-card-body']").trigger('click')
+    const subtopics = wrapper.findAll("[data-testid='exam-subtopic-item']")
+    expect(subtopics).toHaveLength(2)
+    expect(subtopics[0].text()).toContain('Reglas de derivación')
+    expect(subtopics[1].text()).toContain('Regla de la cadena')
+  })
+
+  it('tacha el subtema completado', async () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    await wrapper.find("[data-testid='exam-card-body']").trigger('click')
+    const subtopics = wrapper.findAll("[data-testid='exam-subtopic-item']")
+    expect(subtopics[0].html()).toContain('line-through')
+    expect(subtopics[1].html()).not.toContain('line-through')
+  })
+
+  it('marca un subtema desde la tarjeta y persiste', async () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    await wrapper.find("[data-testid='exam-card-body']").trigger('click')
+    const checkboxes = wrapper.findAll("[data-testid='exam-subtopic-checkbox']")
+    await checkboxes[1].trigger('click')
+    expect(examsMock.toggleSubtopic).toHaveBeenCalledWith('exam-1', topicId2, subtopicId2)
+  })
+
+  it('el contador de progreso cuenta temas, no subtemas', () => {
+    const wrapper = mount(ExamCard, { props: { exam: examWithTopics } })
+    expect(wrapper.find("[data-testid='exam-topics']").text()).toContain('1/2')
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {
