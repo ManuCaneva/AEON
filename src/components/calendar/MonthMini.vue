@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
 import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 import DayTooltip from './DayTooltip.vue'

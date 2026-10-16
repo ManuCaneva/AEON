@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import ExamFormModal from './ExamFormModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 
 const examsState = ref<
   {

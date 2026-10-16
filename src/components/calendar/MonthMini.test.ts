@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import MonthMini from './MonthMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 import type { CalendarEvent } from '@/schemas/calendar'
 
 const dummyEvents: CalendarEvent[] = [

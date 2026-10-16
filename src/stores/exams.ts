@@ -14,7 +14,7 @@ import { useWeeklyScheduleStore } from './weeklySchedule'
 import { useCalendarStore } from './calendar'
 import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
 import type { DayOverlayByDate } from '@/schemas/calendar'
-import { resolvedLinkKeys } from '@/lib/examEventLink'
+import { resolvedEntityLinkKeys } from '@/lib/entityEventLink'
 import type { EventChoice } from '@/lib/entityEventLink'
 import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
 
@@ -303,7 +303,7 @@ export const useExamsStore = defineStore('exams', () => {
    * día no aporta clave: degrada en silencio.
    */
   const linkedEventKeys = computed<Set<string>>(() =>
-    resolvedLinkKeys(exams.value, useCalendarStore().events)
+    resolvedEntityLinkKeys(exams.value, useCalendarStore().events)
   )
 
   return {

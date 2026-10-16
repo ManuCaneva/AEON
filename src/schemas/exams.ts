@@ -1,13 +1,14 @@
 import { z } from 'zod'
 import { uuid, isoTimestamp, localDate, trimmed, normalizeTimestamp } from './primitives'
 import { blockColorSchema } from './weeklySchedule'
+import { EntityEventLinkSchema, linkFromColumns } from './entityLink'
 
 // Capa dual de validación de Examen: dominio (lo que consume el frontend)
 // + drafts (create/update) + fila permisiva (espejo de SQLite) + mappers.
-// #133 (walking skeleton): id, título, fecha, estado, color de respaldo,
-// orden y timestamps. #138 agrega la nota. #136 agrega los temas embebidos.
-// #135 cablea el bloque asociado (materia) y el color vivo. La columna de
-// vínculo al calendario existe en SQL pero se cablea en un ticket posterior.
+// El examen es una entidad con evento propio (ver ADR 0010): puede crear su
+// evento, que es siempre de todo el día, y es la fuente de verdad de su título
+// y su fecha. El vínculo al calendario se persiste en las columnas
+// calendar_id/event_id de la misma fila.
 
 export const ExamStatusSchema = z.enum(['pendiente', 'estudiando', 'rendido'])
 export type ExamStatus = z.infer<typeof ExamStatusSchema>
@@ -53,15 +54,12 @@ export function pruneEmptyTopics(topics: ExamTopicInput[]): ExamTopic[] {
     }))
 }
 
-// Vínculo opcional a un evento del calendario. La identidad del evento es el
-// PAR (calendarId, eventId): los ids de Google sólo son únicos por calendario.
-// El examen NO crea ni espeja eventos: el vínculo es un adorno y la fecha del
-// examen sigue siendo la única fuente de su fecha.
-export const ExamEventLinkSchema = z.object({
-  calendarId: z.string().min(1),
-  eventId: z.string().min(1),
-})
-export type ExamEventLink = z.infer<typeof ExamEventLinkSchema>
+// Vínculo opcional a un evento del calendario, compartido con las tareas (ver
+// ADR 0010). La identidad del evento es el PAR (calendarId, eventId): los ids
+// de Google sólo son únicos por calendario. El vínculo es unidireccional y el
+// examen es la fuente de verdad de su título y su fecha: crear o editar puede
+// crear o actualizar el evento, y un vínculo huérfano o de otro día degrada en
+// silencio.
 
 export const ExamSchema = z.object({
   id: uuid,
@@ -73,7 +71,7 @@ export const ExamSchema = z.object({
   block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema,
   // Vínculo opcional a un evento del calendario: null = sin vínculo.
-  event_link: ExamEventLinkSchema.nullable().default(null),
+  event_link: EntityEventLinkSchema.nullable().default(null),
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().default(0),
   created_at: isoTimestamp,
@@ -88,7 +86,7 @@ export const CreateExamDraftSchema = z.object({
   grade: z.number().min(0).max(10).nullable().optional(),
   block_id: uuid.nullable().default(null),
   fallback_color: blockColorSchema.default('lavender'),
-  event_link: ExamEventLinkSchema.nullable().default(null),
+  event_link: EntityEventLinkSchema.nullable().default(null),
   topics: ExamTopicSchema.array().default([]),
   sort_order: z.number().int().optional(),
 })
@@ -137,12 +135,6 @@ export function rowToExam(row: ExamRow): Exam {
     created_at: normalizeTimestamp(row.created_at),
     updated_at: normalizeTimestamp(row.updated_at),
   })
-}
-
-/** Reconstruye el par (calendarId, eventId) sólo si ambas columnas existen. */
-function linkFromColumns(calendarId: string | null, eventId: string | null): ExamEventLink | null {
-  if (!calendarId || !eventId) return null
-  return { calendarId, eventId }
 }
 
 export function examToRow(e: CreateExamDraft | UpdateExamDraft | Exam): {

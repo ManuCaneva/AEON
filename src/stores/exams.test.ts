@@ -5,7 +5,7 @@ import { useWeeklyScheduleStore } from './weeklySchedule'
 import { useCalendarStore } from './calendar'
 import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
 import type { CalendarEvent } from '@/schemas/calendar'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 import * as db from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({

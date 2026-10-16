@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
 import DayTooltip from '@/components/calendar/DayTooltip.vue'
 import {

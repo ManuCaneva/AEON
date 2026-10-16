@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { uuid, isoTimestamp, localDate, hexColor, trimmed, normalizeTimestamp } from './primitives'
-import { EntityEventLinkSchema, type EntityEventLink } from './entityLink'
+import { EntityEventLinkSchema, linkFromColumns } from './entityLink'
 
 export const TaskStatusSchema = z.enum(['todo', 'doing', 'done'])
 export type TaskStatus = z.infer<typeof TaskStatusSchema>
@@ -96,15 +96,6 @@ export function rowToTask(row: TaskRow): Task {
     updated_at: normalizeTimestamp(row.updated_at),
     archived_at: row.archived_at ? normalizeTimestamp(row.archived_at) : null,
   })
-}
-
-/** Reconstruye el par (calendarId, eventId) sólo si ambas columnas existen. */
-function linkFromColumns(
-  calendarId: string | null,
-  eventId: string | null
-): EntityEventLink | null {
-  if (!calendarId || !eventId) return null
-  return { calendarId, eventId }
 }
 
 export function taskToRow(t: CreateTaskDraft | UpdateTaskDraft | Task): {

@@ -7,7 +7,7 @@ import YearStrip from '@/components/dashboard/YearStrip.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
-import { eventKey } from '@/lib/examEventLink'
+import { eventKey } from '@/lib/entityEventLink'
 
 function flushRaf() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(null)))

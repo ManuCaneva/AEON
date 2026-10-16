@@ -7,7 +7,6 @@ import {
   resolvedEntityLinkKeys,
   type EventLinkedEntity,
 } from './entityEventLink'
-import { eventKey as aliasedEventKey, resolveExamLink, resolvedLinkKeys } from './examEventLink'
 
 function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
   return {
@@ -143,13 +142,5 @@ describe('resolvedEntityLinkKeys', () => {
     const task = makeTask({ event_link: { calendarId: 'local', eventId: 'evt-1' } })
     const keys = resolvedEntityLinkKeys([examLike, linkedFromTask(task)], events)
     expect([...keys]).toEqual([eventKey('local', 'evt-1')])
-  })
-})
-
-describe('examEventLink (compatibilidad)', () => {
-  it('reexporta los mismos helpers genéricos', () => {
-    expect(aliasedEventKey).toBe(eventKey)
-    expect(resolveExamLink).toBe(resolveEntityLink)
-    expect(resolvedLinkKeys).toBe(resolvedEntityLinkKeys)
   })
 })
