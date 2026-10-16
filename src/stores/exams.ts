@@ -15,6 +15,7 @@ import { useCalendarStore } from './calendar'
 import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
 import type { DayOverlayByDate } from '@/schemas/calendar'
 import { resolvedLinkKeys } from '@/lib/examEventLink'
+import { resolveEntityLink, type EntityEventLink, type EventChoice } from '@/lib/entityEventLink'
 
 function nowIsoUtc(): string {
   return new Date().toISOString()
@@ -22,6 +23,10 @@ function nowIsoUtc(): string {
 
 function uuidv4(): string {
   return crypto.randomUUID()
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }
 
 /** Orden de la lista: fecha ascendente (el más próximo primero). */
@@ -85,6 +90,122 @@ export const useExamsStore = defineStore('exams', () => {
   async function deleteExam(id: string): Promise<void> {
     await db.deleteExam(id)
     exams.value = exams.value.filter((e) => e.id !== id)
+  }
+
+  /**
+   * Crea el evento del examen (siempre de todo el día) y devuelve su vínculo.
+   * `local` va al almacenamiento local; `new` al calendario elegido.
+   */
+  async function createEventForExam(exam: Exam, choice: EventChoice): Promise<EntityEventLink> {
+    const calendar = useCalendarStore()
+    const calendarId = choice.mode === 'new' ? choice.calendarId : 'local'
+    const created = await calendar.createEvent(calendarId, {
+      title: exam.title,
+      allDay: true,
+      start: exam.date,
+      end: '',
+    })
+    return { calendarId: created.calendarId, eventId: created.id }
+  }
+
+  /**
+   * Crea el examen y, según la elección, su evento. El examen se persiste
+   * primero (es la fuente de verdad de su fecha y su título); recién después
+   * se crea el evento. Si eso falla, el examen queda SIN vínculo y el error se
+   * devuelve para que la UI lo muestre y se reintente desde edición.
+   */
+  async function createExamWithEvent(
+    draft: CreateExamDraft,
+    choice: EventChoice
+  ): Promise<{ exam: Exam; eventError: string | null }> {
+    const link = choice.mode === 'existing' ? choice.link : null
+    const exam = await createExam({ ...draft, event_link: link })
+    if (choice.mode !== 'local' && choice.mode !== 'new') {
+      return { exam, eventError: null }
+    }
+    try {
+      const createdLink = await createEventForExam(exam, choice)
+      const linked = await updateExam(exam.id, { event_link: createdLink })
+      return { exam: linked, eventError: null }
+    } catch (e) {
+      return { exam, eventError: errorMessage(e) }
+    }
+  }
+
+  /**
+   * Edita el examen y su evento. `none` limpia el vínculo (el evento queda
+   * intacto); `existing` fija el vínculo elegido y, si el vínculo previo
+   * seguía vigente y el título o la fecha cambiaron, actualiza ese evento;
+   * `local`/`new` crean un evento nuevo y lo vinculan.
+   */
+  async function updateExamWithEvent(
+    id: string,
+    patch: UpdateExamDraft,
+    choice: EventChoice
+  ): Promise<{ exam: Exam; eventError: string | null }> {
+    const calendar = useCalendarStore()
+    const previous = exams.value.find((e) => e.id === id)
+
+    if (choice.mode === 'none') {
+      const exam = await updateExam(id, { ...patch, event_link: null })
+      return { exam, eventError: null }
+    }
+
+    if (choice.mode === 'existing') {
+      const exam = await updateExam(id, { ...patch, event_link: choice.link })
+      const previousLink = previous?.event_link ?? null
+      const sameEvent =
+        previousLink !== null &&
+        previousLink.calendarId === choice.link.calendarId &&
+        previousLink.eventId === choice.link.eventId
+      const wasVigente =
+        previous !== undefined &&
+        previousLink !== null &&
+        resolveEntityLink(previous, calendar.events) !== undefined
+      const titleChanged =
+        previous !== undefined && patch.title !== undefined && patch.title !== previous.title
+      const dateChanged =
+        previous !== undefined && patch.date !== undefined && patch.date !== previous.date
+      if (wasVigente && sameEvent && (titleChanged || dateChanged)) {
+        try {
+          await calendar.updateEvent(choice.link.calendarId, choice.link.eventId, {
+            title: exam.title,
+            allDay: true,
+            start: exam.date,
+            end: '',
+          })
+        } catch (e) {
+          return { exam, eventError: errorMessage(e) }
+        }
+      }
+      return { exam, eventError: null }
+    }
+
+    // local | new: primero la entidad, después el evento.
+    const exam = await updateExam(id, patch)
+    try {
+      const createdLink = await createEventForExam(exam, choice)
+      const linked = await updateExam(id, { event_link: createdLink })
+      return { exam: linked, eventError: null }
+    } catch (e) {
+      return { exam, eventError: errorMessage(e) }
+    }
+  }
+
+  /**
+   * Borra el examen y, si se pide, el evento de su vínculo vigente (mismo
+   * día). Un vínculo huérfano o de otro día degrada en silencio: sólo se borra
+   * el examen.
+   */
+  async function deleteExamWithEvent(id: string, deleteEvent: boolean): Promise<void> {
+    const exam = exams.value.find((e) => e.id === id)
+    if (deleteEvent && exam && exam.event_link) {
+      const resolved = resolveEntityLink(exam, useCalendarStore().events)
+      if (resolved) {
+        await useCalendarStore().deleteEvent(resolved.calendarId, resolved.id)
+      }
+    }
+    await deleteExam(id)
   }
 
   /** Temas: lista embebida. Cada acción persiste vía updateExam. */
@@ -259,6 +380,9 @@ export const useExamsStore = defineStore('exams', () => {
     createExam,
     updateExam,
     deleteExam,
+    createExamWithEvent,
+    updateExamWithEvent,
+    deleteExamWithEvent,
     addTopic,
     updateTopic,
     removeTopic,
