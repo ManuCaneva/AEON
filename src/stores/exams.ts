@@ -177,9 +177,7 @@ export const useExamsStore = defineStore('exams', () => {
     if (!exam) return
     await updateExam(examId, {
       topics: exam.topics.map((t) =>
-        t.id === topicId
-          ? { ...t, subtopics: t.subtopics.filter((s) => s.id !== subtopicId) }
-          : t
+        t.id === topicId ? { ...t, subtopics: t.subtopics.filter((s) => s.id !== subtopicId) } : t
       ),
     })
   }

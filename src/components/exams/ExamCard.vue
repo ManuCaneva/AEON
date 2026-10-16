@@ -196,10 +196,7 @@ function handleToggleSubtopic(topicId: string, subtopicId: string) {
                     <Text
                       as="span"
                       variant="body-sm"
-                      :class="[
-                        'truncate',
-                        subtopic.completed ? 'text-ink-muted line-through' : '',
-                      ]"
+                      :class="['truncate', subtopic.completed ? 'text-ink-muted line-through' : '']"
                     >
                       {{ subtopic.title }}
                     </Text>

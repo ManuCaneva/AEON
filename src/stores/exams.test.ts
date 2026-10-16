@@ -415,7 +415,9 @@ describe('exams store - subtemas', () => {
     expect(subtopics[2].title).toBe('Derivadas')
     expect(subtopics[2].completed).toBe(false)
     expect(typeof subtopics[2].id).toBe('string')
-    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as { topics: { subtopics: unknown[] }[] }
+    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as {
+      topics: { subtopics: unknown[] }[]
+    }
     expect(patch.topics[0].subtopics).toHaveLength(3)
   })
 
