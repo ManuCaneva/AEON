@@ -75,11 +75,8 @@ async function handleSubmit(e: Event) {
     return
   }
 
+  // Las filas sin título se descartan: no bloquean el guardado de la tarea.
   const validSteps = steps.value.filter((s) => s.title.trim())
-  if (validSteps.length !== steps.value.length) {
-    error.value = 'Todos los pasos deben tener un título.'
-    return
-  }
 
   saving.value = true
   error.value = null

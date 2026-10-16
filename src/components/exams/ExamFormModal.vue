@@ -161,10 +161,6 @@ async function handleSubmit(e: Event) {
   }
 
   const validTopics = topics.value.filter((t) => t.title.trim())
-  if (validTopics.length !== topics.value.length) {
-    error.value = 'Todos los temas deben tener un título.'
-    return
-  }
 
   saving.value = true
   error.value = null

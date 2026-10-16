@@ -490,17 +490,36 @@ describe('ExamFormModal', () => {
     expect(payload.topics.map((t) => t.title)).toEqual(['Derivadas'])
   })
 
-  it('rechaza un tema sin título sin invocar al store', async () => {
+  it('descarta una fila de tema vacía y guarda con los temas cargados', async () => {
     fillTitle('Parcial')
     fillDate('2026-08-15')
+    clickAddTopic()
+    clickAddTopic()
+    clickAddTopic()
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Límites')
+    fillTopic(1, 'Derivadas')
+    fillTopic(2, 'Integrales')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExam.mock.calls[0][0] as { topics: { title: string }[] }
+    expect(payload.topics.map((t) => t.title)).toEqual(['Límites', 'Derivadas', 'Integrales'])
+  })
+
+  it('guarda sin temas cuando todas las filas de tema están vacías', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
     clickAddTopic()
     await flushPromises()
     submit()
     await flushPromises()
-    expect(examsMock.createExam).not.toHaveBeenCalled()
-    expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
-      'Todos los temas deben tener un título'
-    )
+    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExam.mock.calls[0][0] as { topics: unknown[] }
+    expect(payload.topics).toEqual([])
   })
 
   it('al editar prefilla los temas y los conserva al guardar', async () => {
@@ -522,6 +541,36 @@ describe('ExamFormModal', () => {
     uiMock.openEditExam('exam-1')
     await flushPromises()
     expect(topicInputs()[0].value).toBe('Límites')
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({
+        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+      })
+    )
+  })
+
+  it('al editar descarta una fila de tema vacía y conserva los temas cargados', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    clickAddTopic()
+    await flushPromises()
     submit()
     await flushPromises()
     expect(examsMock.updateExam).toHaveBeenCalledWith(

@@ -150,6 +150,88 @@ describe('TaskFormModal', () => {
     expect(stepInputs).toHaveLength(0)
   })
 
+  it('should filter out empty step rows and keep the filled ones', async () => {
+    const titleInput = document.body.querySelector("input[type='text']") as HTMLInputElement
+    titleInput.value = 'Task'
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    const addStepBtn = document.body.querySelector(
+      "[data-testid='add-step-button']"
+    ) as HTMLButtonElement
+    addStepBtn.click()
+    addStepBtn.click()
+    await flushPromises()
+    const stepInputs = document.body.querySelectorAll(
+      "[data-testid='step-input'] input"
+    ) as NodeListOf<HTMLInputElement>
+    stepInputs[0].value = 'Paso 1'
+    stepInputs[0].dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+
+    const form = document.body.querySelector('form') as HTMLFormElement
+    form.dispatchEvent(new Event('submit', { bubbles: true }))
+    await flushPromises()
+
+    expect(tasksMock.createTask).toHaveBeenCalled()
+    const payload = tasksMock.createTask.mock.calls[
+      tasksMock.createTask.mock.calls.length - 1
+    ][0] as { steps: { title: string }[] }
+    expect(payload.steps.map((s) => s.title)).toEqual(['Paso 1'])
+  })
+
+  it('should save without steps when every step row is empty', async () => {
+    const titleInput = document.body.querySelector("input[type='text']") as HTMLInputElement
+    titleInput.value = 'Task'
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    const addStepBtn = document.body.querySelector(
+      "[data-testid='add-step-button']"
+    ) as HTMLButtonElement
+    addStepBtn.click()
+    addStepBtn.click()
+    await flushPromises()
+
+    const form = document.body.querySelector('form') as HTMLFormElement
+    form.dispatchEvent(new Event('submit', { bubbles: true }))
+    await flushPromises()
+
+    expect(tasksMock.createTask).toHaveBeenCalled()
+    const payload = tasksMock.createTask.mock.calls[
+      tasksMock.createTask.mock.calls.length - 1
+    ][0] as { steps: unknown[] }
+    expect(payload.steps).toEqual([])
+  })
+
+  it('should keep loaded steps and drop an empty row when editing', async () => {
+    tasksState.value = [
+      {
+        id: 'task-1',
+        title: 'Task',
+        description: null,
+        color: '#ff0000',
+        status: 'todo',
+        due_date: null,
+        steps: [{ id: 'step-1', title: 'Paso 1', done: false }],
+      },
+    ]
+    uiMock.openEditTask('task-1')
+    await flushPromises()
+    const addStepBtn = document.body.querySelector(
+      "[data-testid='add-step-button']"
+    ) as HTMLButtonElement
+    addStepBtn.click()
+    await flushPromises()
+
+    const form = document.body.querySelector('form') as HTMLFormElement
+    form.dispatchEvent(new Event('submit', { bubbles: true }))
+    await flushPromises()
+
+    expect(tasksMock.updateTask).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({
+        steps: [{ id: 'step-1', title: 'Paso 1', done: false }],
+      })
+    )
+  })
+
   it('should call tasks.createTask on submit when creating', async () => {
     const titleInput = document.body.querySelector("input[type='text']") as HTMLInputElement
     titleInput.value = 'New Task'
