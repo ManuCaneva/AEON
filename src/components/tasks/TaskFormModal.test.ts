@@ -617,4 +617,59 @@ describe('TaskFormModal', () => {
     const error = document.body.querySelector("[data-testid='task-calendar-error']")
     expect(error?.textContent).toContain('No se pudo crear el evento')
   })
+
+  it('el selector de calendario incluye el calendario local', async () => {
+    calendarConnected.value = true
+    calendarCalendars.value = [{ id: 'primary', summary: 'Principal', primary: true }]
+    uiMock.openCreateTask()
+    await flushPromises()
+    const dateInput = document.body.querySelector("input[type='date']") as HTMLInputElement
+    setValue(dateInput, '2026-07-01')
+    await flushPromises()
+    ;(
+      document.body.querySelector("[data-testid='task-event-mode-new']") as HTMLButtonElement
+    ).click()
+    await flushPromises()
+
+    const calSelect = document.body.querySelector(
+      "[data-testid='task-event-calendar-select']"
+    ) as HTMLSelectElement
+    const values = Array.from(calSelect.options).map((o) => o.value)
+    expect(values).toContain('local')
+    expect(values).toContain('primary')
+  })
+
+  it('un vínculo huérfano se puede limpiar y guarda sin evento (mode none)', async () => {
+    calendarEvents.value = []
+    tasksState.value = [
+      {
+        id: 'task-1',
+        title: 'Task',
+        description: null,
+        color: '#ff0000',
+        status: 'todo',
+        due_date: '2026-07-01',
+        block_id: null,
+        event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+        steps: [],
+      },
+    ]
+    uiMock.openEditTask('task-1')
+    await flushPromises()
+
+    const eventSelect = document.body.querySelector(
+      "[data-testid='task-event-select']"
+    ) as HTMLSelectElement
+    expect(eventSelect.value).toBe('local\u0000evt-ausente')
+    setValue(eventSelect, '')
+    await flushPromises()
+    submit()
+    await flushPromises()
+
+    expect(tasksMock.updateTaskWithEvent).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({ title: 'Task' }),
+      { mode: 'none' }
+    )
+  })
 })
