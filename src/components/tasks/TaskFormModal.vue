@@ -225,6 +225,7 @@ async function handleSubmit(e: Event) {
         </div>
 
         <EventChoiceField
+          :key="editing?.id ?? 'new'"
           v-model="eventChoice"
           :date="due_date"
           :link="editing?.event_link ?? null"

@@ -102,18 +102,6 @@ const resolvedChoice = computed<EventChoice>(() => {
 
 watch(resolvedChoice, (choice) => emit('update:modelValue', choice), { immediate: true })
 
-// El formulario puede cambiar de entidad sin desmontarse (p. ej. abrir la
-// edición con el modal ya montado): al cambiar el vínculo se vuelve a sembrar
-// el estado de UI.
-watch(
-  () => props.link,
-  (link) => {
-    eventMode.value = link ? 'existing' : 'none'
-    linkedEventKey.value = link ? eventKey(link.calendarId, link.eventId) : ''
-    newCalendarId.value = ''
-  }
-)
-
 // Sin fecha no hay evento posible: el apartado vuelve a «No crear evento».
 watch(
   () => props.date,

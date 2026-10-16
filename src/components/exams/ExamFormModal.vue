@@ -258,6 +258,7 @@ async function handleSubmit(e: Event) {
         <Input v-model="date" data-testid="exam-date-input" type="date" label="Fecha" />
 
         <EventChoiceField
+          :key="editing?.id ?? 'new'"
           v-model="eventChoice"
           :date="date"
           :link="editing?.event_link ?? null"
