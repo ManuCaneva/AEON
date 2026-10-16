@@ -2,10 +2,12 @@
 import { ref, computed, watch, unref } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
 import { useExamsStore } from '@/stores/exams'
+import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
 import { blockColorRgb } from '@/lib/scheduleColors'
-import { resolveExamLink } from '@/lib/examEventLink'
+import { eventKey, resolveEntityLink } from '@/lib/entityEventLink'
+import type { Task } from '@/schemas/tasks'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -24,6 +26,7 @@ const emit = defineEmits<{
 
 const store = useCalendarStore()
 const exams = useExamsStore()
+const tasks = useTasksStore()
 const ui = useUiStore()
 
 const isFormMode = ref(false)
@@ -39,16 +42,50 @@ const selectedColorId = ref<string | undefined>(undefined)
 const localError = ref<string | null>(null)
 const loading = ref(false)
 
-const filteredEvents = computed(() => {
-  return store.events.filter((e) => e.date === props.date)
+// Agenda del día en tres secciones: Exámenes, Tareas y Otros.
+const dayEvents = computed(() => store.events.filter((e) => e.date === props.date))
+
+// Exámenes del día: su propia fecha es la fuente de verdad.
+const dayExams = computed(() => exams.exams.filter((e) => e.date === props.date))
+
+// Evento vinculado a una tarea, buscado por el par (calendarId, id) sin mirar
+// el día: si el evento existe, su día manda sobre el vencimiento de la tarea.
+function taskEvent(task: Task): CalendarEvent | undefined {
+  const link = task.event_link
+  if (!link) return undefined
+  return store.events.find((e) => e.calendarId === link.calendarId && e.id === link.eventId)
+}
+
+// Día al que pertenece la tarea: el del evento si tiene vínculo resuelto; si
+// no, su vencimiento. Sin ninguno de los dos, no entra en ninguna agenda.
+function taskDay(task: Task): string | null {
+  const event = taskEvent(task)
+  return event ? event.date : task.due_date
+}
+
+const dayTasks = computed(() => tasks.tasks.filter((t) => taskDay(t) === props.date))
+
+// Eventos que ya representan a una entidad del día: se excluyen de Otros para
+// que nada aparezca dos veces.
+const representingEventKeys = computed(() => {
+  const keys = new Set<string>()
+  for (const exam of dayExams.value) {
+    const event = resolveEntityLink(exam, store.events)
+    if (event) keys.add(eventKey(event.calendarId, event.id))
+  }
+  for (const task of dayTasks.value) {
+    const event = taskEvent(task)
+    if (event) keys.add(eventKey(event.calendarId, event.id))
+  }
+  return keys
 })
 
-// Exámenes del día: se leen del store de exámenes (fuente única de su fecha).
-// Bloque aparte, no editable como evento: al clickear se abre el examen.
-// Si el examen está vinculado a un evento del mismo día, ese evento ya lo
-// representa: no se lista por separado (mismo dedup que el punto del día).
-const dayExams = computed(() =>
-  exams.exams.filter((e) => e.date === props.date && !resolveExamLink(e, store.events))
+const otherEvents = computed(() =>
+  dayEvents.value.filter((e) => !representingEventKeys.value.has(eventKey(e.calendarId, e.id)))
+)
+
+const agendaEmpty = computed(
+  () => dayExams.value.length === 0 && dayTasks.value.length === 0 && dayEvents.value.length === 0
 )
 
 function openExam(examId: string) {
@@ -252,34 +289,10 @@ function cancelEdit() {
           </div>
         </div>
 
-        <!-- VIEW MODE: EVENTS LIST -->
+        <!-- VIEW MODE: AGENDA POR SECCIONES -->
         <div v-if="!isFormMode" class="flex flex-col gap-4">
-          <!-- Exámenes del día: lista aparte, no editable como evento -->
-          <div v-if="dayExams.length > 0" data-testid="day-exams" class="flex flex-col gap-2">
-            <h3 class="text-caption font-semibold uppercase tracking-wider text-ink-muted">
-              Exámenes
-            </h3>
-            <button
-              v-for="exam in dayExams"
-              :key="exam.id"
-              type="button"
-              data-testid="day-exam-item"
-              class="flex items-center gap-3 rounded-lg border border-hairline bg-surface-2 p-3 text-left transition-colors hover:border-hairline-strong"
-              @click="openExam(exam.id)"
-            >
-              <span
-                data-testid="day-exam-dot"
-                class="h-3.5 w-3.5 flex-shrink-0 rounded-full"
-                :style="{ backgroundColor: blockColorRgb(exams.colorFor(exam)) }"
-              />
-              <span class="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">
-                {{ exam.title }}
-              </span>
-            </button>
-          </div>
-
           <div
-            v-if="filteredEvents.length === 0"
+            v-if="agendaEmpty"
             class="flex flex-col items-center justify-center py-12 text-center"
           >
             <p class="mb-4 text-body-sm text-ink-muted">No hay eventos agendados para este día.</p>
@@ -293,44 +306,111 @@ function cancelEdit() {
             </Button>
           </div>
 
-          <div v-else class="flex flex-col gap-3">
-            <div
-              v-for="evt in filteredEvents"
-              :key="evt.id"
-              class="flex items-start justify-between rounded-lg border border-hairline bg-surface-2 p-3 transition-colors hover:border-hairline-strong"
+          <template v-else>
+            <!-- Exámenes del día: lista aparte, no editable como evento -->
+            <section
+              v-if="dayExams.length > 0"
+              data-testid="day-section-exams"
+              class="flex flex-col gap-2"
             >
-              <div class="flex gap-3">
+              <h3 class="text-caption font-semibold uppercase tracking-wider text-ink-muted">
+                Exámenes
+              </h3>
+              <button
+                v-for="exam in dayExams"
+                :key="exam.id"
+                type="button"
+                data-testid="day-exam-item"
+                class="flex items-center gap-3 rounded-lg border border-hairline bg-surface-2 p-3 text-left transition-colors hover:border-hairline-strong"
+                @click="openExam(exam.id)"
+              >
                 <span
-                  class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded-full"
-                  :style="{ backgroundColor: evt.color }"
+                  data-testid="day-exam-dot"
+                  class="h-3.5 w-3.5 flex-shrink-0 rounded-full"
+                  :style="{ backgroundColor: blockColorRgb(exams.colorFor(exam)) }"
                 />
-                <div class="flex min-w-0 flex-col gap-1">
-                  <h4 class="truncate text-body-sm font-medium leading-normal text-ink">
-                    {{ evt.title }}
-                  </h4>
-                  <p class="text-caption font-medium text-ink-muted">
-                    {{ parseTimeFromIso(evt.start) }} - {{ parseTimeFromIso(evt.end) }}
-                  </p>
-                  <p
-                    v-if="evt.description"
-                    class="mt-1 whitespace-pre-wrap text-caption leading-relaxed text-ink-subtle"
+                <span class="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">
+                  {{ exam.title }}
+                </span>
+              </button>
+            </section>
+
+            <!-- Tareas del día: su título y su color, tachadas si ya están hechas -->
+            <section
+              v-if="dayTasks.length > 0"
+              data-testid="day-section-tasks"
+              class="flex flex-col gap-2"
+            >
+              <h3 class="text-caption font-semibold uppercase tracking-wider text-ink-muted">
+                Tareas
+              </h3>
+              <div
+                v-for="task in dayTasks"
+                :key="task.id"
+                data-testid="day-task-item"
+                class="flex items-center gap-3 rounded-lg border border-hairline bg-surface-2 p-3"
+              >
+                <span
+                  data-testid="day-task-dot"
+                  class="h-3.5 w-3.5 flex-shrink-0 rounded-full"
+                  :style="{ backgroundColor: tasks.colorFor(task) }"
+                />
+                <span
+                  class="min-w-0 flex-1 truncate text-body-sm font-medium text-ink"
+                  :class="task.status === 'done' ? 'line-through' : ''"
+                >
+                  {{ task.title }}
+                </span>
+              </div>
+            </section>
+
+            <!-- Otros: eventos sueltos, que no representan a ninguna entidad -->
+            <section
+              v-if="otherEvents.length > 0"
+              data-testid="day-section-others"
+              class="flex flex-col gap-3"
+            >
+              <h3 class="text-caption font-semibold uppercase tracking-wider text-ink-muted">
+                Otros
+              </h3>
+              <div
+                v-for="evt in otherEvents"
+                :key="evt.id"
+                class="flex items-start justify-between rounded-lg border border-hairline bg-surface-2 p-3 transition-colors hover:border-hairline-strong"
+              >
+                <div class="flex gap-3">
+                  <span
+                    class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded-full"
+                    :style="{ backgroundColor: evt.color }"
+                  />
+                  <div class="flex min-w-0 flex-col gap-1">
+                    <h4 class="truncate text-body-sm font-medium leading-normal text-ink">
+                      {{ evt.title }}
+                    </h4>
+                    <p class="text-caption font-medium text-ink-muted">
+                      {{ parseTimeFromIso(evt.start) }} - {{ parseTimeFromIso(evt.end) }}
+                    </p>
+                    <p
+                      v-if="evt.description"
+                      class="mt-1 whitespace-pre-wrap text-caption leading-relaxed text-ink-subtle"
+                    >
+                      {{ evt.description }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="ml-2 flex flex-shrink-0 gap-1.5">
+                  <button
+                    class="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-3 hover:text-ink"
+                    data-testid="edit-event-btn"
+                    title="Editar evento"
+                    @click="enterEditMode(evt)"
                   >
-                    {{ evt.description }}
-                  </p>
+                    <Edit2 :size="14" />
+                  </button>
                 </div>
               </div>
-
-              <div class="ml-2 flex flex-shrink-0 gap-1.5">
-                <button
-                  class="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-3 hover:text-ink"
-                  data-testid="edit-event-btn"
-                  title="Editar evento"
-                  @click="enterEditMode(evt)"
-                >
-                  <Edit2 :size="14" />
-                </button>
-              </div>
-            </div>
+            </section>
 
             <div class="mt-4 flex justify-end">
               <Button
@@ -342,7 +422,7 @@ function cancelEdit() {
                 <Plus :size="14" class="mr-1.5" /> Agregar Evento
               </Button>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- EDIT/CREATE MODE: FORM -->
