@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { onMounted, onUnmounted, ref, nextTick, computed } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useExamsStore } from '@/stores/exams'
 import { Pencil, Trash2 } from 'lucide-vue-next'
@@ -12,6 +12,11 @@ const exams = useExamsStore()
 const confirming = ref(false)
 const menuRef = ref<HTMLDivElement | null>(null)
 const position = ref({ top: 0, left: 0 })
+
+// Con vínculo a un evento el borrado ofrece dos salidas; sin vínculo, una sola.
+const hasEventLink = computed(
+  () => exams.exams.find((e) => e.id === props.examId)?.event_link != null
+)
 
 function updatePosition() {
   const trigger = document.querySelector(`[data-exam-menu-trigger="${props.examId}"]`)
@@ -53,9 +58,20 @@ function handleCancel() {
   confirming.value = false
 }
 
-async function handleConfirm() {
+/** 'Solo la entidad': borra el examen y deja su evento intacto. */
+async function handleDeleteExamOnly() {
   try {
-    await exams.deleteExam(props.examId)
+    await exams.deleteExamWithEvent(props.examId, false)
+  } finally {
+    confirming.value = false
+    ui.closeExamMenu()
+  }
+}
+
+/** 'La entidad y su evento': borra también el evento de su vínculo vigente. */
+async function handleDeleteWithEvent() {
+  try {
+    await exams.deleteExamWithEvent(props.examId, true)
   } finally {
     confirming.value = false
     ui.closeExamMenu()
@@ -101,12 +117,38 @@ async function handleConfirm() {
 
       <div v-else data-testid="exam-delete-confirm" class="flex flex-col gap-2 px-3 py-2">
         <span class="text-body-sm text-ink">¿Eliminar examen?</span>
-        <div class="flex items-center gap-2">
+        <template v-if="hasEventLink">
+          <button
+            type="button"
+            data-testid="exam-delete-exam-only"
+            class="rounded-md bg-surface-3 px-2 py-1.5 text-caption font-medium text-ink transition-colors hover:bg-surface-2"
+            @click="handleDeleteExamOnly"
+          >
+            Solo la entidad
+          </button>
+          <button
+            type="button"
+            data-testid="exam-delete-exam-and-event"
+            class="rounded-md bg-accent-red px-2 py-1.5 text-caption font-medium text-on-primary transition-colors hover:opacity-90"
+            @click="handleDeleteWithEvent"
+          >
+            La entidad y su evento
+          </button>
+          <button
+            type="button"
+            data-testid="exam-delete-confirm-no"
+            class="rounded-md px-2 py-1 text-caption font-medium text-ink-muted transition-colors hover:bg-surface-2"
+            @click="handleCancel"
+          >
+            Cancelar
+          </button>
+        </template>
+        <div v-else class="flex items-center gap-2">
           <button
             type="button"
             data-testid="exam-delete-confirm-yes"
             class="flex-1 rounded-md bg-accent-red px-2 py-1.5 text-caption font-medium text-on-primary transition-colors hover:opacity-90"
-            @click="handleConfirm"
+            @click="handleDeleteExamOnly"
           >
             Eliminar
           </button>
