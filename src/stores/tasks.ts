@@ -2,12 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
 import { blockColorRgb } from '@/lib/scheduleColors'
-import {
-  resolveEntityLink,
-  type EntityEventLink,
-  type EventChoice,
-  type EventLinkedEntity,
-} from '@/lib/entityEventLink'
+import type { EventChoice } from '@/lib/entityEventLink'
+import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
 import {
   rowToTask,
   pruneEmptySteps,
@@ -36,15 +32,6 @@ function uuidv4(): string {
 
 function localDateToIso(dateStr: string): string {
   return `${dateStr}T00:00:00.000Z`
-}
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
-}
-
-/** Adapta la tarea a la forma genérica del resolutor de vínculos. */
-function taskLinkEntity(task: Task): EventLinkedEntity {
-  return { date: task.due_date ?? '', event_link: task.event_link }
 }
 
 export function daysUntilDue(dueDate: string | null): number {
@@ -201,23 +188,21 @@ export const useTasksStore = defineStore('tasks', () => {
     return block ? blockColorRgb(block.color) : task.color
   }
 
-  /**
-   * Crea el evento de la tarea (siempre de todo el día) y devuelve su vínculo.
-   * `local` va al almacenamiento local; `new` al calendario elegido. Usa el
-   * evento devuelto por el calendario, sin diferenciar el store antes/después.
-   */
-  async function createEventForTask(task: Task, choice: EventChoice): Promise<EntityEventLink> {
-    if (!task.due_date) throw new Error('La tarea necesita una fecha para crear su evento.')
-    const calendar = useCalendarStore()
-    const calendarId = choice.mode === 'new' ? choice.calendarId : 'local'
-    const created = await calendar.createEvent(calendarId, {
-      title: task.title,
-      allDay: true,
-      start: task.due_date,
-      end: '',
-    })
-    return { calendarId: created.calendarId, eventId: created.id }
-  }
+  // Ciclo de vida del vínculo entidad→evento (ADR 0010), compartido con los
+  // exámenes. La fecha de la tarea (`due_date`) es la fuente de verdad; sin
+  // fecha no hay evento posible.
+  const lifecycle = createEntityEventLifecycle<Task, CreateTaskDraft, UpdateTaskDraft>({
+    calendar: () => useCalendarStore(),
+    date: (task) => task.due_date ?? '',
+    draftDate: (patch) => patch.due_date,
+    link: (task) => task.event_link,
+    find: (id) => tasks.value.find((t) => t.id === id),
+    persistCreate: (draft) => createTask(draft),
+    persistUpdate: (id, patch) => updateTask(id, patch),
+    persistLink: (id, link) => updateTask(id, { event_link: link }),
+    persistDelete: (id) => deleteTask(id),
+    missingDateMessage: 'La tarea necesita una fecha para crear su evento.',
+  })
 
   /**
    * Crea la tarea y, según la elección, su evento. La entidad se persiste
@@ -229,18 +214,8 @@ export const useTasksStore = defineStore('tasks', () => {
     draft: CreateTaskDraft,
     choice: EventChoice
   ): Promise<{ task: Task; eventError: string | null }> {
-    const link = choice.mode === 'existing' ? choice.link : null
-    const task = await createTask({ ...draft, event_link: link })
-    if (choice.mode !== 'local' && choice.mode !== 'new') {
-      return { task, eventError: null }
-    }
-    try {
-      const createdLink = await createEventForTask(task, choice)
-      const linked = await updateTask(task.id, { event_link: createdLink })
-      return { task: linked, eventError: null }
-    } catch (e) {
-      return { task, eventError: errorMessage(e) }
-    }
+    const { entity, eventError } = await lifecycle.createWithEvent(draft, choice)
+    return { task: entity, eventError }
   }
 
   /**
@@ -254,55 +229,8 @@ export const useTasksStore = defineStore('tasks', () => {
     patch: UpdateTaskDraft,
     choice: EventChoice
   ): Promise<{ task: Task; eventError: string | null }> {
-    const calendar = useCalendarStore()
-    const previous = tasks.value.find((t) => t.id === id)
-
-    if (choice.mode === 'none') {
-      const task = await updateTask(id, { ...patch, event_link: null })
-      return { task, eventError: null }
-    }
-
-    if (choice.mode === 'existing') {
-      const task = await updateTask(id, { ...patch, event_link: choice.link })
-      const previousLink = previous?.event_link ?? null
-      const sameEvent =
-        previousLink !== null &&
-        previousLink.calendarId === choice.link.calendarId &&
-        previousLink.eventId === choice.link.eventId
-      const wasVigente =
-        previous !== undefined &&
-        previousLink !== null &&
-        resolveEntityLink(taskLinkEntity(previous), calendar.events) !== undefined
-      const titleChanged =
-        previous !== undefined && patch.title !== undefined && patch.title !== previous.title
-      const dateChanged =
-        previous !== undefined &&
-        patch.due_date !== undefined &&
-        patch.due_date !== previous.due_date
-      if (wasVigente && sameEvent && (titleChanged || dateChanged)) {
-        try {
-          await calendar.updateEvent(choice.link.calendarId, choice.link.eventId, {
-            title: task.title,
-            allDay: true,
-            start: task.due_date ?? '',
-            end: '',
-          })
-        } catch (e) {
-          return { task, eventError: errorMessage(e) }
-        }
-      }
-      return { task, eventError: null }
-    }
-
-    // local | new: primero la entidad, después el evento.
-    const task = await updateTask(id, patch)
-    try {
-      const createdLink = await createEventForTask(task, choice)
-      const linked = await updateTask(id, { event_link: createdLink })
-      return { task: linked, eventError: null }
-    } catch (e) {
-      return { task, eventError: errorMessage(e) }
-    }
+    const { entity, eventError } = await lifecycle.updateWithEvent(id, patch, choice)
+    return { task: entity, eventError }
   }
 
   /**
@@ -311,14 +239,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * tarea.
    */
   async function deleteTaskWithEvent(id: string, deleteEvent: boolean): Promise<void> {
-    const task = tasks.value.find((t) => t.id === id)
-    if (deleteEvent && task && task.event_link) {
-      const resolved = resolveEntityLink(taskLinkEntity(task), useCalendarStore().events)
-      if (resolved) {
-        await useCalendarStore().deleteEvent(resolved.calendarId, resolved.id)
-      }
-    }
-    await deleteTask(id)
+    await lifecycle.deleteWithEvent(id, deleteEvent)
   }
 
   return {
