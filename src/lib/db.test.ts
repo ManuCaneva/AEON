@@ -56,6 +56,9 @@ const mockTaskRow = {
   color: '#ff5500',
   status: 'todo',
   due_date: null,
+  block_id: null,
+  calendar_id: null,
+  event_id: null,
   steps: '[]',
   sort_order: 0,
   created_at: '2026-01-01T00:00:00.000Z',
@@ -153,6 +156,39 @@ describe('db.createTask - shape hacia Rust', () => {
     ).rejects.toThrow()
     expect(invoke).not.toHaveBeenCalled()
   })
+
+  it('envía bloque y vínculo al crear (null cuando no hay)', async () => {
+    await createTask(
+      { title: 'Test', color: '#ff5500', status: 'todo', steps: [] },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('envía bloque y vínculo explícitos al crear', async () => {
+    await createTask(
+      {
+        title: 'Test',
+        color: '#ff5500',
+        status: 'todo',
+        steps: [],
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
 })
 
 describe('db.listTasks', () => {
@@ -211,6 +247,44 @@ describe('db.updateTask - shape hacia Rust', () => {
     expect(payload.input.steps).toBe(
       JSON.stringify([{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Paso', done: true }])
     )
+  })
+
+  it('omite bloque y vínculo cuando el patch no los incluye (no toca las columnas)', async () => {
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeUndefined()
+    expect(payload.input.calendar_id).toBeUndefined()
+    expect(payload.input.event_id).toBeUndefined()
+  })
+
+  it('envía null para limpiar bloque y vínculo, y el par para fijarlo', async () => {
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: null, event_link: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const cleared = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(cleared.input.block_id).toBeNull()
+    expect(cleared.input.calendar_id).toBeNull()
+    expect(cleared.input.event_id).toBeNull()
+
+    vi.mocked(invoke).mockClear()
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      {
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+        event_link: { calendarId: 'primary', eventId: 'evt-2' },
+      },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const linked = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(linked.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+    expect(linked.input.calendar_id).toBe('primary')
+    expect(linked.input.event_id).toBe('evt-2')
   })
 })
 

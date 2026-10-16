@@ -207,6 +207,9 @@ export async function createTask(
       color: row.color,
       status: row.status,
       due_date: row.due_date,
+      block_id: row.block_id ?? null,
+      calendar_id: row.calendar_id ?? null,
+      event_id: row.event_id ?? null,
       steps: row.steps,
       sort_order: row.sort_order,
       created_at,
@@ -237,6 +240,11 @@ export async function updateTask(
       color: row.color,
       status: row.status,
       due_date: row.due_date ?? undefined,
+      // El bloque y el vínculo son double-Option: undefined no toca la
+      // columna; null la limpia; un valor la fija.
+      block_id: validated.block_id,
+      calendar_id: row.calendar_id,
+      event_id: row.event_id,
       steps: validated.steps !== undefined ? row.steps : undefined,
       sort_order: row.sort_order,
       updated_at,

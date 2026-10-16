@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { uuid, isoTimestamp, localDate, hexColor, trimmed, normalizeTimestamp } from './primitives'
+import { EntityEventLinkSchema, type EntityEventLink } from './entityLink'
 
 export const TaskStatusSchema = z.enum(['todo', 'doing', 'done'])
 export type TaskStatus = z.infer<typeof TaskStatusSchema>
@@ -28,6 +29,10 @@ export const TaskSchema = z.object({
   color: hexColor,
   status: TaskStatusSchema,
   due_date: localDate.nullable().default(null),
+  // Bloque del Cronograma semanal (la materia). Opcional: null = sin bloque.
+  block_id: uuid.nullable().default(null),
+  // Vínculo opcional a un evento del calendario: null = sin vínculo.
+  event_link: EntityEventLinkSchema.nullable().default(null),
   steps: TaskStepSchema.array().default([]),
   sort_order: z.number().int().default(0),
   created_at: isoTimestamp,
@@ -42,10 +47,14 @@ export const CreateTaskDraftSchema = z.object({
   color: hexColor,
   status: TaskStatusSchema.default('todo'),
   due_date: localDate.optional(),
+  block_id: uuid.nullable().default(null),
+  event_link: EntityEventLinkSchema.nullable().default(null),
   steps: TaskStepSchema.array().default([]),
   sort_order: z.number().int().optional(),
 })
-export type CreateTaskDraft = z.infer<typeof CreateTaskDraftSchema>
+export type CreateTaskDraft = z.input<typeof CreateTaskDraftSchema>
+// Tipo de ENTRADA: los defaults (estado, pasos, bloque, vínculo) viven en el
+// schema y quien crea una tarea no necesita repetirlos.
 
 export const UpdateTaskDraftSchema = CreateTaskDraftSchema.partial()
 export type UpdateTaskDraft = z.infer<typeof UpdateTaskDraftSchema>
@@ -57,6 +66,9 @@ export const TaskRowSchema = z.object({
   color: z.string(),
   status: z.string(),
   due_date: z.string().nullable(),
+  block_id: z.string().nullable(),
+  calendar_id: z.string().nullable(),
+  event_id: z.string().nullable(),
   steps: z.string(),
   sort_order: z.number().int(),
   created_at: z.string(),
@@ -76,6 +88,8 @@ export function rowToTask(row: TaskRow): Task {
     color: row.color,
     status: row.status,
     due_date: row.due_date,
+    block_id: row.block_id,
+    event_link: linkFromColumns(row.calendar_id, row.event_id),
     steps: parsedSteps,
     sort_order: row.sort_order,
     created_at: normalizeTimestamp(row.created_at),
@@ -84,12 +98,24 @@ export function rowToTask(row: TaskRow): Task {
   })
 }
 
+/** Reconstruye el par (calendarId, eventId) sólo si ambas columnas existen. */
+function linkFromColumns(
+  calendarId: string | null,
+  eventId: string | null
+): EntityEventLink | null {
+  if (!calendarId || !eventId) return null
+  return { calendarId, eventId }
+}
+
 export function taskToRow(t: CreateTaskDraft | UpdateTaskDraft | Task): {
   title?: string
   description: string | null
   color?: string
   status: TaskStatus
   due_date: string | null
+  block_id?: string | null
+  calendar_id?: string | null
+  event_id?: string | null
   steps: string
   sort_order: number
 } {
@@ -99,6 +125,15 @@ export function taskToRow(t: CreateTaskDraft | UpdateTaskDraft | Task): {
     description: ('description' in t ? t.description : null) ?? null,
     status: ('status' in t ? t.status : 'todo') as TaskStatus,
     due_date: ('due_date' in t ? t.due_date : null) ?? null,
+    ...('block_id' in t && t.block_id !== undefined ? { block_id: t.block_id } : {}),
+    // El par se persiste en dos columnas. `undefined` no toca ninguna;
+    // `null` limpia ambas; un objeto las fija.
+    ...('event_link' in t && t.event_link !== undefined
+      ? {
+          calendar_id: t.event_link?.calendarId ?? null,
+          event_id: t.event_link?.eventId ?? null,
+        }
+      : {}),
     steps: JSON.stringify('steps' in t && t.steps ? t.steps : []),
     sort_order: 'sort_order' in t && t.sort_order !== undefined ? t.sort_order : 0,
   }
