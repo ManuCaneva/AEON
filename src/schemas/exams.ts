@@ -12,23 +12,45 @@ import { blockColorSchema } from './weeklySchedule'
 export const ExamStatusSchema = z.enum(['pendiente', 'estudiando', 'rendido'])
 export type ExamStatus = z.infer<typeof ExamStatusSchema>
 
-// Tema del examen: lista embebida en la fila, igual que los Pasos de una
-// Tarea. El `id` lo genera el store en TS con crypto.randomUUID.
-export const ExamTopicSchema = z.object({
+// Subtema de un tema: misma forma que un Tema, un solo nivel (un subtema no
+// tiene subtemas). Viaja embebido dentro del tema, como los Temas viajan
+// dentro del examen. El `id` lo genera el store en TS con crypto.randomUUID.
+export const ExamSubtopicSchema = z.object({
   id: uuid,
   title: trimmed(1, 100),
   completed: z.boolean(),
 })
+export type ExamSubtopic = z.infer<typeof ExamSubtopicSchema>
+
+// Tema del examen: lista embebida en la fila, igual que los Pasos de una
+// Tarea. Cada tema lleva sus subtemas (un solo nivel). Los temas viejos
+// persistidos sin `subtopics` se leen con lista vacía: no hay migración.
+export const ExamTopicSchema = z.object({
+  id: uuid,
+  title: trimmed(1, 100),
+  completed: z.boolean(),
+  subtopics: ExamSubtopicSchema.array().default([]),
+})
 export type ExamTopic = z.infer<typeof ExamTopicSchema>
+// Tipo de ENTRADA del tema: `subtopics` es opcional porque el schema lo
+// completa con default. Lo usan el store y el formulario para armar filas.
+export type ExamTopicInput = z.input<typeof ExamTopicSchema>
 
 /**
- * Descarta los temas sin título antes de persistirlos: una fila vacía en el
- * editor no bloquea el alta del examen. La validación del tema persistido
- * (`title` no vacío) sigue vigente, pero se aplica recién sobre lo que llega
- * a la fila.
+ * Descarta los temas y subtemas sin título antes de persistirlos: una fila
+ * vacía en el editor no bloquea el alta del examen. La validación del tema
+ * persistido (`title` no vacío) sigue vigente, pero se aplica recién sobre lo
+ * que llega a la fila. Un tema sin subtemas queda con lista vacía.
  */
-export function pruneEmptyTopics(topics: ExamTopic[]): ExamTopic[] {
-  return topics.filter((topic) => topic.title.trim() !== '')
+export function pruneEmptyTopics(topics: ExamTopicInput[]): ExamTopic[] {
+  return topics
+    .filter((topic) => topic.title.trim() !== '')
+    .map((topic) => ({
+      id: topic.id,
+      title: topic.title,
+      completed: topic.completed,
+      subtopics: (topic.subtopics ?? []).filter((subtopic) => subtopic.title.trim() !== ''),
+    }))
 }
 
 // Vínculo opcional a un evento del calendario. La identidad del evento es el

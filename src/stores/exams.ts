@@ -113,12 +113,96 @@ export const useExamsStore = defineStore('exams', () => {
     })
   }
 
-  /** Invierte `completed` del tema; NO cambia el estado del examen. */
+  /**
+   * Invierte `completed` del tema; NO cambia el estado del examen. Marcar el
+   * tema marca todos sus subtemas de una sola acción; desmarcarlo no toca los
+   * subtemas (no hay propagación inversa).
+   */
   async function toggleTopic(examId: string, topicId: string): Promise<void> {
     const exam = exams.value.find((e) => e.id === examId)
     if (!exam) return
     await updateExam(examId, {
-      topics: exam.topics.map((t) => (t.id === topicId ? { ...t, completed: !t.completed } : t)),
+      topics: exam.topics.map((t) => {
+        if (t.id !== topicId) return t
+        if (t.completed) return { ...t, completed: false }
+        return {
+          ...t,
+          completed: true,
+          subtopics: t.subtopics.map((s) => ({ ...s, completed: true })),
+        }
+      }),
+    })
+  }
+
+  /** Subtemas: lista embebida de un tema. Cada acción persiste vía updateExam. */
+
+  async function addSubtopic(examId: string, topicId: string, title: string): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) =>
+        t.id === topicId
+          ? { ...t, subtopics: [...t.subtopics, { id: uuidv4(), title, completed: false }] }
+          : t
+      ),
+    })
+  }
+
+  async function updateSubtopic(
+    examId: string,
+    topicId: string,
+    subtopicId: string,
+    title: string
+  ): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) =>
+        t.id === topicId
+          ? {
+              ...t,
+              subtopics: t.subtopics.map((s) => (s.id === subtopicId ? { ...s, title } : s)),
+            }
+          : t
+      ),
+    })
+  }
+
+  async function removeSubtopic(
+    examId: string,
+    topicId: string,
+    subtopicId: string
+  ): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) =>
+        t.id === topicId
+          ? { ...t, subtopics: t.subtopics.filter((s) => s.id !== subtopicId) }
+          : t
+      ),
+    })
+  }
+
+  /** Invierte `completed` del subtema; no toca el tema ni los demás subtemas. */
+  async function toggleSubtopic(
+    examId: string,
+    topicId: string,
+    subtopicId: string
+  ): Promise<void> {
+    const exam = exams.value.find((e) => e.id === examId)
+    if (!exam) return
+    await updateExam(examId, {
+      topics: exam.topics.map((t) =>
+        t.id === topicId
+          ? {
+              ...t,
+              subtopics: t.subtopics.map((s) =>
+                s.id === subtopicId ? { ...s, completed: !s.completed } : s
+              ),
+            }
+          : t
+      ),
     })
   }
 
@@ -181,6 +265,10 @@ export const useExamsStore = defineStore('exams', () => {
     updateTopic,
     removeTopic,
     toggleTopic,
+    addSubtopic,
+    updateSubtopic,
+    removeSubtopic,
+    toggleSubtopic,
     blockFor,
     colorFor,
     overlayByDate,

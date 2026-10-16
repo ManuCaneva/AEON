@@ -3,6 +3,7 @@ import {
   ExamSchema,
   ExamStatusSchema,
   ExamTopicSchema,
+  ExamSubtopicSchema,
   CreateExamDraftSchema,
   UpdateExamDraftSchema,
   ExamRowSchema,
@@ -42,6 +43,51 @@ describe('ExamTopicSchema', () => {
   it('rechaza un id que no es uuid', () => {
     expect(() => ExamTopicSchema.parse({ id: 'tema-1', title: 'Tema', completed: false })).toThrow()
   })
+
+  it('sin subtemas lee una lista vacía', () => {
+    expect(
+      ExamTopicSchema.parse({ id: validUuid2, title: 'Tema', completed: false }).subtopics
+    ).toEqual([])
+  })
+
+  it('acepta subtemas embebidos (un solo nivel)', () => {
+    const parsed = ExamTopicSchema.parse({
+      id: validUuid2,
+      title: 'Unidad 1',
+      completed: false,
+      subtopics: [{ id: validUuid, title: 'Sucesiones', completed: true }],
+    })
+    expect(parsed.subtopics).toHaveLength(1)
+    expect(parsed.subtopics[0]).toEqual({
+      id: validUuid,
+      title: 'Sucesiones',
+      completed: true,
+    })
+  })
+})
+
+describe('ExamSubtopicSchema', () => {
+  it('acepta un subtema válido y normaliza el título', () => {
+    const parsed = ExamSubtopicSchema.parse({
+      id: validUuid2,
+      title: '  Sucesiones  ',
+      completed: false,
+    })
+    expect(parsed.title).toBe('Sucesiones')
+    expect(parsed.completed).toBe(false)
+  })
+
+  it('rechaza un título vacío', () => {
+    expect(() =>
+      ExamSubtopicSchema.parse({ id: validUuid2, title: '   ', completed: false })
+    ).toThrow()
+  })
+
+  it('rechaza un id que no es uuid', () => {
+    expect(() =>
+      ExamSubtopicSchema.parse({ id: 'sub-1', title: 'Subtema', completed: false })
+    ).toThrow()
+  })
 })
 
 describe('pruneEmptyTopics', () => {
@@ -51,7 +97,7 @@ describe('pruneEmptyTopics', () => {
       { id: validUuid2, title: '   ', completed: false },
     ]
     expect(pruneEmptyTopics(topics)).toEqual([
-      { id: validUuid, title: 'Límites', completed: false },
+      { id: validUuid, title: 'Límites', completed: false, subtopics: [] },
     ])
   })
 
@@ -70,6 +116,35 @@ describe('pruneEmptyTopics', () => {
 
   it('sin temas devuelve una lista vacía', () => {
     expect(pruneEmptyTopics([])).toEqual([])
+  })
+
+  it('descarta los subtemas sin título dentro del tema', () => {
+    const topics = [
+      {
+        id: validUuid,
+        title: 'Unidad 1',
+        completed: false,
+        subtopics: [
+          { id: validUuid2, title: 'Sucesiones', completed: false },
+          { id: validUuid, title: '   ', completed: false },
+        ],
+      },
+    ]
+    expect(pruneEmptyTopics(topics)).toEqual([
+      {
+        id: validUuid,
+        title: 'Unidad 1',
+        completed: false,
+        subtopics: [{ id: validUuid2, title: 'Sucesiones', completed: false }],
+      },
+    ])
+  })
+
+  it('un tema sin subtemas conserva la lista vacía', () => {
+    const topics = [{ id: validUuid, title: 'Unidad 1', completed: false, subtopics: [] }]
+    expect(pruneEmptyTopics(topics)).toEqual([
+      { id: validUuid, title: 'Unidad 1', completed: false, subtopics: [] },
+    ])
   })
 })
 
@@ -350,8 +425,42 @@ describe('rowToExam', () => {
       ]),
     })
     expect(exam.topics).toHaveLength(2)
-    expect(exam.topics[0]).toEqual({ id: validUuid2, title: 'Derivadas', completed: true })
+    expect(exam.topics[0]).toEqual({
+      id: validUuid2,
+      title: 'Derivadas',
+      completed: true,
+      subtopics: [],
+    })
     expect(exam.topics[1].completed).toBe(false)
+  })
+
+  it('lee temas viejos sin subtemas como lista vacía (sin migrar datos)', () => {
+    const exam = rowToExam({
+      ...rawRow,
+      topics: JSON.stringify([
+        { id: validUuid2, title: 'Límites', completed: false },
+        { id: validUuid, title: 'Derivadas', completed: true },
+      ]),
+    })
+    expect(exam.topics[0].subtopics).toEqual([])
+    expect(exam.topics[1].subtopics).toEqual([])
+  })
+
+  it('parsea los subtemas embebidos de cada tema', () => {
+    const exam = rowToExam({
+      ...rawRow,
+      topics: JSON.stringify([
+        {
+          id: validUuid2,
+          title: 'Unidad 1',
+          completed: false,
+          subtopics: [{ id: validUuid, title: '  Sucesiones  ', completed: true }],
+        },
+      ]),
+    })
+    expect(exam.topics[0].subtopics).toEqual([
+      { id: validUuid, title: 'Sucesiones', completed: true },
+    ])
   })
 
   it('sin temas persistidos mapea una lista vacía', () => {
@@ -470,7 +579,46 @@ describe('examToRow', () => {
       created_at: validIso,
       updated_at: validIso,
     })
-    expect(domain.topics).toEqual([{ id: validUuid2, title: 'Límites', completed: true }])
+    expect(domain.topics).toEqual([
+      { id: validUuid2, title: 'Límites', completed: true, subtopics: [] },
+    ])
+  })
+
+  it('roundtrip dominio↔fila preserva los subtemas', () => {
+    const row = examToRow({
+      title: 'Parcial',
+      date: validDate,
+      topics: [
+        {
+          id: validUuid2,
+          title: 'Unidad 1',
+          completed: false,
+          subtopics: [
+            { id: validUuid, title: 'Sucesiones', completed: true },
+            { id: validUuid, title: 'Límites', completed: false },
+          ],
+        },
+      ],
+    })
+    const domain = rowToExam({
+      id: validUuid,
+      title: row.title!,
+      date: row.date!,
+      status: 'pendiente',
+      grade: null,
+      block_id: null,
+      fallback_color: 'lavender',
+      calendar_id: null,
+      event_id: null,
+      topics: row.topics,
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+    })
+    expect(domain.topics[0].subtopics).toEqual([
+      { id: validUuid, title: 'Sucesiones', completed: true },
+      { id: validUuid, title: 'Límites', completed: false },
+    ])
   })
 
   it('roundtrip dominio↔fila preserva el vínculo al evento', () => {

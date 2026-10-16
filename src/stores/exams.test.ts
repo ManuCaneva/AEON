@@ -204,8 +204,8 @@ describe('exams store - temas', () => {
       examId,
       {
         topics: [
-          { id: topicA, title: 'Límites', completed: true },
-          { id: topicB, title: 'Derivadas', completed: true },
+          { id: topicA, title: 'Límites', completed: true, subtopics: [] },
+          { id: topicB, title: 'Derivadas', completed: true, subtopics: [] },
         ],
       },
       expect.any(String)
@@ -252,8 +252,8 @@ describe('exams store - temas', () => {
       examId,
       {
         topics: [
-          { id: topicA, title: 'Sucesiones', completed: false },
-          { id: topicB, title: 'Derivadas', completed: true },
+          { id: topicA, title: 'Sucesiones', completed: false, subtopics: [] },
+          { id: topicB, title: 'Derivadas', completed: true, subtopics: [] },
         ],
       },
       expect.any(String)
@@ -269,7 +269,7 @@ describe('exams store - temas', () => {
 
     expect(db.updateExam).toHaveBeenCalledWith(
       examId,
-      { topics: [{ id: topicB, title: 'Derivadas', completed: true }] },
+      { topics: [{ id: topicB, title: 'Derivadas', completed: true, subtopics: [] }] },
       expect.any(String)
     )
     expect(store.exams[0].topics).toHaveLength(1)
@@ -311,7 +311,9 @@ describe('exams store - filas vacías al guardar', () => {
     })
 
     const draft = vi.mocked(db.createExam).mock.calls[0][0] as { topics: unknown[] }
-    expect(draft.topics).toEqual([{ id: topicA, title: 'Límites', completed: false }])
+    expect(draft.topics).toEqual([
+      { id: topicA, title: 'Límites', completed: false, subtopics: [] },
+    ])
   })
 
   it('al crear un examen sin ningún tema válido persiste una lista vacía', async () => {
@@ -345,7 +347,9 @@ describe('exams store - filas vacías al guardar', () => {
     })
 
     const patch = vi.mocked(db.updateExam).mock.calls[0][1] as { topics: unknown[] }
-    expect(patch.topics).toEqual([{ id: topicA, title: 'Límites', completed: false }])
+    expect(patch.topics).toEqual([
+      { id: topicA, title: 'Límites', completed: false, subtopics: [] },
+    ])
   })
 
   it('un patch sin temas no toca la lista de temas', async () => {
@@ -356,6 +360,172 @@ describe('exams store - filas vacías al guardar', () => {
 
     const patch = vi.mocked(db.updateExam).mock.calls[0][1] as Record<string, unknown>
     expect(patch).toEqual({ date: '2026-07-01' })
+  })
+})
+
+describe('exams store - subtemas', () => {
+  const examId = '11111111-1111-4111-8111-111111111111'
+  const topicA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const topicB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const subA1 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const subA2 = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+
+  function topicsRow(topics: unknown) {
+    return makeRow({ id: examId, topics: JSON.stringify(topics) })
+  }
+
+  function topicFor(store: ReturnType<typeof useExamsStore>, id: string) {
+    return store.exams[0].topics.find((t) => t.id === id)!
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.listExams).mockResolvedValue([
+      topicsRow([
+        {
+          id: topicA,
+          title: 'Unidad 1',
+          completed: false,
+          subtopics: [
+            { id: subA1, title: 'Sucesiones', completed: false },
+            { id: subA2, title: 'Límites', completed: true },
+          ],
+        },
+        { id: topicB, title: 'Unidad 2', completed: false, subtopics: [] },
+      ]),
+    ])
+    vi.mocked(db.updateExam).mockImplementation(async (id, patch) =>
+      makeRow({
+        id,
+        topics: patch.topics !== undefined ? JSON.stringify(patch.topics) : '[]',
+      })
+    )
+  })
+
+  it('addSubtopic agrega un subtema sin completar con id generado y persiste', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.addSubtopic(examId, topicA, 'Derivadas')
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    const subtopics = topicFor(store, topicA).subtopics
+    expect(subtopics).toHaveLength(3)
+    expect(subtopics[2].title).toBe('Derivadas')
+    expect(subtopics[2].completed).toBe(false)
+    expect(typeof subtopics[2].id).toBe('string')
+    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as { topics: { subtopics: unknown[] }[] }
+    expect(patch.topics[0].subtopics).toHaveLength(3)
+  })
+
+  it('updateSubtopic cambia el título del subtema y persiste', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.updateSubtopic(examId, topicA, subA1, 'Series')
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    expect(topicFor(store, topicA).subtopics).toEqual([
+      { id: subA1, title: 'Series', completed: false },
+      { id: subA2, title: 'Límites', completed: true },
+    ])
+  })
+
+  it('removeSubtopic quita el subtema y persiste', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.removeSubtopic(examId, topicA, subA1)
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    expect(topicFor(store, topicA).subtopics).toEqual([
+      { id: subA2, title: 'Límites', completed: true },
+    ])
+  })
+
+  it('toggleSubtopic invierte completed sin tocar los demás ni el tema', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.toggleSubtopic(examId, topicA, subA1)
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    const topic = topicFor(store, topicA)
+    expect(topic.subtopics[0].completed).toBe(true)
+    expect(topic.subtopics[1].completed).toBe(true)
+    expect(topic.completed).toBe(false)
+  })
+
+  it('marcar un tema marca todos sus subtemas de una sola acción', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.toggleTopic(examId, topicA)
+
+    expect(db.updateExam).toHaveBeenCalledTimes(1)
+    const topic = topicFor(store, topicA)
+    expect(topic.completed).toBe(true)
+    expect(topic.subtopics.every((s) => s.completed)).toBe(true)
+  })
+
+  it('desmarcar un tema no toca sus subtemas', async () => {
+    vi.mocked(db.listExams).mockResolvedValue([
+      topicsRow([
+        {
+          id: topicA,
+          title: 'Unidad 1',
+          completed: true,
+          subtopics: [
+            { id: subA1, title: 'Sucesiones', completed: true },
+            { id: subA2, title: 'Límites', completed: false },
+          ],
+        },
+      ]),
+    ])
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.toggleTopic(examId, topicA)
+
+    const topic = topicFor(store, topicA)
+    expect(topic.completed).toBe(false)
+    expect(topic.subtopics).toEqual([
+      { id: subA1, title: 'Sucesiones', completed: true },
+      { id: subA2, title: 'Límites', completed: false },
+    ])
+  })
+
+  it('marcar todos los subtemas no marca el tema automáticamente', async () => {
+    vi.mocked(db.listExams).mockResolvedValue([
+      topicsRow([
+        {
+          id: topicA,
+          title: 'Unidad 1',
+          completed: false,
+          subtopics: [
+            { id: subA1, title: 'Sucesiones', completed: true },
+            { id: subA2, title: 'Límites', completed: false },
+          ],
+        },
+      ]),
+    ])
+    const store = useExamsStore()
+    await store.loadExams()
+
+    await store.toggleSubtopic(examId, topicA, subA2)
+
+    const topic = topicFor(store, topicA)
+    expect(topic.subtopics.every((s) => s.completed)).toBe(true)
+    expect(topic.completed).toBe(false)
+  })
+
+  it('las acciones de subtema con un examen inexistente no persisten', async () => {
+    const store = useExamsStore()
+    await store.loadExams()
+    await store.addSubtopic('99999999-9999-4999-8999-999999999999', topicA, 'X')
+    await store.toggleSubtopic('99999999-9999-4999-8999-999999999999', topicA, subA1)
+    expect(db.updateExam).not.toHaveBeenCalled()
   })
 })
 
