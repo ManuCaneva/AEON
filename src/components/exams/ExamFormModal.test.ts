@@ -183,6 +183,26 @@ function removeSubtopic(index: number) {
   buttons[index].click()
 }
 
+function topicCheckboxes(): HTMLInputElement[] {
+  return Array.from(
+    document.body.querySelectorAll("[data-testid='topic-checkbox']")
+  ) as HTMLInputElement[]
+}
+
+function subtopicCheckboxes(): HTMLInputElement[] {
+  return Array.from(
+    document.body.querySelectorAll("[data-testid='subtopic-checkbox']")
+  ) as HTMLInputElement[]
+}
+
+function clickTopicCheckbox(index: number) {
+  topicCheckboxes()[index].click()
+}
+
+function clickSubtopicCheckbox(index: number) {
+  subtopicCheckboxes()[index].click()
+}
+
 function blockSelect(): HTMLSelectElement {
   return document.body.querySelector("[data-testid='exam-block-select']") as HTMLSelectElement
 }
@@ -704,6 +724,155 @@ describe('ExamFormModal', () => {
     uiMock.openEditExam('exam-1')
     await flushPromises()
     expect(subtopicInputs()[0].value).toBe('Sucesiones')
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({
+        topics: [
+          {
+            id: 't-1',
+            title: 'Unidad 1',
+            completed: false,
+            subtopics: [{ id: 's-1', title: 'Sucesiones', completed: true }],
+          },
+        ],
+      })
+    )
+  })
+
+  it('marcar un tema en el modal marca todos sus subtemas al guardar', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Uno')
+    fillSubtopic(1, 'Dos')
+    await flushPromises()
+    clickTopicCheckbox(0)
+    await flushPromises()
+    expect(subtopicCheckboxes().map((c) => c.checked)).toEqual([true, true])
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
+    }
+    expect(payload.topics[0].completed).toBe(true)
+    expect(payload.topics[0].subtopics.every((s) => s.completed)).toBe(true)
+  })
+
+  it('desmarcar un tema en el modal no toca sus subtemas', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Uno')
+    fillSubtopic(1, 'Dos')
+    await flushPromises()
+    clickTopicCheckbox(0)
+    await flushPromises()
+    clickTopicCheckbox(0)
+    await flushPromises()
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
+    }
+    expect(payload.topics[0].completed).toBe(false)
+    expect(payload.topics[0].subtopics.map((s) => s.completed)).toEqual([true, true])
+  })
+
+  it('marcar los subtemas en el modal no marca el tema', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Uno')
+    fillSubtopic(1, 'Dos')
+    await flushPromises()
+    clickSubtopicCheckbox(0)
+    clickSubtopicCheckbox(1)
+    await flushPromises()
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { completed: boolean; subtopics: { completed: boolean }[] }[]
+    }
+    expect(payload.topics[0].completed).toBe(false)
+    expect(payload.topics[0].subtopics.every((s) => s.completed)).toBe(true)
+  })
+
+  it('al editar prefilla los checks de tema y subtema', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        topics: [
+          {
+            id: 't-1',
+            title: 'Unidad 1',
+            completed: true,
+            subtopics: [
+              { id: 's-1', title: 'Sucesiones', completed: true },
+              { id: 's-2', title: 'Límites', completed: false },
+            ],
+          },
+        ],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(topicCheckboxes()[0].checked).toBe(true)
+    expect(subtopicCheckboxes().map((c) => c.checked)).toEqual([true, false])
+  })
+
+  it('un subtema marcado desde el modal se persiste al guardar', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        topics: [
+          {
+            id: 't-1',
+            title: 'Unidad 1',
+            completed: false,
+            subtopics: [{ id: 's-1', title: 'Sucesiones', completed: false }],
+          },
+        ],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    clickSubtopicCheckbox(0)
+    await flushPromises()
     submit()
     await flushPromises()
     expect(examsMock.updateExam).toHaveBeenCalledWith(

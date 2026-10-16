@@ -19,7 +19,7 @@ import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Text from '@/components/ui/Text.vue'
-import { X } from 'lucide-vue-next'
+import { Check, X } from 'lucide-vue-next'
 
 const ui = useUiStore()
 const exams = useExamsStore()
@@ -148,6 +148,24 @@ function removeSubtopic(topicIndex: number, subtopicIndex: number) {
 
 function updateSubtopicTitle(topicIndex: number, subtopicIndex: number, newTitle: string) {
   topics.value[topicIndex].subtopics[subtopicIndex].title = newTitle
+}
+
+// El formulario es local-hasta-guardar: estos toggles mutan el estado del
+// formulario y viajan dentro de `topics` al enviar. Marcar el tema marca todos
+// sus subtemas; desmarcarlo no los toca (misma regla que el store y la tarjeta).
+function toggleTopicCompleted(topicIndex: number) {
+  const topic = topics.value[topicIndex]
+  if (topic.completed) {
+    topic.completed = false
+    return
+  }
+  topic.completed = true
+  topic.subtopics.forEach((subtopic) => (subtopic.completed = true))
+}
+
+function toggleSubtopicCompleted(topicIndex: number, subtopicIndex: number) {
+  const subtopic = topics.value[topicIndex].subtopics[subtopicIndex]
+  subtopic.completed = !subtopic.completed
 }
 
 // La nota sólo tiene sentido en un examen rendido: al salir de ese estado se
@@ -335,6 +353,34 @@ async function handleSubmit(e: Event) {
           <div v-if="topics.length > 0" class="flex flex-col gap-2">
             <div v-for="(topic, index) in topics" :key="topic.id" class="flex flex-col gap-1">
               <div class="flex items-center gap-2">
+                <label
+                  class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+                  @click.stop
+                >
+                  <input
+                    type="checkbox"
+                    :checked="topic.completed"
+                    data-testid="topic-checkbox"
+                    class="peer absolute inset-0 cursor-pointer opacity-0"
+                    @change="toggleTopicCompleted(index)"
+                  />
+                  <span
+                    :class="[
+                      'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
+                      topic.completed
+                        ? 'border-primary bg-primary'
+                        : 'border-hairline-strong bg-surface-1',
+                      'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
+                    ]"
+                  >
+                    <Check
+                      v-if="topic.completed"
+                      :size="12"
+                      class="text-on-primary"
+                      stroke-width="3"
+                    />
+                  </span>
+                </label>
                 <Input
                   v-model="topic.title"
                   data-testid="topic-input"
@@ -358,6 +404,34 @@ async function handleSubmit(e: Event) {
                   :key="subtopic.id"
                   class="flex items-center gap-2"
                 >
+                  <label
+                    class="relative inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+                    @click.stop
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="subtopic.completed"
+                      data-testid="subtopic-checkbox"
+                      class="peer absolute inset-0 cursor-pointer opacity-0"
+                      @change="toggleSubtopicCompleted(index, subIndex)"
+                    />
+                    <span
+                      :class="[
+                        'flex h-4 w-4 items-center justify-center rounded border transition-colors duration-150',
+                        subtopic.completed
+                          ? 'border-primary bg-primary'
+                          : 'border-hairline-strong bg-surface-1',
+                        'peer-focus-visible:ring-2 peer-focus-visible:ring-primary-focus/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas',
+                      ]"
+                    >
+                      <Check
+                        v-if="subtopic.completed"
+                        :size="12"
+                        class="text-on-primary"
+                        stroke-width="3"
+                      />
+                    </span>
+                  </label>
                   <Input
                     v-model="subtopic.title"
                     data-testid="subtopic-input"
