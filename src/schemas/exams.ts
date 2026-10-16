@@ -21,6 +21,16 @@ export const ExamTopicSchema = z.object({
 })
 export type ExamTopic = z.infer<typeof ExamTopicSchema>
 
+/**
+ * Descarta los temas sin título antes de persistirlos: una fila vacía en el
+ * editor no bloquea el alta del examen. La validación del tema persistido
+ * (`title` no vacío) sigue vigente, pero se aplica recién sobre lo que llega
+ * a la fila.
+ */
+export function pruneEmptyTopics(topics: ExamTopic[]): ExamTopic[] {
+  return topics.filter((topic) => topic.title.trim() !== '')
+}
+
 // Vínculo opcional a un evento del calendario. La identidad del evento es el
 // PAR (calendarId, eventId): los ids de Google sólo son únicos por calendario.
 // El examen NO crea ni espeja eventos: el vínculo es un adorno y la fecha del

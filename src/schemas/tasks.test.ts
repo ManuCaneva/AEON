@@ -8,6 +8,7 @@ import {
   TaskRowSchema,
   rowToTask,
   taskToRow,
+  pruneEmptySteps,
 } from './tasks'
 
 const validUuid = '550e8400-e29b-41d4-a716-446655440000'
@@ -47,6 +48,33 @@ describe('TaskStepSchema', () => {
 
   it('rechaza id inválido', () => {
     expect(() => TaskStepSchema.parse({ id: 'not-uuid', title: 'x', done: false })).toThrow()
+  })
+})
+
+describe('pruneEmptySteps', () => {
+  it('descarta los pasos sin título y conserva los que sí lo tienen', () => {
+    const steps = [
+      { id: validUuid, title: 'Paso 1', done: false },
+      { id: validUuid2, title: '   ', done: true },
+    ]
+    expect(pruneEmptySteps(steps)).toEqual([{ id: validUuid, title: 'Paso 1', done: false }])
+  })
+
+  it('descarta el paso con título estrictamente vacío', () => {
+    const steps = [{ id: validUuid, title: '', done: false }]
+    expect(pruneEmptySteps(steps)).toEqual([])
+  })
+
+  it('si todos los pasos están vacíos devuelve una lista vacía', () => {
+    const steps = [
+      { id: validUuid, title: '', done: false },
+      { id: validUuid2, title: '  ', done: false },
+    ]
+    expect(pruneEmptySteps(steps)).toEqual([])
+  })
+
+  it('sin pasos devuelve una lista vacía', () => {
+    expect(pruneEmptySteps([])).toEqual([])
   })
 })
 

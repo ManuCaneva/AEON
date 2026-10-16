@@ -11,6 +11,16 @@ export const TaskStepSchema = z.object({
 })
 export type TaskStep = z.infer<typeof TaskStepSchema>
 
+/**
+ * Descarta los pasos sin título antes de persistirlos: una fila vacía en el
+ * editor no bloquea el alta de la tarea. La validación del paso persistido
+ * (`title` no vacío) sigue vigente, pero se aplica recién sobre lo que llega
+ * a la fila.
+ */
+export function pruneEmptySteps(steps: TaskStep[]): TaskStep[] {
+  return steps.filter((step) => step.title.trim() !== '')
+}
+
 export const TaskSchema = z.object({
   id: uuid,
   title: trimmed(1, 100),

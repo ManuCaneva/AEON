@@ -8,6 +8,7 @@ import {
   ExamRowSchema,
   rowToExam,
   examToRow,
+  pruneEmptyTopics,
 } from './exams'
 
 const validUuid = '550e8400-e29b-41d4-a716-446655440000'
@@ -40,6 +41,35 @@ describe('ExamTopicSchema', () => {
 
   it('rechaza un id que no es uuid', () => {
     expect(() => ExamTopicSchema.parse({ id: 'tema-1', title: 'Tema', completed: false })).toThrow()
+  })
+})
+
+describe('pruneEmptyTopics', () => {
+  it('descarta los temas sin título y conserva los que sí lo tienen', () => {
+    const topics = [
+      { id: validUuid, title: 'Límites', completed: false },
+      { id: validUuid2, title: '   ', completed: false },
+    ]
+    expect(pruneEmptyTopics(topics)).toEqual([
+      { id: validUuid, title: 'Límites', completed: false },
+    ])
+  })
+
+  it('descarta el tema con título estrictamente vacío', () => {
+    const topics = [{ id: validUuid, title: '', completed: true }]
+    expect(pruneEmptyTopics(topics)).toEqual([])
+  })
+
+  it('si todos los temas están vacíos devuelve una lista vacía', () => {
+    const topics = [
+      { id: validUuid, title: '', completed: false },
+      { id: validUuid2, title: '  ', completed: false },
+    ]
+    expect(pruneEmptyTopics(topics)).toEqual([])
+  })
+
+  it('sin temas devuelve una lista vacía', () => {
+    expect(pruneEmptyTopics([])).toEqual([])
   })
 })
 
