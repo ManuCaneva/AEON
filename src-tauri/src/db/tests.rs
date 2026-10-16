@@ -865,3 +865,100 @@ fn exams_event_link_round_trips_and_clears() {
     assert_eq!(event_id, None);
     assert_eq!(date, "2026-07-01", "la fecha del examen no cambia");
 }
+
+#[test]
+fn tasks_schema_adds_block_and_event_columns_with_null_defaults() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // 013_task_block_event: las columnas son aditivas y opcionales. Una tarea
+    // creada sin asociación las deja en NULL.
+    conn.execute(
+        "INSERT INTO tasks (id, title, color, status, created_at, updated_at)
+         VALUES ('task-defaults', 'Informe', '#112233', 'todo',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert task with defaults");
+
+    let (block_id, calendar_id, event_id): (Option<String>, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT block_id, calendar_id, event_id FROM tasks WHERE id = 'task-defaults'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task defaults");
+    assert_eq!(block_id, None);
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+}
+
+#[test]
+fn tasks_block_round_trips_set_null_on_block_delete_and_event_link_clears() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO schedule_blocks (id, title, color, sort_order, created_at, updated_at)
+         VALUES ('block-task', 'Química', 'cyan', 0,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert schedule block");
+
+    conn.execute(
+        "INSERT INTO tasks (id, title, color, status, block_id, calendar_id, event_id, created_at, updated_at)
+         VALUES ('task-link', 'Informe', '#112233', 'todo', 'block-task', 'local', 'evt-9',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert task with block and event link");
+
+    let (block_id, calendar_id, event_id): (Option<String>, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT block_id, calendar_id, event_id FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task link");
+    assert_eq!(block_id.as_deref(), Some("block-task"));
+    assert_eq!(calendar_id.as_deref(), Some("local"));
+    assert_eq!(event_id.as_deref(), Some("evt-9"));
+
+    // Borrar el Bloque NO borra la tarea: el bloque se anula (SET NULL) y la
+    // tarea conserva su color manual.
+    conn.execute("DELETE FROM schedule_blocks WHERE id = 'block-task'", [])
+        .expect("delete schedule block");
+
+    let (count, block_id, color): (i64, Option<String>, String) = conn
+        .query_row(
+            "SELECT (SELECT count(*) FROM tasks WHERE id = 'task-link'),
+                    block_id, color
+             FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task after block delete");
+    assert_eq!(count, 1, "la tarea debe sobrevivir al borrado del bloque");
+    assert_eq!(
+        block_id, None,
+        "block_id debe anularse (ON DELETE SET NULL)"
+    );
+    assert_eq!(color, "#112233", "conserva su color manual");
+
+    // Desvincular: el par queda NULL y la tarea sigue existiendo.
+    conn.execute(
+        "UPDATE tasks SET calendar_id = NULL, event_id = NULL WHERE id = 'task-link'",
+        [],
+    )
+    .expect("clear event link");
+    let (calendar_id, event_id): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT calendar_id, event_id FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read cleared event link");
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+}
