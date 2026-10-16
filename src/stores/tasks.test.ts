@@ -1409,3 +1409,50 @@ describe('tasks store - borrar tarea y su evento', () => {
     expect(db.deleteTask).toHaveBeenCalledWith(linkedTaskId)
   })
 })
+
+describe('tasks store - eventos representados en la agenda', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('incluye la clave del evento de una tarea activa', () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask({ event_link: { calendarId: 'local', eventId: 'evt-1' } })]
+
+    expect([...store.representedEventKeys]).toEqual(['local\u0000evt-1'])
+  })
+
+  it('incluye la clave de una tarea hecha aunque esté archivada', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'done',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect([...store.representedEventKeys]).toEqual(['local\u0000evt-1'])
+  })
+
+  it('excluye el vínculo de una tarea archivada sin completar (su evento debe verse)', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'todo',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect([...store.representedEventKeys]).toEqual([])
+  })
+
+  it('una tarea sin vínculo no aporta claves', () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask()]
+
+    expect([...store.representedEventKeys]).toEqual([])
+  })
+})

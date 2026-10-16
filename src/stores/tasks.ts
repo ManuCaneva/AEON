@@ -2,8 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
 import { blockColorRgb } from '@/lib/scheduleColors'
-import type { EventChoice } from '@/lib/entityEventLink'
+import { eventKey, type EventChoice } from '@/lib/entityEventLink'
 import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
+import { taskInAgenda } from '@/lib/taskAgenda'
 import {
   rowToTask,
   pruneEmptySteps,
@@ -76,6 +77,23 @@ export const useTasksStore = defineStore('tasks', () => {
   const archivedTasks = computed(() => tasks.value.filter((t) => t.archived_at !== null))
 
   const pendingTasks = computed(() => activeTasks.value.filter((t) => t.status !== 'done'))
+
+  /**
+   * Claves de los eventos que ya representa una tarea en la agenda, para no
+   * listarlos dos veces. La tarea se agenda el día del evento (su vencimiento
+   * no manda), así que la clave no exige el mismo día. Una tarea archivada sin
+   * completar no entra en la agenda y por eso no aporta su evento: si el evento
+   * existe, debe verse una vez en «Otros».
+   */
+  const representedEventKeys = computed<Set<string>>(() => {
+    const keys = new Set<string>()
+    for (const task of tasks.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (link) keys.add(eventKey(link.calendarId, link.eventId))
+    }
+    return keys
+  })
 
   /** Vacía el contenido en memoria (tareas y sus pasos). Para «Borrar datos». */
   function reset(): void {
@@ -249,6 +267,7 @@ export const useTasksStore = defineStore('tasks', () => {
     activeTasks,
     archivedTasks,
     pendingTasks,
+    representedEventKeys,
     reset,
     loadTasks,
     createTask,

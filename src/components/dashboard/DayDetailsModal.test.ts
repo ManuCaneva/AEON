@@ -5,6 +5,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { ref, reactive } from 'vue'
 import TimePicker from '@/components/ui/TimePicker.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { eventKey, resolveEntityLink } from '@/lib/entityEventLink'
+import { taskInAgenda } from '@/lib/taskAgenda'
 
 const hiddenCalendarIds = ref(new Set<string>())
 
@@ -54,6 +56,17 @@ const examsMock = {
   },
   colorFor: vi.fn().mockReturnValue('lavender'),
   blockFor: vi.fn().mockReturnValue(undefined),
+  get linkedEventKeys() {
+    const keys = new Set<string>()
+    for (const exam of examsState.value) {
+      const resolved = resolveEntityLink(
+        { date: exam.date, event_link: exam.event_link ?? null },
+        mockStore.events.value
+      )
+      if (resolved) keys.add(eventKey(resolved.calendarId, resolved.id))
+    }
+    return keys
+  },
 }
 
 const tasksState = ref<TaskLike[]>([])
@@ -64,6 +77,15 @@ const tasksMock = {
   },
   colorFor: vi.fn((task: TaskLike) => task.color),
   blockFor: vi.fn().mockReturnValue(undefined),
+  get representedEventKeys() {
+    const keys = new Set<string>()
+    for (const task of tasksState.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (link) keys.add(eventKey(link.calendarId, link.eventId))
+    }
+    return keys
+  },
 }
 
 const uiMock = {

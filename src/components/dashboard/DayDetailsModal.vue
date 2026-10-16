@@ -6,7 +6,8 @@ import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
 import { blockColorRgb } from '@/lib/scheduleColors'
-import { eventKey, resolveEntityLink } from '@/lib/entityEventLink'
+import { eventKey } from '@/lib/entityEventLink'
+import { taskInAgenda } from '@/lib/taskAgenda'
 import type { Task } from '@/schemas/tasks'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
@@ -66,26 +67,16 @@ function taskDay(task: Task): string | null {
 // La agenda incluye las tareas del día que siguen activas y también las ya
 // completadas (que el store archiva al darlas por hechas). Una tarea archivada
 // sin completar fue descartada por el usuario: no se muestra.
-function taskInAgenda(task: Task): boolean {
-  return task.archived_at === null || task.status === 'done'
-}
-
 const dayTasks = computed(() =>
   tasks.tasks.filter((t) => taskInAgenda(t) && taskDay(t) === props.date)
 )
 
-// Eventos que ya representan a una entidad del día: se excluyen de Otros para
-// que nada aparezca dos veces.
+// Eventos que ya representan a una entidad del día: se excluyen de «Otros»
+// para que nada aparezca dos veces. La regla de dedup vive en los stores
+// (exámenes por vínculo del mismo día; tareas por el evento que las agenda).
 const representingEventKeys = computed(() => {
-  const keys = new Set<string>()
-  for (const exam of dayExams.value) {
-    const event = resolveEntityLink(exam, store.events)
-    if (event) keys.add(eventKey(event.calendarId, event.id))
-  }
-  for (const task of dayTasks.value) {
-    const event = taskEvent(task)
-    if (event) keys.add(eventKey(event.calendarId, event.id))
-  }
+  const keys = new Set<string>(exams.linkedEventKeys)
+  for (const key of tasks.representedEventKeys) keys.add(key)
   return keys
 })
 
