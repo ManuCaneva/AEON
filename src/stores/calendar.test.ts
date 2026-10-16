@@ -948,6 +948,52 @@ describe('useCalendarStore', () => {
     expect(store.eventsByDate.has('2026-07-23')).toBe(false)
   })
 
+  it('createEvent() resuelve el evento recién creado en el calendario local', async () => {
+    const store = useCalendarStore()
+    store.connected = false
+
+    const created = await store.createEvent('local', {
+      title: 'Consulta de Análisis',
+      start: '2026-07-22',
+      end: '2026-07-22',
+      allDay: true,
+    })
+
+    expect(created.title).toBe('Consulta de Análisis')
+    expect(created.calendarId).toBe('local')
+    expect(created.date).toBe('2026-07-22')
+    // El evento devuelto es el mismo que quedó en el store.
+    expect(store.events).toContainEqual(created)
+  })
+
+  it('createEvent() resuelve el evento recién creado en Google', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'created_evt',
+        summary: 'Evento nuevo',
+        start: { dateTime: '2026-07-22T10:00:00Z' },
+        end: { dateTime: '2026-07-22T11:00:00Z' },
+      }),
+    })
+
+    const store = useCalendarStore()
+    store.connected = true
+    store.accessToken = 'at123'
+    store.events = []
+
+    const created = await store.createEvent('primary', {
+      title: 'Evento nuevo',
+      start: '2026-07-22T10:00:00Z',
+      end: '2026-07-22T11:00:00Z',
+    })
+
+    expect(created.id).toBe('created_evt')
+    expect(created.calendarId).toBe('primary')
+    expect(store.events).toContainEqual(created)
+  })
+
   it('updateEvent() performs PUT request and updates local store', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

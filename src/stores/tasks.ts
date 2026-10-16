@@ -3,7 +3,6 @@ import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
 import { blockColorRgb } from '@/lib/scheduleColors'
 import {
-  eventKey,
   resolveEntityLink,
   type EntityEventLink,
   type EventChoice,
@@ -204,21 +203,19 @@ export const useTasksStore = defineStore('tasks', () => {
 
   /**
    * Crea el evento de la tarea (siempre de todo el día) y devuelve su vínculo.
-   * `local` va al almacenamiento local; `new` al calendario elegido.
+   * `local` va al almacenamiento local; `new` al calendario elegido. Usa el
+   * evento devuelto por el calendario, sin diferenciar el store antes/después.
    */
   async function createEventForTask(task: Task, choice: EventChoice): Promise<EntityEventLink> {
     if (!task.due_date) throw new Error('La tarea necesita una fecha para crear su evento.')
     const calendar = useCalendarStore()
     const calendarId = choice.mode === 'new' ? choice.calendarId : 'local'
-    const before = new Set(calendar.events.map((e) => eventKey(e.calendarId, e.id)))
-    await calendar.createEvent(calendarId, {
+    const created = await calendar.createEvent(calendarId, {
       title: task.title,
       allDay: true,
       start: task.due_date,
       end: '',
     })
-    const created = calendar.events.find((e) => !before.has(eventKey(e.calendarId, e.id)))
-    if (!created) throw new Error('No se pudo resolver el evento recién creado.')
     return { calendarId: created.calendarId, eventId: created.id }
   }
 

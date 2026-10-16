@@ -583,7 +583,12 @@ export const useCalendarStore = defineStore('calendar', () => {
       error instanceof Error ? error.message : 'Failed to load calendar configuration'
   })
 
-  async function createEvent(calendarId: string, eventData: EventInput): Promise<void> {
+  /**
+   * Crea un evento y devuelve el `CalendarEvent` resultante. El valor devuelto
+   * es el que quedó en el store: quien lo necesite (p.ej. el vínculo de una
+   * entidad) lo usa sin tener que diferenciar el estado antes/después.
+   */
+  async function createEvent(calendarId: string, eventData: EventInput): Promise<CalendarEvent> {
     syncing.value = true
     syncError.value = null
     try {
@@ -609,7 +614,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         await saveConfig('local-calendar-events', JSON.stringify(localEvents.value))
 
         events.value = [...events.value, newEvent].sort((a, b) => a.date.localeCompare(b.date))
-        return
+        return newEvent
       }
 
       const token = await ensureAccessToken()
@@ -635,6 +640,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         calendars.value.find((c) => c.id === calendarId)?.backgroundColor ?? DEFAULT_EVENT_COLOR
       const mapped = mapGcalEventsToDomain([data], calendarId, calendarColor)[0]
       events.value = [...events.value, mapped].sort((a, b) => a.date.localeCompare(b.date))
+      return mapped
     } catch (e: unknown) {
       syncError.value = e instanceof Error ? e.message : 'Failed to create event'
       throw e

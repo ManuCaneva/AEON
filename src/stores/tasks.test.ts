@@ -966,17 +966,16 @@ function resetCalendarMock(): void {
   calendarMock.createEvent.mockImplementation(
     async (calendarId: string, data: { title: string; start: string }) => {
       const id = calendarId === 'local' ? 'local_1' : 'google_1'
-      calendarMock.events = [
-        ...calendarMock.events,
-        makeEvent({
-          id,
-          calendarId,
-          date: data.start,
-          title: data.title,
-          start: data.start,
-          end: data.start,
-        }),
-      ]
+      const created = makeEvent({
+        id,
+        calendarId,
+        date: data.start,
+        title: data.title,
+        start: data.start,
+        end: data.start,
+      })
+      calendarMock.events = [...calendarMock.events, created]
+      return created
     }
   )
   calendarMock.updateEvent.mockResolvedValue(undefined)
