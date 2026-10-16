@@ -4,6 +4,7 @@ import * as db from '@/lib/db'
 import { blockColorRgb } from '@/lib/scheduleColors'
 import {
   rowToExam,
+  pruneEmptyTopics,
   type Exam,
   type CreateExamDraft,
   type UpdateExamDraft,
@@ -61,7 +62,10 @@ export const useExamsStore = defineStore('exams', () => {
   async function createExam(draft: CreateExamDraft): Promise<Exam> {
     const now = nowIsoUtc()
     const id = uuidv4()
-    const row = await db.createExam(draft, id, now, now)
+    // Las filas sin título se descartan antes de persistir: no bloquean el alta.
+    const prepared: CreateExamDraft =
+      draft.topics !== undefined ? { ...draft, topics: pruneEmptyTopics(draft.topics) } : draft
+    const row = await db.createExam(prepared, id, now, now)
     const exam = rowToExam(row)
     setExams([...exams.value, exam])
     return exam
@@ -69,7 +73,10 @@ export const useExamsStore = defineStore('exams', () => {
 
   async function updateExam(id: string, patch: UpdateExamDraft): Promise<Exam> {
     const now = nowIsoUtc()
-    const row = await db.updateExam(id, patch, now)
+    // Igual que al crear: sólo se filtran los temas cuando el patch los trae.
+    const prepared: UpdateExamDraft =
+      patch.topics !== undefined ? { ...patch, topics: pruneEmptyTopics(patch.topics) } : patch
+    const row = await db.updateExam(id, prepared, now)
     const exam = rowToExam(row)
     setExams(exams.value.map((e) => (e.id === id ? exam : e)))
     return exam

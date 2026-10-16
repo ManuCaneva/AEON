@@ -284,6 +284,81 @@ describe('exams store - temas', () => {
   })
 })
 
+describe('exams store - filas vacías al guardar', () => {
+  const topicA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const topicB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('al crear un examen descarta los temas sin título y persiste solo los válidos', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.createExam).mockResolvedValue(
+      makeRow({
+        topics: JSON.stringify([{ id: topicA, title: 'Límites', completed: false }]),
+      })
+    )
+
+    await store.createExam({
+      title: 'Parcial',
+      date: '2026-07-01',
+      topics: [
+        { id: topicA, title: 'Límites', completed: false },
+        { id: topicB, title: '   ', completed: false },
+      ],
+    })
+
+    const draft = vi.mocked(db.createExam).mock.calls[0][0] as { topics: unknown[] }
+    expect(draft.topics).toEqual([{ id: topicA, title: 'Límites', completed: false }])
+  })
+
+  it('al crear un examen sin ningún tema válido persiste una lista vacía', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.createExam).mockResolvedValue(makeRow())
+
+    await store.createExam({
+      title: 'Parcial',
+      date: '2026-07-01',
+      topics: [
+        { id: topicA, title: '', completed: false },
+        { id: topicB, title: '  ', completed: true },
+      ],
+    })
+
+    const draft = vi.mocked(db.createExam).mock.calls[0][0] as { topics: unknown[] }
+    expect(draft.topics).toEqual([])
+  })
+
+  it('al editar descarta los temas sin título igual que al crear', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.updateExam).mockResolvedValue(
+      makeRow({ id: '11111111-1111-4111-8111-111111111111' })
+    )
+
+    await store.updateExam('11111111-1111-4111-8111-111111111111', {
+      topics: [
+        { id: topicA, title: 'Límites', completed: false },
+        { id: topicB, title: '', completed: false },
+      ],
+    })
+
+    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as { topics: unknown[] }
+    expect(patch.topics).toEqual([{ id: topicA, title: 'Límites', completed: false }])
+  })
+
+  it('un patch sin temas no toca la lista de temas', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.updateExam).mockResolvedValue(makeRow({ date: '2026-07-01' }))
+
+    await store.updateExam('11111111-1111-4111-8111-111111111111', { date: '2026-07-01' })
+
+    const patch = vi.mocked(db.updateExam).mock.calls[0][1] as Record<string, unknown>
+    expect(patch).toEqual({ date: '2026-07-01' })
+  })
+})
+
 describe('exams store - color vivo del bloque', () => {
   const blockId = '11111111-1111-4111-8111-111111111111'
   const examId = '22222222-2222-4222-8222-222222222222'

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
 import {
   rowToTask,
+  pruneEmptySteps,
   type Task,
   type TaskStep,
   type CreateTaskDraft,
@@ -92,7 +93,10 @@ export const useTasksStore = defineStore('tasks', () => {
   async function createTask(draft: CreateTaskDraft): Promise<Task> {
     const now = nowIsoUtc()
     const id = uuidv4()
-    const row = await db.createTask(draft, id, now, now)
+    // Las filas sin título se descartan antes de persistir: no bloquean el alta.
+    const prepared: CreateTaskDraft =
+      draft.steps !== undefined ? { ...draft, steps: pruneEmptySteps(draft.steps) } : draft
+    const row = await db.createTask(prepared, id, now, now)
     const task = rowToTask(row)
     tasks.value = [...tasks.value, task]
     return task
@@ -100,7 +104,10 @@ export const useTasksStore = defineStore('tasks', () => {
 
   async function updateTask(id: string, patch: UpdateTaskDraft): Promise<Task> {
     const now = nowIsoUtc()
-    const row = await db.updateTask(id, patch, now)
+    // Igual que al crear: sólo se filtran los pasos cuando el patch los trae.
+    const prepared: UpdateTaskDraft =
+      patch.steps !== undefined ? { ...patch, steps: pruneEmptySteps(patch.steps) } : patch
+    const row = await db.updateTask(id, prepared, now)
     const task = rowToTask(row)
     tasks.value = tasks.value.map((t) => (t.id === id ? task : t))
     return task

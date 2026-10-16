@@ -359,6 +359,128 @@ describe('tasks store - pendingTasks', () => {
   })
 })
 
+describe('tasks store - filas vacías al guardar', () => {
+  const stepA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  const stepB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('al crear una tarea descarta los pasos sin título y persiste solo los válidos', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.createTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      steps: JSON.stringify([{ id: stepA, title: 'Ir al super', done: false }]),
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.createTask({
+      title: 'Comprar',
+      color: '#5e6ad2',
+      status: 'todo' as const,
+      steps: [
+        { id: stepA, title: 'Ir al super', done: false },
+        { id: stepB, title: '   ', done: false },
+      ],
+    })
+
+    const draft = vi.mocked(db.createTask).mock.calls[0][0] as { steps: unknown[] }
+    expect(draft.steps).toEqual([{ id: stepA, title: 'Ir al super', done: false }])
+  })
+
+  it('al crear una tarea sin ningún paso válido persiste una lista vacía', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.createTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      steps: '[]',
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.createTask({
+      title: 'Comprar',
+      color: '#5e6ad2',
+      status: 'todo' as const,
+      steps: [
+        { id: stepA, title: '', done: false },
+        { id: stepB, title: '  ', done: true },
+      ],
+    })
+
+    const draft = vi.mocked(db.createTask).mock.calls[0][0] as { steps: unknown[] }
+    expect(draft.steps).toEqual([])
+  })
+
+  it('al editar descarta los pasos sin título igual que al crear', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.updateTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      steps: JSON.stringify([{ id: stepA, title: 'Ir al super', done: false }]),
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.updateTask('11111111-1111-1111-1111-111111111111', {
+      steps: [
+        { id: stepA, title: 'Ir al super', done: false },
+        { id: stepB, title: '', done: false },
+      ],
+    })
+
+    const patch = vi.mocked(db.updateTask).mock.calls[0][1] as { steps: unknown[] }
+    expect(patch.steps).toEqual([{ id: stepA, title: 'Ir al super', done: false }])
+  })
+
+  it('un patch sin pasos no toca la lista de pasos', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.updateTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Nuevo',
+      description: null,
+      color: '#5e6ad2',
+      status: 'doing',
+      due_date: null,
+      steps: '[]',
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.updateTask('11111111-1111-1111-1111-111111111111', {
+      title: 'Nuevo',
+      status: 'doing',
+    })
+
+    const patch = vi.mocked(db.updateTask).mock.calls[0][1] as Record<string, unknown>
+    expect(patch).toEqual({ title: 'Nuevo', status: 'doing' })
+  })
+})
+
 describe('daysUntilDue', () => {
   it('should return positive days for future date', () => {
     const today = todayLocalDate()
