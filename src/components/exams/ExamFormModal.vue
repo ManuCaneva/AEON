@@ -6,6 +6,7 @@ import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useCalendarStore } from '@/stores/calendar'
 import {
   ExamStatusSchema,
+  pruneEmptyTopics,
   type ExamStatus,
   type ExamTopic,
   type ExamEventLink,
@@ -96,7 +97,11 @@ watch(
         linkedEventKey.value = editing.value.event_link
           ? eventKey(editing.value.event_link.calendarId, editing.value.event_link.eventId)
           : ''
-        topics.value = [...editing.value.topics]
+        // Copia los temas con sus subtemas garantizados como lista.
+        topics.value = editing.value.topics.map((t) => ({
+          ...t,
+          subtopics: [...(t.subtopics ?? [])],
+        }))
       } else {
         title.value = ''
         date.value = ''
@@ -117,6 +122,7 @@ function addTopic() {
     id: crypto.randomUUID(),
     title: '',
     completed: false,
+    subtopics: [],
   })
 }
 
@@ -126,6 +132,22 @@ function removeTopic(index: number) {
 
 function updateTopicTitle(index: number, newTitle: string) {
   topics.value[index].title = newTitle
+}
+
+function addSubtopic(topicIndex: number) {
+  topics.value[topicIndex].subtopics.push({
+    id: crypto.randomUUID(),
+    title: '',
+    completed: false,
+  })
+}
+
+function removeSubtopic(topicIndex: number, subtopicIndex: number) {
+  topics.value[topicIndex].subtopics.splice(subtopicIndex, 1)
+}
+
+function updateSubtopicTitle(topicIndex: number, subtopicIndex: number, newTitle: string) {
+  topics.value[topicIndex].subtopics[subtopicIndex].title = newTitle
 }
 
 // La nota sólo tiene sentido en un examen rendido: al salir de ese estado se
@@ -160,7 +182,8 @@ async function handleSubmit(e: Event) {
     return
   }
 
-  const validTopics = topics.value.filter((t) => t.title.trim())
+  // Descarta filas de tema y de subtema sin título: no bloquean el alta.
+  const validTopics = pruneEmptyTopics(topics.value)
 
   saving.value = true
   error.value = null
@@ -310,22 +333,56 @@ async function handleSubmit(e: Event) {
           </div>
 
           <div v-if="topics.length > 0" class="flex flex-col gap-2">
-            <div v-for="(topic, index) in topics" :key="topic.id" class="flex items-center gap-2">
-              <Input
-                v-model="topic.title"
-                data-testid="topic-input"
-                :placeholder="`Tema ${index + 1}`"
-                maxlength="100"
-                @update:model-value="(val) => updateTopicTitle(index, val)"
-              />
-              <button
-                type="button"
-                data-testid="remove-topic-button"
-                class="rounded p-2 text-ink-muted hover:bg-surface-2"
-                @click="removeTopic(index)"
-              >
-                <X :size="16" />
-              </button>
+            <div v-for="(topic, index) in topics" :key="topic.id" class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <Input
+                  v-model="topic.title"
+                  data-testid="topic-input"
+                  :placeholder="`Tema ${index + 1}`"
+                  maxlength="100"
+                  @update:model-value="(val) => updateTopicTitle(index, val)"
+                />
+                <button
+                  type="button"
+                  data-testid="remove-topic-button"
+                  class="rounded p-2 text-ink-muted hover:bg-surface-2"
+                  @click="removeTopic(index)"
+                >
+                  <X :size="16" />
+                </button>
+              </div>
+
+              <div class="ml-6 flex flex-col gap-1">
+                <div
+                  v-for="(subtopic, subIndex) in topic.subtopics"
+                  :key="subtopic.id"
+                  class="flex items-center gap-2"
+                >
+                  <Input
+                    v-model="subtopic.title"
+                    data-testid="subtopic-input"
+                    :placeholder="`Subtema ${subIndex + 1}`"
+                    maxlength="100"
+                    @update:model-value="(val) => updateSubtopicTitle(index, subIndex, val)"
+                  />
+                  <button
+                    type="button"
+                    data-testid="remove-subtopic-button"
+                    class="rounded p-2 text-ink-muted hover:bg-surface-2"
+                    @click="removeSubtopic(index, subIndex)"
+                  >
+                    <X :size="14" />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  data-testid="add-subtopic-button"
+                  class="self-start rounded px-2 py-1 text-caption text-ink-muted hover:bg-surface-2"
+                  @click="addSubtopic(index)"
+                >
+                  + Agregar subtema
+                </button>
+              </div>
             </div>
           </div>
         </div>

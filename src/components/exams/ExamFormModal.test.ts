@@ -16,7 +16,12 @@ const examsState = ref<
     block_id: string | null
     fallback_color: string
     event_link?: { calendarId: string; eventId: string } | null
-    topics: { id: string; title: string; completed: boolean }[]
+    topics: {
+      id: string
+      title: string
+      completed: boolean
+      subtopics?: { id: string; title: string; completed: boolean }[]
+    }[]
     sort_order: number
     created_at: string
     updated_at: string
@@ -148,6 +153,32 @@ function fillTopic(index: number, value: string) {
 function removeTopic(index: number) {
   const buttons = document.body.querySelectorAll(
     "[data-testid='remove-topic-button']"
+  ) as NodeListOf<HTMLButtonElement>
+  buttons[index].click()
+}
+
+function clickAddSubtopic(topicIndex: number) {
+  const buttons = document.body.querySelectorAll(
+    "[data-testid='add-subtopic-button']"
+  ) as NodeListOf<HTMLButtonElement>
+  buttons[topicIndex].click()
+}
+
+function subtopicInputs(): HTMLInputElement[] {
+  return Array.from(
+    document.body.querySelectorAll("[data-testid='subtopic-input'] input")
+  ) as HTMLInputElement[]
+}
+
+function fillSubtopic(index: number, value: string) {
+  const input = subtopicInputs()[index]
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function removeSubtopic(index: number) {
+  const buttons = document.body.querySelectorAll(
+    "[data-testid='remove-subtopic-button']"
   ) as NodeListOf<HTMLButtonElement>
   buttons[index].click()
 }
@@ -546,7 +577,146 @@ describe('ExamFormModal', () => {
     expect(examsMock.updateExam).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
-        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+        topics: [{ id: 't-1', title: 'Límites', completed: true, subtopics: [] }],
+      })
+    )
+  })
+
+  it('un examen sin subtemas se abre y se guarda sin subtemas', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        topics: [{ id: 't-1', title: 'Límites', completed: false }],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({
+        topics: [{ id: 't-1', title: 'Límites', completed: false, subtopics: [] }],
+      })
+    )
+  })
+
+  it('agrega un subtema a un tema y lo envía al crear', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    await flushPromises()
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Sucesiones')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { subtopics: { id: string; title: string; completed: boolean }[] }[]
+    }
+    expect(payload.topics[0].subtopics).toHaveLength(1)
+    expect(payload.topics[0].subtopics[0].title).toBe('Sucesiones')
+    expect(payload.topics[0].subtopics[0].completed).toBe(false)
+    expect(typeof payload.topics[0].subtopics[0].id).toBe('string')
+  })
+
+  it('renombra y quita subtemas de un tema', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Uno')
+    fillSubtopic(1, 'Dos')
+    await flushPromises()
+    fillSubtopic(0, 'Uno editado')
+    await flushPromises()
+    removeSubtopic(1)
+    await flushPromises()
+    expect(subtopicInputs()).toHaveLength(1)
+    submit()
+    await flushPromises()
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { subtopics: { title: string }[] }[]
+    }
+    expect(payload.topics[0].subtopics.map((s) => s.title)).toEqual(['Uno editado'])
+  })
+
+  it('descarta una fila de subtema vacía y guarda con los subtemas cargados', async () => {
+    fillTitle('Parcial')
+    fillDate('2026-08-15')
+    clickAddTopic()
+    await flushPromises()
+    fillTopic(0, 'Unidad 1')
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    clickAddSubtopic(0)
+    await flushPromises()
+    fillSubtopic(0, 'Sucesiones')
+    await flushPromises()
+    submit()
+    await flushPromises()
+    expect(examsMock.createExam).toHaveBeenCalledTimes(1)
+    const payload = examsMock.createExam.mock.calls[0][0] as {
+      topics: { subtopics: { title: string }[] }[]
+    }
+    expect(payload.topics[0].subtopics.map((s) => s.title)).toEqual(['Sucesiones'])
+  })
+
+  it('al editar prefilla los subtemas y los conserva al guardar', async () => {
+    examsState.value = [
+      {
+        id: 'exam-1',
+        title: 'Parcial',
+        date: '2026-08-15',
+        status: 'pendiente',
+        grade: null,
+        block_id: null,
+        fallback_color: 'lavender',
+        topics: [
+          {
+            id: 't-1',
+            title: 'Unidad 1',
+            completed: false,
+            subtopics: [{ id: 's-1', title: 'Sucesiones', completed: true }],
+          },
+        ],
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    uiMock.openEditExam('exam-1')
+    await flushPromises()
+    expect(subtopicInputs()[0].value).toBe('Sucesiones')
+    submit()
+    await flushPromises()
+    expect(examsMock.updateExam).toHaveBeenCalledWith(
+      'exam-1',
+      expect.objectContaining({
+        topics: [
+          {
+            id: 't-1',
+            title: 'Unidad 1',
+            completed: false,
+            subtopics: [{ id: 's-1', title: 'Sucesiones', completed: true }],
+          },
+        ],
       })
     )
   })
@@ -576,7 +746,7 @@ describe('ExamFormModal', () => {
     expect(examsMock.updateExam).toHaveBeenCalledWith(
       'exam-1',
       expect.objectContaining({
-        topics: [{ id: 't-1', title: 'Límites', completed: true }],
+        topics: [{ id: 't-1', title: 'Límites', completed: true, subtopics: [] }],
       })
     )
   })
