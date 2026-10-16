@@ -790,7 +790,12 @@ describe('db.createExam - shape hacia Rust', () => {
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.topics).toBe(
       JSON.stringify([
-        { id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true },
+        {
+          id: '660e8400-e29b-41d4-a716-446655440000',
+          title: 'Límites',
+          completed: true,
+          subtopics: [],
+        },
       ])
     )
   })
@@ -1055,7 +1060,12 @@ describe('db.updateExam - shape hacia Rust', () => {
     const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
     expect(payload.input.topics).toBe(
       JSON.stringify([
-        { id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true },
+        {
+          id: '660e8400-e29b-41d4-a716-446655440000',
+          title: 'Límites',
+          completed: true,
+          subtopics: [],
+        },
       ])
     )
   })
