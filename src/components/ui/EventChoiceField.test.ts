@@ -6,9 +6,7 @@ import type { EventChoice } from '@/lib/entityEventLink'
 import { eventKey } from '@/lib/entityEventLink'
 import type { EntityEventLink } from '@/schemas/entityLink'
 
-const calendarEvents = ref<
-  { id: string; date: string; title: string; calendarId: string }[]
->([])
+const calendarEvents = ref<{ id: string; date: string; title: string; calendarId: string }[]>([])
 const calendarConnected = ref(false)
 const calendarCalendars = ref<{ id: string; summary: string; primary?: boolean }[]>([])
 const calendarMock = {

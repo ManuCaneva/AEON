@@ -5,9 +5,6 @@
  *
  * Tipo estructural mínimo: sólo miran `archived_at` y `status`.
  */
-export function taskInAgenda(task: {
-  archived_at?: string | null
-  status: string
-}): boolean {
+export function taskInAgenda(task: { archived_at?: string | null; status: string }): boolean {
   return task.archived_at === null || task.status === 'done'
 }

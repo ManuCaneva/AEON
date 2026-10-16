@@ -23,8 +23,8 @@ describe('taskInAgenda', () => {
     expect(taskInAgenda(task({ archived_at: '2026-01-02T00:00:00.000Z', status: 'todo' }))).toBe(
       false
     )
-    expect(
-      taskInAgenda(task({ archived_at: '2026-01-02T00:00:00.000Z', status: 'doing' }))
-    ).toBe(false)
+    expect(taskInAgenda(task({ archived_at: '2026-01-02T00:00:00.000Z', status: 'doing' }))).toBe(
+      false
+    )
   })
 })
