@@ -48,6 +48,10 @@ describe('ExamContextMenu', () => {
     expect(q('exam-delete-button')).not.toBeNull()
   })
 
+  it('se apoya en el menú compartido de entidad con evento', () => {
+    expect(wrapper.findComponent({ name: 'EntityEventContextMenu' }).exists()).toBe(true)
+  })
+
   it('Editar abre el modal de edición del examen', async () => {
     ;(q('exam-edit-button') as HTMLButtonElement).click()
     await flushPromises()

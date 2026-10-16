@@ -66,6 +66,11 @@ describe('TaskContextMenu', () => {
     expect(q('task-archive-button')?.textContent).toContain('Archivar')
   })
 
+  it('se apoya en el menú compartido de entidad con evento', () => {
+    const wrapper = mountMenu()
+    expect(wrapper.findComponent({ name: 'EntityEventContextMenu' }).exists()).toBe(true)
+  })
+
   it('editar abre el formulario de edición', () => {
     mountMenu()
     q('task-edit-button')!.click()

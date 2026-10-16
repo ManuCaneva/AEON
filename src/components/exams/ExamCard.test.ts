@@ -6,6 +6,7 @@ import type { Exam } from '@/schemas/exams'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 
 const examsMock = {
+  exams: [] as Exam[],
   deleteExam: vi.fn().mockResolvedValue(undefined),
   toggleTopic: vi.fn().mockResolvedValue(undefined),
   toggleSubtopic: vi.fn().mockResolvedValue(undefined),
