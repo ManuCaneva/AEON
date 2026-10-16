@@ -54,7 +54,7 @@ const examsMock = {
   get exams() {
     return examsState.value
   },
-  colorFor: vi.fn().mockReturnValue('lavender'),
+  colorFor: vi.fn().mockReturnValue('rgb(var(--color-block-lavender))'),
   blockFor: vi.fn().mockReturnValue(undefined),
   get linkedEventKeys() {
     const keys = new Set<string>()
@@ -162,7 +162,7 @@ describe('DayDetailsModal', () => {
     hiddenCalendarIds.value = new Set<string>()
     examsState.value = []
     tasksState.value = []
-    examsMock.colorFor.mockReturnValue('lavender')
+    examsMock.colorFor.mockReturnValue('rgb(var(--color-block-lavender))')
     examsMock.blockFor.mockReturnValue(undefined)
     tasksMock.colorFor.mockImplementation((task: TaskLike) => task.color)
     tasksMock.blockFor.mockReturnValue(undefined)
@@ -459,6 +459,25 @@ describe('DayDetailsModal', () => {
       expect(section!.textContent).toContain('Evento Test 1')
     })
 
+    it('un evento de todo el día se muestra como «Todo el día», sin rango 00:00', () => {
+      mockStore.events.value = [
+        {
+          id: 'evt-allday',
+          date: '2026-07-22',
+          title: 'Feriado',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-22',
+          end: '2026-07-23',
+        },
+      ]
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-others']")
+      expect(section!.textContent).toContain('Todo el día')
+      expect(section!.textContent).not.toContain('00:00')
+    })
+
     it('no repite un evento que representa a una entidad', () => {
       examsState.value = [
         makeExam('exam-1', 'Parcial de Análisis', '2026-07-22', {
@@ -494,7 +513,7 @@ describe('DayDetailsModal', () => {
     })
 
     it('las filas de entidad muestran sólo el título y su color, sin adornos', () => {
-      examsMock.colorFor.mockReturnValue('green')
+      examsMock.colorFor.mockReturnValue('rgb(var(--color-block-green))')
       examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
       tasksMock.colorFor.mockReturnValue('rgb(var(--color-block-blue))')
       tasksState.value = [makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22' })]
@@ -542,7 +561,7 @@ describe('DayDetailsModal', () => {
     })
 
     it('el punto del examen usa el color resuelto como variable CSS', () => {
-      examsMock.colorFor.mockReturnValue('green')
+      examsMock.colorFor.mockReturnValue('rgb(var(--color-block-green))')
       examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
       factory()
 

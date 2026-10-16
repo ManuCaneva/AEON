@@ -565,7 +565,7 @@ describe('exams store - color vivo del bloque', () => {
     ])
     await store.loadExams()
 
-    expect(store.colorFor(store.exams[0])).toBe('pink')
+    expect(store.colorFor(store.exams[0])).toBe('rgb(var(--color-block-pink))')
     expect(store.blockFor(store.exams[0])).toBeUndefined()
   })
 
@@ -577,7 +577,7 @@ describe('exams store - color vivo del bloque', () => {
     ])
     await store.loadExams()
 
-    expect(store.colorFor(store.exams[0])).toBe('green')
+    expect(store.colorFor(store.exams[0])).toBe('rgb(var(--color-block-green))')
     expect(store.blockFor(store.exams[0])?.title).toBe('Física')
   })
 
@@ -589,7 +589,7 @@ describe('exams store - color vivo del bloque', () => {
     ])
     await store.loadExams()
 
-    expect(store.colorFor(store.exams[0])).toBe('cyan')
+    expect(store.colorFor(store.exams[0])).toBe('rgb(var(--color-block-cyan))')
     expect(store.blockFor(store.exams[0])).toBeUndefined()
   })
 
@@ -601,7 +601,7 @@ describe('exams store - color vivo del bloque', () => {
     ])
     await store.loadExams()
 
-    store.colorFor(store.exams[0])
+    expect(store.colorFor(store.exams[0])).toBe('rgb(var(--color-block-orange))')
     expect(store.exams[0].fallback_color).toBe('lavender')
     expect(store.exams[0].block_id).toBe(blockId)
   })

@@ -11,7 +11,7 @@ const examsMock = {
   toggleTopic: vi.fn().mockResolvedValue(undefined),
   toggleSubtopic: vi.fn().mockResolvedValue(undefined),
   blockFor: vi.fn().mockReturnValue(undefined),
-  colorFor: vi.fn().mockReturnValue('lavender'),
+  colorFor: vi.fn().mockReturnValue('rgb(var(--color-block-lavender))'),
 }
 const uiMock = {
   menuOpenForExamId: null as string | null,
@@ -84,7 +84,7 @@ describe('ExamCard', () => {
     setActivePinia(createPinia())
     uiMock.menuOpenForExamId = null
     examsMock.blockFor.mockReturnValue(undefined)
-    examsMock.colorFor.mockReturnValue('lavender')
+    examsMock.colorFor.mockReturnValue('rgb(var(--color-block-lavender))')
     vi.clearAllMocks()
   })
 
@@ -189,7 +189,7 @@ describe('ExamCard', () => {
   })
 
   it('el indicador toma el color vivo del bloque cuando existe', () => {
-    examsMock.colorFor.mockReturnValue('green')
+    examsMock.colorFor.mockReturnValue('rgb(var(--color-block-green))')
     const wrapper = mount(ExamCard, { props: { exam: { ...baseExam, block_id: 'block-1' } } })
     const indicator = wrapper.find("[data-testid='exam-color-indicator']")
     expect(indicator.attributes('style')).toContain('rgb(var(--color-block-green))')

@@ -7,7 +7,7 @@ import { useExamsStore } from '@/stores/exams'
 import { daysLabel } from '@/lib/examDays'
 import { examInitials } from '@/lib/examInitials'
 import { examStatusLabel, examStatusVariant, shouldShowGrade, formatGrade } from '@/lib/examStatus'
-import { blockColorRgb, blockColorTint } from '@/lib/scheduleColors'
+import { blockColorTint } from '@/lib/scheduleColors'
 import Badge from '@/components/ui/Badge.vue'
 import Container from '@/components/ui/Container.vue'
 import Text from '@/components/ui/Text.vue'
@@ -22,9 +22,10 @@ const ui = useUiStore()
 
 const isMenuOpen = computed(() => ui.menuOpenForExamId === props.exam.id)
 const daysText = computed(() => daysLabel(props.exam.date))
-// Color vivo: el token del bloque mientras exista; si no, el de respaldo.
-const colorToken = computed(() => exams.colorFor(props.exam))
-const color = computed(() => blockColorRgb(colorToken.value))
+// Color vivo (CSS): el del bloque mientras exista; si no, el de respaldo.
+const color = computed(() => exams.colorFor(props.exam))
+// Token del color vivo, para el tinte de la píldora de materia.
+const colorToken = computed(() => exams.blockFor(props.exam)?.color ?? props.exam.fallback_color)
 // Materia: sólo si hay bloque asociado; se muestra con sus iniciales.
 const block = computed(() => exams.blockFor(props.exam))
 const materiaLabel = computed(() => (block.value ? examInitials(block.value.title) : ''))

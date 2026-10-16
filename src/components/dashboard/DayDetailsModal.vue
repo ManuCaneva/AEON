@@ -5,7 +5,6 @@ import { useExamsStore } from '@/stores/exams'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
-import { blockColorRgb } from '@/lib/scheduleColors'
 import { eventKey } from '@/lib/entityEventLink'
 import { taskInAgenda } from '@/lib/taskAgenda'
 import type { Task } from '@/schemas/tasks'
@@ -172,6 +171,16 @@ function parseTimeFromIso(isoStr: string): string {
   return '00:00'
 }
 
+/**
+ * Rango horario del evento para la agenda. Un evento de todo el día (sin
+ * componente de hora en `start`) se muestra como «Todo el día», no como un
+ * rango 00:00 - 00:00.
+ */
+function formatEventTime(evt: CalendarEvent): string {
+  if (evt.start && !evt.start.includes('T')) return 'Todo el día'
+  return `${parseTimeFromIso(evt.start)} - ${parseTimeFromIso(evt.end)}`
+}
+
 async function saveEvent() {
   if (!title.value.trim()) {
     localError.value = 'El título es obligatorio'
@@ -327,7 +336,7 @@ function cancelEdit() {
                 <span
                   data-testid="day-exam-dot"
                   class="h-3.5 w-3.5 flex-shrink-0 rounded-full"
-                  :style="{ backgroundColor: blockColorRgb(exams.colorFor(exam)) }"
+                  :style="{ backgroundColor: exams.colorFor(exam) }"
                 />
                 <span class="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">
                   {{ exam.title }}
@@ -388,7 +397,7 @@ function cancelEdit() {
                       {{ evt.title }}
                     </h4>
                     <p class="text-caption font-medium text-ink-muted">
-                      {{ parseTimeFromIso(evt.start) }} - {{ parseTimeFromIso(evt.end) }}
+                      {{ formatEventTime(evt) }}
                     </p>
                     <p
                       v-if="evt.description"

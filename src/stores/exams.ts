@@ -12,7 +12,7 @@ import {
 } from '@/schemas/exams'
 import { useWeeklyScheduleStore } from './weeklySchedule'
 import { useCalendarStore } from './calendar'
-import type { BlockColorToken, ScheduleBlock } from '@/schemas/weeklySchedule'
+import type { ScheduleBlock } from '@/schemas/weeklySchedule'
 import type { DayOverlayByDate } from '@/schemas/calendar'
 import { resolvedEntityLinkKeys } from '@/lib/entityEventLink'
 import type { EventChoice } from '@/lib/entityEventLink'
@@ -271,11 +271,12 @@ export const useExamsStore = defineStore('exams', () => {
   }
 
   /**
-   * Color vivo del examen: el token del bloque mientras exista; si no, el
-   * color de respaldo propio. Nunca se persiste el color derivado.
+   * Color vivo del examen como color CSS: el del bloque mientras exista; si
+   * no, el de respaldo. Nunca se persiste. Misma forma que `tasks.colorFor`,
+   * para que las vistas no tengan que envolver uno sí y el otro no.
    */
-  function colorFor(exam: Exam): BlockColorToken {
-    return blockFor(exam)?.color ?? exam.fallback_color
+  function colorFor(exam: Exam): string {
+    return blockColorRgb(blockFor(exam)?.color ?? exam.fallback_color)
   }
 
   /**
@@ -288,7 +289,7 @@ export const useExamsStore = defineStore('exams', () => {
   const overlayByDate = computed<DayOverlayByDate>(() => {
     const map: DayOverlayByDate = new Map()
     for (const exam of exams.value) {
-      const dot = { id: `exam_${exam.id}`, color: blockColorRgb(colorFor(exam)) }
+      const dot = { id: `exam_${exam.id}`, color: colorFor(exam) }
       const list = map.get(exam.date)
       if (list) list.push(dot)
       else map.set(exam.date, [dot])
