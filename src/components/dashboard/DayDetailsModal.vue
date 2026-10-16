@@ -63,7 +63,16 @@ function taskDay(task: Task): string | null {
   return event ? event.date : task.due_date
 }
 
-const dayTasks = computed(() => tasks.tasks.filter((t) => taskDay(t) === props.date))
+// La agenda incluye las tareas del día que siguen activas y también las ya
+// completadas (que el store archiva al darlas por hechas). Una tarea archivada
+// sin completar fue descartada por el usuario: no se muestra.
+function taskInAgenda(task: Task): boolean {
+  return task.archived_at === null || task.status === 'done'
+}
+
+const dayTasks = computed(() =>
+  tasks.tasks.filter((t) => taskInAgenda(t) && taskDay(t) === props.date)
+)
 
 // Eventos que ya representan a una entidad del día: se excluyen de Otros para
 // que nada aparezca dos veces.

@@ -43,6 +43,7 @@ type TaskLike = {
   status: 'todo' | 'doing' | 'done'
   due_date: string | null
   event_link?: { calendarId: string; eventId: string } | null
+  archived_at?: string | null
 }
 
 const examsState = ref<ExamLike[]>([])
@@ -99,6 +100,7 @@ function makeTask(id: string, title: string, overrides: Partial<TaskLike> = {}) 
     status: 'todo' as const,
     due_date: null,
     event_link: null,
+    archived_at: null,
     ...overrides,
   }
 }
@@ -393,9 +395,13 @@ describe('DayDetailsModal', () => {
       expect(document.body.querySelector("[data-testid='day-task-item']")).toBeNull()
     })
 
-    it('una tarea hecha aparece tachada', () => {
+    it('una tarea hecha aparece tachada aunque esté archivada', () => {
       tasksState.value = [
-        makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22', status: 'done' }),
+        makeTask('task-1', 'Entregar informe', {
+          due_date: '2026-07-22',
+          status: 'done',
+          archived_at: '2026-07-22T12:00:00.000Z',
+        }),
       ]
       mockStore.events.value = []
       factory()
@@ -403,6 +409,24 @@ describe('DayDetailsModal', () => {
       const item = document.body.querySelector("[data-testid='day-task-item']")
       expect(item).not.toBeNull()
       expect(item!.querySelector('.line-through')).not.toBeNull()
+    })
+
+    it('no muestra una tarea archivada sin completar', () => {
+      tasksState.value = [
+        makeTask('task-active', 'Tarea activa', { due_date: '2026-07-22' }),
+        makeTask('task-archivada', 'Tarea archivada', {
+          due_date: '2026-07-22',
+          status: 'todo',
+          archived_at: '2026-07-22T12:00:00.000Z',
+        }),
+      ]
+      mockStore.events.value = []
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-tasks']")
+      expect(section).not.toBeNull()
+      expect(section!.textContent).toContain('Tarea activa')
+      expect(section!.textContent).not.toContain('Tarea archivada')
     })
 
     it('un evento suelto aparece en Otros', () => {
