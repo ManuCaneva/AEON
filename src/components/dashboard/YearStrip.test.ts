@@ -88,7 +88,7 @@ describe('YearStrip', () => {
 
   it('pinta el overlay de exámenes como un punto extra idéntico al de un evento', () => {
     const overlayByDate = new Map([
-      ['2026-06-04', [{ id: 'exam_1', color: 'rgb(var(--color-block-cyan))' }]],
+      ['2026-06-04', [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-cyan))' }]],
     ])
     const wrapper = mount(YearStrip, {
       props: {
@@ -262,6 +262,38 @@ describe('YearStrip', () => {
       const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
       expect(tooltip!.textContent).toContain('Evento 0')
       expect(tooltip!.textContent).toContain('Evento 1')
+      wrapper.unmount()
+    })
+
+    it('el tooltip muestra el examen del día (overlay) aunque no tenga eventos', async () => {
+      const overlayByDate = new Map([
+        [
+          '2026-06-05',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
+      const wrapper = mount(YearStrip, {
+        attachTo: document.body,
+        props: {
+          year: 2026,
+          eventsByDate: new Map(),
+          monthNames: MONTH_NAMES,
+          cellSize: 10,
+          overlayByDate,
+        },
+      })
+      await wrapper.find("[data-date='2026-06-05']").trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.textContent).toContain('5 de junio de 2026')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.textContent).not.toContain('Sin eventos')
       wrapper.unmount()
     })
 

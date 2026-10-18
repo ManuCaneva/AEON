@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
 import { eventKey } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
+import type { DayTooltipItem } from '@/composables/useDayTooltip'
 import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 import DayTooltip from './DayTooltip.vue'
 
@@ -69,7 +70,18 @@ function getOverlay(date: string | null): DayOverlayDot[] {
   return props.overlayByDate.get(date) ?? []
 }
 
-const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
+/** Lo que dice el tooltip de un día: eventos + exámenes (overlay). */
+function tooltipItems(date: string | null): DayTooltipItem[] {
+  if (!date) return []
+  const overlay = getOverlay(date).map((dot) => ({
+    id: dot.id,
+    title: dot.title,
+    color: dot.color,
+  }))
+  return [...getEvents(date), ...overlay]
+}
+
+const { hovered, hideTooltip, onDayEnter } = useDayTooltip(tooltipItems)
 
 function onDaySelect(date: string | null) {
   if (!date) return

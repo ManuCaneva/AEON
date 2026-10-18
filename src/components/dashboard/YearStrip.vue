@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
 import { eventKey } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
+import type { DayTooltipItem } from '@/composables/useDayTooltip'
 import DayTooltip from '@/components/calendar/DayTooltip.vue'
 import {
   STRIP_CHROME,
@@ -95,8 +96,18 @@ function dotEvents(date: string | null): CalendarEvent[] {
   return getEvents(date).filter((e) => !props.linkedEventKeys.has(eventKey(e.calendarId, e.id)))
 }
 
-const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
+/** Lo que dice el tooltip de un día: eventos + exámenes (overlay). */
+function tooltipItems(date: string | null): DayTooltipItem[] {
+  if (!date) return []
+  const overlay = getOverlay(date).map((dot) => ({
+    id: dot.id,
+    title: dot.title,
+    color: dot.color,
+  }))
+  return [...getEvents(date), ...overlay]
+}
 
+const { hovered, hideTooltip, onDayEnter } = useDayTooltip(tooltipItems)
 function onDaySelect(date: string | null) {
   if (!date) return
   hideTooltip()

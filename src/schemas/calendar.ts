@@ -16,10 +16,12 @@ export type CalendarEvent = z.infer<typeof CalendarEventSchema>
 
 // Punto de overlay del calendario anual: una capa derivada que se pinta como
 // un punto de día más, sin entrar en el CRUD del calendario. La usa el widget
-// para pintar exámenes sin crear eventos espejo. `color` ya llega listo para
-// usar (token de Bloque resuelto a variable CSS, o hex de respaldo).
+// para pintar exámenes sin crear eventos espejo. `title` alimenta el tooltip
+// rico del día; `color` ya llega listo para usar (token de Bloque resuelto a
+// variable CSS, o hex de respaldo).
 export interface DayOverlayDot {
   id: string
+  title: string
   color: string
 }
 

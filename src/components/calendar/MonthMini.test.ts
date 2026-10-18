@@ -254,7 +254,10 @@ describe('MonthMini', () => {
   describe('overlay de exámenes', () => {
     it('pinta el examen como un punto extra idéntico al de un evento', () => {
       const overlayByDate = new Map([
-        ['2026-01-20', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+        [
+          '2026-01-20',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
       ])
       const wrapper = mount(MonthMini, {
         props: { year: 2026, month: 0, eventsByDate, overlayByDate },
@@ -276,7 +279,10 @@ describe('MonthMini', () => {
 
     it('el overlay del mismo día suma puntos sin pisar los del evento', () => {
       const overlayByDate = new Map([
-        ['2026-01-15', [{ id: 'exam_2', color: 'rgb(var(--color-block-red))' }]],
+        [
+          '2026-01-15',
+          [{ id: 'exam_2', title: 'Parcial 1', color: 'rgb(var(--color-block-red))' }],
+        ],
       ])
       const wrapper = mount(MonthMini, {
         props: { year: 2026, month: 0, eventsByDate, overlayByDate },
@@ -290,7 +296,10 @@ describe('MonthMini', () => {
 
     it('el punto de overlay no usa colores de paleta cruda', () => {
       const overlayByDate = new Map([
-        ['2026-01-20', [{ id: 'exam_1', color: 'rgb(var(--color-block-green))' }]],
+        [
+          '2026-01-20',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
       ])
       const wrapper = mount(MonthMini, {
         props: { year: 2026, month: 0, eventsByDate, overlayByDate },
@@ -360,6 +369,30 @@ describe('MonthMini', () => {
       const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
       expect(tooltip!.textContent).toContain('Standup')
       expect(tooltip!.textContent).toContain('Review')
+      wrapper.unmount()
+    })
+
+    it('el tooltip muestra el examen del día (overlay) aunque no tenga eventos', async () => {
+      const overlayByDate = new Map([
+        [
+          '2026-01-22',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
+      const wrapper = mountAttached({ eventsByDate: new Map(), overlayByDate })
+      const cell22 = hoverCell(wrapper, 21) // 22 de Enero
+      await cell22.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.textContent).toContain('22 de enero de 2026')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.textContent).not.toContain('Sin eventos')
       wrapper.unmount()
     })
 

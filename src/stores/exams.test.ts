@@ -630,6 +630,16 @@ describe('exams store - overlay del calendario anual', () => {
     expect(dots![0].color).toBe('rgb(var(--color-block-pink))')
   })
 
+  it('cada punto del overlay lleva el título del examen para el tooltip del día', async () => {
+    const store = useExamsStore()
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ id: examId, date: '2026-07-01', title: 'Parcial 1 de Análisis' }),
+    ])
+    await store.loadExams()
+
+    expect(store.overlayByDate.get('2026-07-01')![0].title).toBe('Parcial 1 de Análisis')
+  })
+
   it('usa el color vivo del bloque cuando el examen está asociado', async () => {
     const store = useExamsStore()
     useWeeklyScheduleStore().blocksWithSlots = [

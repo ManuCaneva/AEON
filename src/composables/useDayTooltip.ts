@@ -1,6 +1,5 @@
 import { nextTick, ref } from 'vue'
 import { formatLongDateEs } from '@/lib/calendarDates'
-import type { CalendarEvent } from '@/schemas/calendar'
 
 export const MAX_TOOLTIP_EVENTS = 5
 export const TOOLTIP_WIDTH = 220
@@ -17,9 +16,7 @@ export interface HoveredDay {
   events: DayTooltipItem[]
   overflow: number
   position: { top: number; left: number }
-}
-
-/**
+} /**
  * Posición fija del tooltip: siempre debajo de la celda, pegado al día.
  * Solo se corre hacia arriba lo justo si el contenido medido desbordaría el
  * viewport (celdas del fondo como diciembre), sin voltearse nunca arriba.
@@ -39,7 +36,7 @@ export function positionForRect(rect: DOMRect): { top: number; left: number } {
  * mismo contenido (fecha larga + hasta 5 eventos + overflow) y
  * misma posición. El render lo hace `DayTooltip.vue`.
  */
-export function useDayTooltip(getEvents: (date: string | null) => CalendarEvent[]) {
+export function useDayTooltip(getEvents: (date: string | null) => DayTooltipItem[]) {
   const hovered = ref<HoveredDay | null>(null)
 
   /**
@@ -63,9 +60,7 @@ export function useDayTooltip(getEvents: (date: string | null) => CalendarEvent[
     hovered.value = {
       date,
       label: formatLongDateEs(date),
-      events: events
-        .slice(0, MAX_TOOLTIP_EVENTS)
-        .map((e) => ({ id: e.id, title: e.title, color: e.color })),
+      events: events.slice(0, MAX_TOOLTIP_EVENTS),
       overflow: Math.max(0, events.length - MAX_TOOLTIP_EVENTS),
       position: target ? positionForRect(target.getBoundingClientRect()) : { top: 0, left: 0 },
     }

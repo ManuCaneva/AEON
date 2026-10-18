@@ -289,7 +289,7 @@ export const useExamsStore = defineStore('exams', () => {
   const overlayByDate = computed<DayOverlayByDate>(() => {
     const map: DayOverlayByDate = new Map()
     for (const exam of exams.value) {
-      const dot = { id: `exam_${exam.id}`, color: colorFor(exam) }
+      const dot = { id: `exam_${exam.id}`, title: exam.title, color: colorFor(exam) }
       const list = map.get(exam.date)
       if (list) list.push(dot)
       else map.set(exam.date, [dot])
