@@ -237,13 +237,15 @@ async function handleSubmit(e: Event) {
 
 <template>
   <Modal :open="ui.createExamOpen" size="md" @close="ui.closeExamModal()">
-    <form @submit="handleSubmit">
+    <template #header>
       <div class="border-b border-hairline px-5 py-4">
         <Text variant="card-title" as="h2">
           {{ isEdit ? 'Editar examen' : 'Nuevo examen' }}
         </Text>
       </div>
+    </template>
 
+    <form id="exam-form" @submit="handleSubmit">
       <div class="flex flex-col gap-5 px-5 py-5">
         <Input
           v-model="title"
@@ -449,7 +451,9 @@ async function handleSubmit(e: Event) {
           </div>
         </div>
       </div>
+    </form>
 
+    <template #footer>
       <div class="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
         <Button
           type="button"
@@ -460,10 +464,10 @@ async function handleSubmit(e: Event) {
         >
           Cancelar
         </Button>
-        <Button type="submit" variant="primary" size="md" :loading="saving">
+        <Button type="submit" form="exam-form" variant="primary" size="md" :loading="saving">
           {{ isEdit ? 'Guardar' : 'Crear' }}
         </Button>
       </div>
-    </form>
+    </template>
   </Modal>
 </template>

@@ -36,13 +36,27 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
       >
         <div
           :class="[
-            'glass-overlay w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-hairline-strong/20',
+            'glass-overlay flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl shadow-2xl ring-1 ring-hairline-strong/20',
             size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : 'max-w-md',
           ]"
           role="dialog"
           aria-modal="true"
         >
-          <slot />
+          <!-- Header y footer fijos: el cuerpo es el único que scrollea. Así el
+               popup jamás puede crecer más que la pantalla (max-h arriba). -->
+          <div v-if="$slots.header" data-testid="modal-header" class="shrink-0">
+            <slot name="header" />
+          </div>
+          <div
+            v-if="$slots.default"
+            data-testid="modal-body"
+            class="min-h-0 flex-1 overflow-y-auto"
+          >
+            <slot />
+          </div>
+          <div v-if="$slots.footer" data-testid="modal-footer" class="shrink-0">
+            <slot name="footer" />
+          </div>
         </div>
       </div>
     </Transition>
