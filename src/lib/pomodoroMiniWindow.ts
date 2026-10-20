@@ -77,7 +77,7 @@ async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promis
       : await bottomRightOnMainMonitor()
 
   // La creación es fire-and-forget: Tauri avisa con `tauri://created`/`tauri://error`.
-  const win = new WebviewWindow(POMODORO_MINI_LABEL, {
+  new WebviewWindow(POMODORO_MINI_LABEL, {
     url: 'index.html',
     title: POMODORO_MINI_TITLE,
     width: POMODORO_MINI_WIDTH,
@@ -87,7 +87,6 @@ async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promis
     decorations: true,
     ...placement,
   })
-  trackPomodoroMiniWindow(win)
 }
 
 /** Espera tras el último movimiento: una sola escritura por arrastre. */
@@ -100,12 +99,15 @@ let pendingPosition: PhysicalPosition | null = null
 let positionTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * Sigue la ventana mini para persistir su disposición de pantalla. El flag de
- * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la X):
- * la destrucción de la ventana por el cierre de la app no pasa por acá y deja
- * el flag como estaba, así la próxima sesión la reabre.
+ * La ventana mini persiste su propia disposición de pantalla. Se registra sobre
+ * su propia webview y no sobre el handle de quien la creó: con la ventana
+ * principal cerrada nadie más la seguiría y la X no se escribiría. El flag de
+ * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la
+ * X): la destrucción de la ventana por el cierre de la app no pasa por acá y
+ * deja el flag como estaba, así la próxima sesión la reabre.
  */
-function trackPomodoroMiniWindow(win: WebviewWindow): void {
+export function trackPomodoroMiniWindow(): void {
+  const win = getCurrentWebviewWindow()
   if (trackedWindows.has(win)) return
   trackedWindows.add(win)
 
