@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { defaultPomodoroSettings, type ActivePomodoroSession } from '@/schemas/pomodoro'
+import {
+  defaultPomodoroSettings,
+  PomodoroSyncPayloadSchema,
+  type ActivePomodoroSession,
+} from '@/schemas/pomodoro'
 import * as db from '@/lib/db'
 import { usePomodoroStore } from './pomodoro'
 
@@ -8,6 +12,40 @@ vi.mock('@/lib/db', () => ({
   loadConfig: vi.fn().mockResolvedValue(null),
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }))
+
+/**
+ * Bus de eventos entre webviews: `emit` entrega el payload a todas las
+ * suscripciones registradas, incluida la de la ventana emisora (como hace
+ * Tauri), así las pruebas ejercitan el descarte del eco propio.
+ */
+const busEventos = vi.hoisted(() => {
+  type Handler = (event: { payload: unknown }) => void
+  const handlers: Handler[] = []
+  function entregar(payload: unknown): void {
+    queueMicrotask(() => {
+      for (const handler of [...handlers]) handler({ payload })
+    })
+  }
+  return {
+    handlers,
+    emit: vi.fn((_evento: string, payload?: unknown) => {
+      entregar(payload)
+      return Promise.resolve()
+    }),
+    listen: vi.fn((_evento: string, handler: Handler) => {
+      handlers.push(handler)
+      return Promise.resolve(() => {
+        const index = handlers.indexOf(handler)
+        if (index >= 0) handlers.splice(index, 1)
+      })
+    }),
+    reiniciar() {
+      handlers.length = 0
+    },
+  }
+})
+
+vi.mock('@tauri-apps/api/event', () => ({ emit: busEventos.emit, listen: busEventos.listen }))
 
 const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } = vi.hoisted(
   () => ({
@@ -328,4 +366,84 @@ describe('pomodoro store', () => {
     expect(store.session.endsAt).toBe('2026-09-01T12:25:00.000Z')
     expect(store.remainingMs).toBe(21 * 60_000 + 48_000)
   })
+})
+
+type StorePomodoro = ReturnType<typeof usePomodoroStore>
+
+/** Contrato del canal: nombre del evento con el que las ventanas se sincronizan. */
+const EVENTO_SYNC = 'pomodoro-state-changed'
+
+/** Espera a que el bus entregue los eventos ya emitidos a las suscripciones. */
+async function entregarEventos(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0)
+  await Promise.resolve()
+}
+
+describe('pomodoro: las mutaciones se publican a las demás ventanas', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    busEventos.reiniciar()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(start))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const mutaciones: Array<{
+    nombre: string
+    preparar?: (store: StorePomodoro) => Promise<void>
+    mutar: (store: StorePomodoro) => Promise<unknown> | unknown
+  }> = [
+    { nombre: 'iniciar', mutar: (store) => store.start() },
+    { nombre: 'pausar', preparar: (store) => store.start(), mutar: (store) => store.pause() },
+    {
+      nombre: 'reanudar',
+      preparar: async (store) => {
+        await store.start()
+        await store.pause()
+      },
+      mutar: (store) => store.resume(),
+    },
+    { nombre: 'saltear de fase', mutar: (store) => store.skip() },
+    { nombre: 'reiniciar', preparar: (store) => store.start(), mutar: (store) => store.reset() },
+    {
+      nombre: 'cambiar la configuración',
+      mutar: (store) => store.saveSettings({ focusMinutes: 30 }),
+    },
+    { nombre: 'reiniciar sin persistir', mutar: (store) => store.resetSession() },
+    {
+      nombre: 'expirar la fase',
+      preparar: (store) => store.start(),
+      mutar: async (store) => {
+        vi.setSystemTime(new Date(store.session.endsAt ?? Date.now()))
+        await store.advanceIfExpired()
+      },
+    },
+  ]
+
+  it.each(mutaciones.map((m) => [m.nombre, m] as const))(
+    'la mutación «%s» emite el estado completo con su origen',
+    async (_nombre, { preparar, mutar }) => {
+      const store = usePomodoroStore()
+      await store.load()
+      if (preparar) await preparar(store)
+      vi.mocked(busEventos.emit).mockClear()
+
+      await mutar(store)
+      await entregarEventos()
+
+      expect(busEventos.emit).toHaveBeenCalledTimes(1)
+      const [evento, payload] = vi.mocked(busEventos.emit).mock.calls[0]
+      expect(evento).toBe(EVENTO_SYNC)
+      const snapshot = PomodoroSyncPayloadSchema.parse(payload)
+      expect(snapshot.session).toEqual(store.session)
+      expect(snapshot.settings).toEqual(store.settings)
+      expect(snapshot.origin).not.toBe('')
+    }
+  )
 })
