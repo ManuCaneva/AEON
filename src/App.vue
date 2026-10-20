@@ -23,6 +23,7 @@ import UpdateModal from '@/components/layout/UpdateModal.vue'
 import { useUpdater } from '@/composables/useUpdater'
 import { useDesktopEntry } from '@/composables/useDesktopEntry'
 import { onShowPomodoroInMain, requestsPomodoroView } from '@/lib/pomodoroMainWindow'
+import { restorePomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -61,6 +62,9 @@ async function registerDesktopIntegration(): Promise<void> {
 }
 
 onMounted(async () => {
+  // La disposición de pantalla se restaura apenas arranca: si el usuario dejó la
+  // ventana mini abierta, se reabre donde quedó sin esperar al temporizador.
+  void restorePomodoroMiniWindow()
   void registerDesktopIntegration()
   ui.loadWallpaper()
   await habits.loadInitialData()
