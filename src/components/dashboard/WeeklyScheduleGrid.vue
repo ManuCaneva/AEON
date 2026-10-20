@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { X } from 'lucide-vue-next'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
 import type { ValidationResult } from '@/stores/weeklySchedule'
+import { useUiStore } from '@/stores/ui'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import Toast from '@/components/ui/Toast.vue'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import { useScheduleDrag } from '@/composables/useScheduleDrag'
-import { useUiStore } from '@/stores/ui'
 import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
 import type { ScheduleDragPoint } from '@/lib/scheduleDragGeometry'
@@ -16,11 +17,17 @@ import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySched
 const props = defineProps<{
   /** Fecha de referencia para el día de hoy y la hora actual (inyectable para tests). */
   now?: Date
+  /** Ocurrencia elegida en el modo edición; `null` cuando no hay ninguna. */
+  selectedSlotId?: string | null
 }>()
 
 const store = useWeeklyScheduleStore()
 const ui = useUiStore()
-const emit = defineEmits<{ edit: [block: ScheduleBlockWithSlots] }>()
+const emit = defineEmits<{
+  edit: [block: ScheduleBlockWithSlots]
+  select: [slotId: string | null]
+  remove: [slotId: string]
+}>()
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const enabledDays = computed(() => store.enabledDays)
@@ -200,6 +207,42 @@ function slotsForDay(day: number): VisibleSlot[] {
 const MIN_SLOT_DURATION_MINUTES = 5
 
 type GestureKind = 'move' | 'resize-top' | 'resize-bottom'
+
+// En el modo edición cada ocurrencia descubre su × al pasar el mouse. El
+// puntero pasa del bloque a la × (que vive fuera del bloque para no anidar
+// botones): si el mouse sale del bloque hacia su propia ×, se mantiene visible.
+const hoveredSlotId = ref<string | null>(null)
+
+function onSlotEnter(slotId: string) {
+  if (ui.scheduleEditMode) hoveredSlotId.value = slotId
+}
+
+function onSlotLeave(slotId: string, event: MouseEvent) {
+  const next = event.relatedTarget as HTMLElement | null
+  if (next?.closest?.('[data-testid="schedule-slot-delete"]')) return
+  if (hoveredSlotId.value === slotId) hoveredSlotId.value = null
+}
+
+function isDeleteVisible(slotId: string): boolean {
+  return ui.scheduleEditMode && hoveredSlotId.value === slotId
+}
+
+function onSlotClick(vs: VisibleSlot) {
+  if (!ui.scheduleEditMode) {
+    emit('edit', vs.block)
+    return
+  }
+  emit('select', vs.slot.id)
+}
+
+/** Click en un hueco de la grilla: limpia la selección. */
+function onGridClick(event: MouseEvent) {
+  if (!ui.scheduleEditMode) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest?.('.schedule-block')) return
+  if (target?.closest?.('[data-testid="schedule-slot-delete"]')) return
+  emit('select', null)
+}
 
 interface GestureState {
   kind: GestureKind
@@ -384,8 +427,10 @@ const gestureRangeLabel = computed(() => {
 
 watch(
   () => ui.scheduleEditMode,
-  (on) => {
-    if (!on) cancelGesture()
+  (active) => {
+    if (active) return
+    hoveredSlotId.value = null
+    cancelGesture()
   }
 )
 </script>
@@ -431,12 +476,14 @@ watch(
           ref="daysGridRef"
           class="relative grid flex-1 select-none border-l border-hairline"
           :style="dayGridStyle"
+          @click="onGridClick"
         >
           <div
             v-for="dayIndex in enabledDays"
             :key="dayIndex"
             class="relative border-r border-hairline"
             :class="dayIndex === todayIndex ? 'bg-accent-purple-tint/40' : undefined"
+            :data-day="dayIndex"
             :data-testid="dayIndex === todayIndex ? 'schedule-today-column' : undefined"
           >
             <div
@@ -451,6 +498,7 @@ watch(
                 :title="vs.block.title"
                 :color="vs.block.color"
                 :today="dayIndex === todayIndex"
+                :selected="props.selectedSlotId === vs.slot.id"
                 class="absolute z-10 shadow-sm"
                 :class="gestureState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
                 :style="{
@@ -459,8 +507,10 @@ watch(
                   left: '2%',
                   width: '96%',
                 }"
-                @click="emit('edit', vs.block)"
+                @click="onSlotClick(vs)"
                 @pointerdown="onBlockPointerDown(vs, $event)"
+                @mouseenter="onSlotEnter(vs.slot.id)"
+                @mouseleave="onSlotLeave(vs.slot.id, $event)"
               />
 
               <!-- Manijas de resize: solo los bordes superior e inferior -->
@@ -498,6 +548,20 @@ watch(
                   />
                 </div>
               </template>
+
+              <button
+                v-if="isDeleteVisible(vs.slot.id)"
+                type="button"
+                data-testid="schedule-slot-delete"
+                :aria-label="`Borrar ${vs.block.title} del ${DAYS[vs.slot.day_of_week]}`"
+                class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink"
+                :style="{ top: slotTopPx(vs) + 'px', right: '2%' }"
+                @mouseenter="onSlotEnter(vs.slot.id)"
+                @mouseleave="hoveredSlotId = null"
+                @click="emit('remove', vs.slot.id)"
+              >
+                <X :size="10" />
+              </button>
             </template>
           </div>
 

@@ -8,8 +8,10 @@ const props = withDefaults(
     title: string
     color: BlockColorToken
     today?: boolean
+    /** Ocurrencia elegida: sobre ella actúan la × y `Supr` en el modo edición. */
+    selected?: boolean
   }>(),
-  { today: false }
+  { today: false, selected: false }
 )
 
 const emit = defineEmits<{
@@ -28,8 +30,10 @@ const blockStyle = computed(() => ({
     :class="[
       'absolute flex cursor-pointer items-center justify-center overflow-hidden rounded-sm border text-center transition-all duration-150',
       'schedule-block',
+      props.selected && 'ring-1 ring-accent-purple',
     ]"
     :style="blockStyle"
+    :aria-pressed="props.selected"
     @click="emit('click')"
   >
     <div class="schedule-block-title break-words font-medium leading-tight">{{ title }}</div>
