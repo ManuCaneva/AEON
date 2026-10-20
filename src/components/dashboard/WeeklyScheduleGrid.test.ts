@@ -528,15 +528,14 @@ describe('WeeklyScheduleGrid', () => {
         if (i !== 1) expect(h.classes()).not.toContain('bg-accent-purple-tint')
       })
 
-      // (2) Columna de hoy con fondo diferenciado; solo una marcada
+      // (2) Columna de hoy con fondo diferenciado; solo una marcada. El tinte
+      // vive en la capa de contenido para que se desature con el resto de los días.
       const todayCols = wrapper.findAll('[data-testid="schedule-today-column"]')
       expect(todayCols).toHaveLength(1)
-      expect(todayCols[0].classes()).toContain('bg-accent-purple-tint/40')
-      wrapper.findAll('.relative.border-r.border-hairline').forEach((col) => {
-        if (!col.attributes('data-testid')) {
-          expect(col.classes()).not.toContain('bg-accent-purple-tint/40')
-        }
-      })
+      const contents = wrapper.findAll('[data-testid="schedule-day-content"]')
+      const tinted = contents.filter((c) => c.classes().includes('bg-accent-purple-tint/40'))
+      expect(tinted).toHaveLength(1)
+      expect(tinted[0].element.closest('[data-testid="schedule-today-column"]')).not.toBeNull()
 
       // (3) Los bloques de hoy reciben la prop today (hairline firme)
       const blocks = wrapper.findAllComponents(WeeklyScheduleBlock)

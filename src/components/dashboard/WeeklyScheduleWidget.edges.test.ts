@@ -188,6 +188,8 @@ async function startResize(
   slotId: string,
   edge: 'top' | 'bottom'
 ) {
+  // Las manijas aparecen al pasar el mouse por su ocurrencia.
+  await wrapper.get(`.schedule-block[data-slot-id="${slotId}"]`).trigger('mouseenter')
   const handle = wrapper.get(
     `[data-testid="schedule-resize-handle-${edge}"][data-slot-id="${slotId}"]`
   )
@@ -297,12 +299,20 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
     await moveTo(wrapper, 1000, 10)
     expect(hourLabels(wrapper)[0]).toBe('15:00')
 
+    // Seguir dentro de la banda no suma otra hora: es un acercamiento.
     await moveTo(wrapper, 1000, 20)
-    // Dos acercamientos: dos horas, nunca más de una por vez.
+    expect(hourLabels(wrapper)[0]).toBe('15:00')
+    expect(hourLabels(wrapper)).toHaveLength(6)
+
+    // Alejarse del borde no achica la ventana durante el gesto.
+    await moveTo(wrapper, 960, 300)
+    expect(hourLabels(wrapper)[0]).toBe('15:00')
+
+    // Hay que salir y volver a entrar para la segunda hora.
+    await moveTo(wrapper, 1000, 10)
     expect(hourLabels(wrapper)[0]).toBe('14:00')
     expect(hourLabels(wrapper)).toHaveLength(8)
 
-    // Alejarse del borde no achica la ventana durante el gesto.
     await moveTo(wrapper, 960, 300)
     expect(hourLabels(wrapper)[0]).toBe('14:00')
 
@@ -311,6 +321,7 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
     // Al soltar, la ventana se deriva otra vez de los horarios (16:00–18:00).
     expect(hourLabels(wrapper)[0]).toBe('16:00')
     expect(hourLabels(wrapper)).toHaveLength(4)
+    // El bloque volvió a su minuto original: no persiste nada.
     expect(db.updateScheduleSlot).not.toHaveBeenCalled()
 
     wrapper.unmount()

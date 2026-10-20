@@ -229,6 +229,8 @@ describe('Cronograma semanal — crear y renombrar en la grilla', () => {
     expect((input.element as HTMLInputElement).value).toBe('Sin título')
     expect(document.activeElement).toBe(input.element)
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    // El editor del nombre es un control del modo: no se desatura.
+    expect(input.element.closest('.grayscale')).toBeNull()
 
     // Alto de una fila, sin paleta de colores en la grilla.
     const block = wrapper.get('.schedule-block')

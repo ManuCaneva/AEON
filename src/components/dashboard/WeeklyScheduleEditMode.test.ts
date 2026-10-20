@@ -115,6 +115,39 @@ describe('cronograma: selección y borrado en el modo edición', () => {
     wrapper.unmount()
   })
 
+  it('los controles del modo quedan a color: solo el contenido se desatura', async () => {
+    const { wrapper, ui } = await mountWidget()
+    await enterEditMode(wrapper, ui)
+
+    await dayColumn(wrapper, 1).get('.schedule-block').trigger('mouseenter')
+
+    expect(
+      dayColumn(wrapper, 1).get('.schedule-block').element.closest('.grayscale')
+    ).not.toBeNull()
+
+    const controls = [
+      deleteButton(wrapper, 1),
+      dayColumn(wrapper, 1).get('[data-testid="schedule-slot-copy"]'),
+      dayColumn(wrapper, 1).get('[data-testid="schedule-slot-paste"]'),
+      dayColumn(wrapper, 1).get('[data-testid="schedule-resize-handle-top"]'),
+      dayColumn(wrapper, 1).get('[data-testid="schedule-resize-handle-bottom"]'),
+    ]
+    for (const control of controls) {
+      expect(control.element.closest('.grayscale')).toBeNull()
+    }
+
+    wrapper.unmount()
+  })
+
+  it('fuera del modo edición los bloques no anuncian aria-pressed', async () => {
+    const { wrapper } = await mountWidget()
+    const block = dayColumn(wrapper, 1).get('.schedule-block')
+
+    expect(block.attributes('aria-pressed')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+
   it('la × borra solo la ocurrencia del día apuntado y persiste al instante', async () => {
     const { wrapper, store, ui } = await mountWidget()
     await enterEditMode(wrapper, ui)

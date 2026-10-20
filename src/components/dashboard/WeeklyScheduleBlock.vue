@@ -8,10 +8,15 @@ const props = withDefaults(
     title: string
     color: BlockColorToken
     today?: boolean
-    /** Ocurrencia elegida: sobre ella actúan la × y `Supr` en el modo edición. */
+    /**
+     * Ocurrencia elegida: sobre ella actúan la × y `Supr` en el modo edición.
+     * Solo se anuncia (`aria-pressed`) cuando `selectable` está activo.
+     */
     selected?: boolean
+    /** Modo edición del cronograma: el bloque se puede seleccionar. */
+    selectable?: boolean
   }>(),
-  { today: false, selected: false }
+  { today: false, selected: false, selectable: false }
 )
 
 const emit = defineEmits<{
@@ -33,7 +38,7 @@ const blockStyle = computed(() => ({
       props.selected && 'ring-1 ring-accent-purple',
     ]"
     :style="blockStyle"
-    :aria-pressed="props.selected"
+    :aria-pressed="props.selectable ? props.selected : undefined"
     @click="emit('click')"
   >
     <div class="schedule-block-title break-words font-medium leading-tight">{{ title }}</div>

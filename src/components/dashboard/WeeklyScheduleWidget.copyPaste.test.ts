@@ -362,6 +362,54 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     wrapper.unmount()
   })
 
+  it('si la copia no entra en el día, no persiste y avisa como el solape', async () => {
+    const { wrapper, store } = await mountEditor()
+
+    // Un horario tarde estira la Ventana visible hasta 24:00: el puntero puede
+    // pedir un destino que se pasa del fin del día.
+    store.blocksWithSlots = [
+      ...store.blocksWithSlots,
+      {
+        id: '333e8400-e29b-41d4-a716-446655440009',
+        title: 'Trasnoche',
+        color: 'cyan',
+        sort_order: 2,
+        created_at: ISO,
+        updated_at: ISO,
+        slots: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440009',
+            block_id: '333e8400-e29b-41d4-a716-446655440009',
+            day_of_week: 0,
+            start_minutes: 1380, // 23:00
+            end_minutes: 1410, // 23:30
+            created_at: ISO,
+            updated_at: ISO,
+          },
+        ],
+      },
+    ]
+    await nextTick()
+
+    await copyFromShortcut(wrapper) // 45' de duración
+    press('v', { ctrlKey: true })
+    await nextTick()
+
+    await hoverDay(wrapper, 0, 300, 590) // 23:52
+    // El fantasma no se reubica solo: arranca donde está el puntero.
+    expect(badgeText()).toBe('23:52 → 00:37')
+
+    await clickDay(wrapper, 0, 300, 590)
+
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
+    expect(db.createScheduleSlot).not.toHaveBeenCalled()
+    const toast = document.body.querySelector('[data-testid="toast"]')
+    expect(toast?.textContent).toContain('no entra en el día')
+    expect(ghost()).not.toBeNull()
+
+    wrapper.unmount()
+  })
+
   it('los días deshabilitados no son destino del pegado', async () => {
     const { wrapper } = await mountEditor([0, 1, 2, 3, 4]) // sin fin de semana
 

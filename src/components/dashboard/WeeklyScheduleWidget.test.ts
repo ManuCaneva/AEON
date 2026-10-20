@@ -102,15 +102,22 @@ describe('WeeklyScheduleWidget', () => {
 
     it('al activarlo solo el contenido del cronograma se desatura', async () => {
       const { wrapper, ui } = mountWidget()
-      const content = wrapper.get('[data-testid="schedule-edit-content"]')
-      expect(content.classes()).not.toContain('grayscale')
+      expect(wrapper.find('.grayscale').exists()).toBe(false)
 
       await wrapper.get('[data-testid="schedule-edit-toggle"]').trigger('click')
       expect(ui.scheduleEditMode).toBe(true)
 
-      expect(wrapper.get('[data-testid="schedule-edit-content"]').classes()).toContain('grayscale')
-      // El resto del widget y del dashboard sigue a color: la desaturación
-      // vive solo en el contenido de la grilla.
+      // Cada columna desatura solo su contenido (días y bloques)...
+      const contents = wrapper.findAll('[data-testid="schedule-day-content"]')
+      expect(contents).toHaveLength(7)
+      for (const content of contents) {
+        expect(content.classes()).toContain('grayscale')
+      }
+      // ...y el resto del widget y del dashboard sigue a color: la
+      // desaturación no envuelve a los controles del modo.
+      expect(wrapper.get('[data-testid="schedule-edit-content"]').classes()).not.toContain(
+        'grayscale'
+      )
       expect(wrapper.get('[data-testid="weekly-schedule-widget"]').classes()).not.toContain(
         'grayscale'
       )

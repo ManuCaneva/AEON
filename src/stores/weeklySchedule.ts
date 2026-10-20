@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as db from '../lib/db'
+import { MINUTES_PER_DAY } from '../lib/scheduleTime'
 import {
   type BlockColorToken,
   type CreateScheduleBlockDraft,
@@ -25,7 +26,7 @@ function uuidv4(): string {
 }
 
 export function minutesToHHMM(min: number): string {
-  const m = ((min % 1440) + 1440) % 1440
+  const m = ((min % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
   const h = Math.floor(m / 60)
   const mm = m % 60
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
@@ -48,7 +49,6 @@ export function overlaps(
 
 export type ValidationResult =
   | { ok: true }
-  | { ok: false; reason: 'overlap'; day: number; start: number; end: number }
   | {
       ok: false
       reason: 'overlapBlock'
@@ -119,42 +119,57 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   })
 
+  function blockForSlot(slotId: string): ScheduleBlockWithSlots | null {
+    return blocksWithSlots.value.find((bw) => bw.slots.some((s) => s.id === slotId)) ?? null
+  }
+
+  /**
+   * Primer horario del día que se solapa con el rango pedido. Es el predicado
+   * compartido por la validación de un destino y la consulta booleana.
+   */
+  function overlappingSlot(
+    day: number,
+    start: number,
+    end: number,
+    ignoreSlotId?: string
+  ): ScheduleSlot | null {
+    const list = blocksByDay.value.get(day) ?? []
+    return (
+      list.find(
+        (s) =>
+          (ignoreSlotId === undefined || s.id !== ignoreSlotId) &&
+          overlaps(s, { start_minutes: start, end_minutes: end })
+      ) ?? null
+    )
+  }
+
   function wouldOverlapOnDay(
     day: number,
     start: number,
     end: number,
     ignoreSlotId?: string
   ): boolean {
-    const list = blocksByDay.value.get(day) ?? []
-    return list.some(
-      (s) =>
-        (ignoreSlotId === undefined || s.id !== ignoreSlotId) &&
-        overlaps(s, { start_minutes: start, end_minutes: end })
-    )
+    return overlappingSlot(day, start, end, ignoreSlotId) !== null
   }
 
   function validateSlot(
     draft: { day_of_week: number; start_minutes: number; end_minutes: number },
     ignoreSlotId?: string
   ): ValidationResult {
-    const clash = (blocksByDay.value.get(draft.day_of_week) ?? []).find(
-      (slot) =>
-        (ignoreSlotId === undefined || slot.id !== ignoreSlotId) &&
-        overlaps(slot, {
-          start_minutes: draft.start_minutes,
-          end_minutes: draft.end_minutes,
-        })
+    const clash = overlappingSlot(
+      draft.day_of_week,
+      draft.start_minutes,
+      draft.end_minutes,
+      ignoreSlotId
     )
     if (!clash) return { ok: true }
-    const blockTitle =
-      blocksWithSlots.value.find((block) => block.id === clash.block_id)?.title ?? 'otro bloque'
     return {
       ok: false,
       reason: 'overlapBlock',
       day: draft.day_of_week,
       start: draft.start_minutes,
       end: draft.end_minutes,
-      blockTitle,
+      blockTitle: blockForSlot(clash.id)?.title ?? 'otro bloque',
     }
   }
 
@@ -256,7 +271,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
       end_minutes?: number
     }
   ): Promise<void> {
-    const bw = blocksWithSlots.value.find((b) => b.slots.some((s) => s.id === slotId))
+    const bw = blockForSlot(slotId)
     if (!bw) throw new Error('Slot no encontrado')
     const existingSlot = bw.slots.find((s) => s.id === slotId)!
     const merged = { ...existingSlot, ...patch }
@@ -275,7 +290,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
    * desaparece con ella: un bloque sin horarios no tiene nada que mostrar.
    */
   async function deleteSlot(slotId: string): Promise<void> {
-    const block = blocksWithSlots.value.find((bw) => bw.slots.some((s) => s.id === slotId))
+    const block = blockForSlot(slotId)
     await db.deleteScheduleSlot(slotId)
     if (!block) return
     const remaining = block.slots.filter((s) => s.id !== slotId)
@@ -474,6 +489,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     enabledDays,
     isDayEnabled,
     visibleWindow,
+    blockForSlot,
     wouldOverlapOnDay,
     validateSlot,
     reset,

@@ -9,6 +9,7 @@ import WeeklyScheduleModal from './WeeklyScheduleModal.vue'
 import WeeklyScheduleSettingsModal from './WeeklyScheduleSettingsModal.vue'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useUiStore } from '@/stores/ui'
+import { MINUTES_PER_DAY } from '@/lib/scheduleTime'
 import type { ScheduleBlockWithSlots, ScheduleClipboardPayload } from '@/schemas/weeklySchedule'
 
 const store = useWeeklyScheduleStore()
@@ -45,7 +46,7 @@ async function removeOccurrence(slotId: string) {
 }
 
 function copyOccurrence(slotId: string) {
-  const block = store.blocksWithSlots.find((bw) => bw.slots.some((s) => s.id === slotId))
+  const block = store.blockForSlot(slotId)
   if (!block) return
   const slot = block.slots.find((s) => s.id === slotId)
   if (!slot) return
@@ -64,12 +65,16 @@ function startPaste() {
 async function pasteOccurrence(day: number, startMinutes: number) {
   const clip = clipboard.value
   if (!clip || !store.enabledDays.includes(day)) return
-  const start = Math.max(0, Math.min(startMinutes, 1440 - clip.durationMinutes))
-  const end = start + clip.durationMinutes
-  if (end <= start) return
+  // La grilla ya rechazó los destinos que no entran en el día: acá no se
+  // reubica la copia en silencio.
+  if (startMinutes < 0 || startMinutes + clip.durationMinutes > MINUTES_PER_DAY) return
   try {
     await store.createBlock({ title: clip.title, color: clip.color, sort_order: 0 }, [
-      { day_of_week: day, start_minutes: start, end_minutes: end },
+      {
+        day_of_week: day,
+        start_minutes: startMinutes,
+        end_minutes: startMinutes + clip.durationMinutes,
+      },
     ])
   } catch (e) {
     console.error('No se pudo pegar el bloque en la grilla:', e)
@@ -178,11 +183,7 @@ function openEdit(b: ScheduleBlockWithSlots) {
       >
         Error al cargar: {{ store.lastError }}
       </div>
-      <div
-        data-testid="schedule-edit-content"
-        class="min-h-0 flex-1 overflow-hidden"
-        :class="ui.scheduleEditMode && 'grayscale'"
-      >
+      <div data-testid="schedule-edit-content" class="min-h-0 flex-1 overflow-hidden">
         <WeeklyScheduleGrid
           class="h-full"
           :selected-slot-id="selectedSlotId"
