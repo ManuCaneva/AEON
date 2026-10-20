@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import Container from '@/components/ui/Container.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import Text from '@/components/ui/Text.vue'
@@ -16,12 +16,41 @@ const ui = useUiStore()
 const editingBlock = ref<ScheduleBlockWithSlots | null>(null)
 const showCreate = ref(false)
 const showSettings = ref(false)
+// Ocurrencia elegida en la grilla: sobre ella actúan la × y `Supr`.
+const selectedSlotId = ref<string | null>(null)
+
+// Salir del modo no deja una selección colgada para la próxima entrada.
+watch(
+  () => ui.scheduleEditMode,
+  (active) => {
+    if (!active) selectedSlotId.value = null
+  }
+)
+
+async function removeOccurrence(slotId: string) {
+  await store.deleteSlot(slotId)
+  if (selectedSlotId.value === slotId) selectedSlotId.value = null
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.tagName !== 'string') return false
+  const tag = el.tagName.toLowerCase()
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable
+}
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || !ui.scheduleEditMode) return
-  // Un modal abierto consume su propio Esc: el modo no se cierra a la vez.
+  if (!ui.scheduleEditMode) return
+  // Un modal abierto consume sus propias teclas: el modo no actúa por detrás.
   if (showCreate.value || showSettings.value || editingBlock.value) return
-  ui.exitScheduleEditMode()
+  if (event.key === 'Escape') {
+    ui.exitScheduleEditMode()
+    return
+  }
+  if (event.key !== 'Delete' || isEditableTarget(event.target)) return
+  if (selectedSlotId.value === null) return
+  event.preventDefault()
+  void removeOccurrence(selectedSlotId.value)
 }
 
 onMounted(() => {
@@ -89,7 +118,13 @@ function openEdit(b: ScheduleBlockWithSlots) {
         class="min-h-0 flex-1 overflow-hidden"
         :class="ui.scheduleEditMode && 'grayscale'"
       >
-        <WeeklyScheduleGrid class="h-full" @edit="openEdit" />
+        <WeeklyScheduleGrid
+          class="h-full"
+          :selected-slot-id="selectedSlotId"
+          @select="selectedSlotId = $event"
+          @remove="removeOccurrence"
+          @edit="openEdit"
+        />
       </div>
     </div>
     <WeeklyScheduleModal :open="showCreate" :block="null" @close="showCreate = false" />
