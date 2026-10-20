@@ -58,7 +58,7 @@ export type ValidationResult =
       blockTitle: string
     }
 
-export const DEFAULT_VISIBLE_WINDOW = { start_minutes: 360, end_minutes: 1380 } as const
+export const DEFAULT_VISIBLE_WINDOW = { start_minutes: 480, end_minutes: 1080 } as const
 export type VisibleWindow = { start_minutes: number; end_minutes: number }
 
 export function computeVisibleWindow(
