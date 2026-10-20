@@ -1,4 +1,4 @@
-import { emit } from '@tauri-apps/api/event'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 /** Label de la ventana principal de la app (el de `tauri.conf.json`). */
@@ -32,6 +32,11 @@ const POMODORO_MAIN_URL = `index.html?${new URLSearchParams({
 /** true cuando la URL de arranque pide abrir la app en la página Pomodoro. */
 export function requestsPomodoroView(search: string): boolean {
   return new URLSearchParams(search).get(POMODORO_VIEW_PARAM) === POMODORO_VIEW_VALUE
+}
+
+/** Suscribe la ventana principal a los pedidos de la mini de abrir la página Pomodoro. */
+export function onShowPomodoroInMain(handler: () => void): Promise<UnlistenFn> {
+  return listen(SHOW_POMODORO_IN_MAIN_EVENT, handler)
 }
 
 /**

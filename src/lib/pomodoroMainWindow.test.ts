@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { emit } from '@tauri-apps/api/event'
-import { showPomodoroInMainWindow, requestsPomodoroView } from './pomodoroMainWindow'
+import { emit, listen } from '@tauri-apps/api/event'
+import { onShowPomodoroInMain, showPomodoroInMainWindow, requestsPomodoroView } from './pomodoroMainWindow'
 
 const { constructions, getByLabel } = vi.hoisted(() => ({
   constructions: [] as Array<{ label: string; options: Record<string, unknown> }>,
@@ -70,5 +70,13 @@ describe('ventana principal pedida desde la ventana mini', () => {
     expect(requestsPomodoroView('?view=pomodoro')).toBe(true)
     expect(requestsPomodoroView('')).toBe(false)
     expect(requestsPomodoroView('?view=dashboard')).toBe(false)
+  })
+
+  it('suscribe la ventana principal a los pedidos de página Pomodoro de la mini', async () => {
+    const handler = vi.fn()
+
+    await onShowPomodoroInMain(handler)
+
+    expect(listen).toHaveBeenCalledWith('pomodoro-show-in-main', handler)
   })
 })
