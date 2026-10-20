@@ -90,6 +90,32 @@ vi.mock('@/components/exams/ExamFormModal.vue', () => ({
   default: { template: '<div data-testid="mock-exam-modal" />' },
 }))
 
+const { restorePomodoroMiniWindow } = vi.hoisted(() => ({
+  restorePomodoroMiniWindow: vi.fn(),
+}))
+
+vi.mock('@/lib/pomodoroMiniWindow', () => ({ restorePomodoroMiniWindow }))
+
+describe('App arranque', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    restorePomodoroMiniWindow.mockClear()
+    uiState = {
+      viewMode: 'dashboard',
+      editMode: false,
+      sidebarCollapsed: false,
+      wallpaperUrl: null,
+      loadWallpaper: vi.fn(),
+    }
+  })
+
+  it('al arrancar restaura la ventana mini según el estado guardado', () => {
+    mount(App)
+
+    expect(restorePomodoroMiniWindow).toHaveBeenCalledOnce()
+  })
+})
+
 describe('App layout', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
