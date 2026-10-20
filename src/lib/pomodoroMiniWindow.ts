@@ -1,5 +1,10 @@
 import { currentMonitor, type Monitor } from '@tauri-apps/api/window'
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import {
+  loadPomodoroMiniWindowState,
+  savePomodoroMiniWindowState,
+} from '@/lib/pomodoroMiniWindowState'
+import type { PomodoroMiniWindowState } from '@/schemas/pomodoroMiniWindow'
 
 /** Label único de la ventana mini: la identifica como singleton entre webviews. */
 export const POMODORO_MINI_LABEL = 'pomodoro-mini'
@@ -37,10 +42,27 @@ export function isPomodoroMiniWindow(): boolean {
 
 /**
  * Abre la ventana mini como singleton: si ya existe la enfoca; si no, la crea
- * fija, siempre arriba y en la esquina inferior derecha del monitor donde está
- * la ventana principal.
+ * fija, siempre arriba y en la posición donde quedó (o en la esquina inferior
+ * derecha del monitor de la principal si nunca se movió). Deja el flag de
+ * apertura persistido para que el próximo arranque la reabra.
  */
 export async function openPomodoroMiniWindow(): Promise<void> {
+  const state = await loadPomodoroMiniWindowState()
+  await savePomodoroMiniWindowState({ isOpen: true, x: state.x, y: state.y })
+  await presentPomodoroMiniWindow(state)
+}
+
+/**
+ * Arranque de la app: reabre la ventana mini solo si el usuario la dejó abierta,
+ * en la posición donde quedó. No mira el temporizador: la disposición de pantalla
+ * es independiente del estado del pomodoro.
+ */
+export async function restorePomodoroMiniWindow(): Promise<void> {
+  const state = await loadPomodoroMiniWindowState()
+  if (state.isOpen) await presentPomodoroMiniWindow(state)
+}
+
+async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promise<void> {
   const existing = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL)
   if (existing) {
     await existing.show()
@@ -48,10 +70,10 @@ export async function openPomodoroMiniWindow(): Promise<void> {
     return
   }
 
-  const monitor = await currentMonitor()
-  const placement = monitor
-    ? bottomRightPlacement(monitorRect(monitor), POMODORO_MINI_WIDTH, POMODORO_MINI_HEIGHT)
-    : {}
+  const placement =
+    state.x !== null && state.y !== null
+      ? { x: state.x, y: state.y }
+      : await bottomRightOnMainMonitor()
 
   // La creación es fire-and-forget: Tauri avisa con `tauri://created`/`tauri://error`.
   new WebviewWindow(POMODORO_MINI_LABEL, {
@@ -64,4 +86,12 @@ export async function openPomodoroMiniWindow(): Promise<void> {
     decorations: true,
     ...placement,
   })
+}
+
+/** Esquina inferior derecha del monitor donde está la ventana principal. */
+async function bottomRightOnMainMonitor(): Promise<{ x?: number; y?: number }> {
+  const monitor = await currentMonitor()
+  return monitor
+    ? bottomRightPlacement(monitorRect(monitor), POMODORO_MINI_WIDTH, POMODORO_MINI_HEIGHT)
+    : {}
 }
