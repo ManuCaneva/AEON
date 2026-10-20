@@ -1,10 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { nextTick, reactive } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import App from './App.vue'
 
 let uiState: Record<string, unknown>
+
+const mockSetViewMode = vi.fn()
+
+const { onShowPomodoroInMain, requestsPomodoroView, stopListening } = vi.hoisted(() => {
+  const stopListening = vi.fn()
+  return {
+    onShowPomodoroInMain: vi.fn().mockResolvedValue(stopListening),
+    requestsPomodoroView: vi.fn().mockReturnValue(false),
+    stopListening,
+  }
+})
+
+vi.mock('@/lib/pomodoroMainWindow', () => ({ onShowPomodoroInMain, requestsPomodoroView }))
 
 vi.mock('@/stores/habits', () => ({
   useHabitsStore: () => ({
@@ -125,6 +138,7 @@ describe('App layout', () => {
       sidebarCollapsed: false,
       wallpaperUrl: null,
       loadWallpaper: vi.fn(),
+      setViewMode: mockSetViewMode,
     }
   })
 
@@ -192,5 +206,50 @@ describe('App layout', () => {
 
     const content = root.querySelector('.flex-1.flex.flex-col.min-w-0') as HTMLElement
     expect(content.previousElementSibling).toBe(slot)
+  })
+})
+
+describe('App — página Pomodoro pedida desde la ventana mini', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    uiState = {
+      viewMode: 'dashboard',
+      editMode: false,
+      sidebarCollapsed: false,
+      wallpaperUrl: null,
+      loadWallpaper: vi.fn(),
+      setViewMode: mockSetViewMode,
+    }
+    mockSetViewMode.mockClear()
+    onShowPomodoroInMain.mockClear()
+    stopListening.mockClear()
+    requestsPomodoroView.mockReturnValue(false)
+  })
+
+  it('cuando la mini pide la página Pomodoro, la ventana principal navega a ella', () => {
+    mount(App)
+    const handler = onShowPomodoroInMain.mock.calls[0][0] as () => void
+
+    handler()
+
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+  })
+
+  it('arranca en la página Pomodoro cuando la ventana se abrió con ese pedido', () => {
+    requestsPomodoroView.mockReturnValue(true)
+
+    mount(App)
+
+    expect(requestsPomodoroView).toHaveBeenCalledWith(window.location.search)
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+  })
+
+  it('al desmontar deja de escuchar los pedidos de la mini', async () => {
+    const wrapper = mount(App)
+
+    wrapper.unmount()
+    await flushPromises()
+
+    expect(stopListening).toHaveBeenCalledOnce()
   })
 })

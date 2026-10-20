@@ -22,6 +22,7 @@ import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
 import UpdateModal from '@/components/layout/UpdateModal.vue'
 import { useUpdater } from '@/composables/useUpdater'
 import { useDesktopEntry } from '@/composables/useDesktopEntry'
+import { onShowPomodoroInMain, requestsPomodoroView } from '@/lib/pomodoroMainWindow'
 import { restorePomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 
 const habits = useHabitsStore()
@@ -43,6 +44,12 @@ const {
 const { ensureDesktopEntry } = useDesktopEntry()
 
 useTheme()
+
+// El título de la ventana mini pide la página Pomodoro en esta ventana por
+// evento entre ventanas; una ventana principal recreada llega con el pedido en
+// la consulta de su URL. La navegación pasa por la store `ui`, como la sidebar.
+if (requestsPomodoroView(window.location.search)) ui.setViewMode('pomodoro')
+const stopPomodoroPageRequests = onShowPomodoroInMain(() => ui.setViewMode('pomodoro'))
 
 /**
  * Registra el AppImage en el menú de Linux antes de chequear updates. Si movió
@@ -76,6 +83,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   pomodoro.stopTicker()
+  void stopPomodoroPageRequests.then((stopListening) => stopListening())
 })
 </script>
 
