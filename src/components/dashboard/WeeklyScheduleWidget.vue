@@ -45,7 +45,7 @@ async function removeOccurrence(slotId: string) {
 }
 
 function copyOccurrence(slotId: string) {
-  const block = store.blocksWithSlots.find((bw) => bw.slots.some((s) => s.id === slotId))
+  const block = store.blockForSlot(slotId)
   if (!block) return
   const slot = block.slots.find((s) => s.id === slotId)
   if (!slot) return

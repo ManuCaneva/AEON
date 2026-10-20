@@ -128,6 +128,43 @@ describe('weeklySchedule store', () => {
     })
   })
 
+  describe('blockForSlot (bloque dueño de un horario)', () => {
+    const slotId = '550e8400-e29b-41d4-a716-446655440001'
+    const blockWithSlot = () => ({
+      id: validUuid,
+      title: 'Gimnasio',
+      color: 'lavender' as const,
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+      slots: [
+        {
+          id: slotId,
+          block_id: validUuid,
+          day_of_week: 1,
+          start_minutes: 960,
+          end_minutes: 1020,
+          created_at: validIso,
+          updated_at: validIso,
+        },
+      ],
+    })
+
+    it('devuelve el bloque que contiene la ocurrencia pedida', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [blockWithSlot()]
+
+      expect(store.blockForSlot(slotId)?.id).toBe(validUuid)
+    })
+
+    it('devuelve null cuando la ocurrencia no existe', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [blockWithSlot()]
+
+      expect(store.blockForSlot('550e8400-e29b-41d4-a716-4466554400ff')).toBeNull()
+    })
+  })
+
   describe('visibleWindow (Ventana visible auto-ajustable)', () => {
     const slot = (
       overrides: Partial<{ day_of_week: number; start_minutes: number; end_minutes: number }>,

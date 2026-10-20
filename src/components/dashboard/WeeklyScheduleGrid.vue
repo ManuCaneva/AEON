@@ -296,10 +296,6 @@ const isEditingName = computed(() => renamingSlotId.value !== null)
 // cancela el nombre.
 watch(isEditingName, (active) => emit('name-edit-state', active), { flush: 'sync' })
 
-function blockForSlot(slotId: string): ScheduleBlockWithSlots | null {
-  return store.blocksWithSlots.find((bw) => bw.slots.some((s) => s.id === slotId)) ?? null
-}
-
 function setNameInput(el: unknown) {
   nameInputRef.value = el instanceof HTMLInputElement ? el : null
 }
@@ -353,7 +349,7 @@ async function onDayDoubleClick(day: number, event: MouseEvent) {
 async function confirmName() {
   const slotId = renamingSlotId.value
   if (slotId === null) return
-  const block = blockForSlot(slotId)
+  const block = store.blockForSlot(slotId)
   const title = nameDraft.value.trim() || 'Sin título'
   renamingSlotId.value = null
   creatingBlockId.value = null
@@ -519,9 +515,7 @@ function cancelGesture() {
 }
 
 function overlapBlockTitle(validation: ValidationResult): string {
-  return validation.ok || validation.reason !== 'overlapBlock'
-    ? 'otro bloque'
-    : validation.blockTitle
+  return validation.ok ? 'otro bloque' : validation.blockTitle
 }
 
 async function finishGesture() {
