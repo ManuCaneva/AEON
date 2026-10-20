@@ -142,6 +142,15 @@ async function mountEditor(enabledDays = [0, 1, 2, 3, 4, 5, 6]) {
     width: 700,
     height: 600,
   } as DOMRect)
+  const daysGridEl = wrapper.get('[data-testid="schedule-days-grid"]').element as HTMLElement
+  vi.spyOn(daysGridEl, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    top: 0,
+    right: 700,
+    bottom: 600,
+    width: 700,
+    height: 600,
+  } as DOMRect)
   const headerEl = wrapper.get('.schedule-header').element as HTMLElement
   vi.spyOn(headerEl, 'getBoundingClientRect').mockReturnValue({
     left: 0,
