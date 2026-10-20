@@ -15,6 +15,13 @@ export const BLOCK_COLOR_TOKENS = [
 export type BlockColorToken = (typeof BLOCK_COLOR_TOKENS)[number]
 export const blockColorSchema = z.enum(BLOCK_COLOR_TOKENS)
 
+/** Copia de una ocurrencia para pegarla como bloque nuevo en la grilla. */
+export interface ScheduleClipboardPayload {
+  title: string
+  color: BlockColorToken
+  durationMinutes: number
+}
+
 // ── Dominio (consume Pinia/Vue) ──
 export const ScheduleBlockSchema = z.object({
   id: uuid,

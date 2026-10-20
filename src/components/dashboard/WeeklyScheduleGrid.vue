@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
-import { X } from 'lucide-vue-next'
+import { ClipboardPaste, Copy, X } from 'lucide-vue-next'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
 import type { ValidationResult } from '@/stores/weeklySchedule'
@@ -13,13 +13,21 @@ import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
 import { blockColorTint } from '@/lib/scheduleColors'
 import type { ScheduleDragPoint } from '@/lib/scheduleDragGeometry'
-import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
+import type {
+  ScheduleBlockWithSlots,
+  ScheduleClipboardPayload,
+  ScheduleSlot,
+} from '@/schemas/weeklySchedule'
 
 const props = defineProps<{
   /** Fecha de referencia para el día de hoy y la hora actual (inyectable para tests). */
   now?: Date
   /** Ocurrencia elegida en el modo edición; `null` cuando no hay ninguna. */
   selectedSlotId?: string | null
+  /** Ocurrencia copiada lista para pegar como bloque nuevo. */
+  clipboard?: ScheduleClipboardPayload | null
+  /** Pegado activo: el fantasma sigue al puntero hasta colocarse o cancelarse. */
+  pasting?: boolean
 }>()
 
 const store = useWeeklyScheduleStore()
@@ -28,6 +36,9 @@ const emit = defineEmits<{
   edit: [block: ScheduleBlockWithSlots]
   select: [slotId: string | null]
   remove: [slotId: string]
+  copy: [slotId: string]
+  'paste-start': []
+  paste: [day: number, startMinutes: number]
   'name-edit-state': [active: boolean]
 }>()
 
@@ -221,15 +232,21 @@ function onSlotEnter(slotId: string) {
 
 function onSlotLeave(slotId: string, event: MouseEvent) {
   const next = event.relatedTarget as HTMLElement | null
-  if (next?.closest?.('[data-testid="schedule-slot-delete"]')) return
+  const control = next?.closest?.('[data-schedule-slot-control]') as HTMLElement | null
+  if (control?.dataset.slotId === slotId) return
   if (hoveredSlotId.value === slotId) hoveredSlotId.value = null
 }
 
+function isHoverVisible(slotId: string): boolean {
+  return ui.scheduleEditMode && !props.pasting && hoveredSlotId.value === slotId
+}
+
 function isDeleteVisible(slotId: string): boolean {
-  return ui.scheduleEditMode && hoveredSlotId.value === slotId
+  return isHoverVisible(slotId)
 }
 
 function onSlotClick(vs: VisibleSlot) {
+  if (props.pasting) return
   if (!ui.scheduleEditMode) {
     emit('edit', vs.block)
     return
@@ -237,12 +254,16 @@ function onSlotClick(vs: VisibleSlot) {
   emit('select', vs.slot.id)
 }
 
-/** Click en un hueco de la grilla: limpia la selección. */
+/** Click en un hueco de la grilla: limpia la selección o coloca el pegado. */
 function onGridClick(event: MouseEvent) {
   if (!ui.scheduleEditMode) return
+  if (pasteActive.value) {
+    placePaste(event)
+    return
+  }
   const target = event.target as HTMLElement | null
   if (target?.closest?.('.schedule-block')) return
-  if (target?.closest?.('[data-testid="schedule-slot-delete"]')) return
+  if (target?.closest?.('[data-schedule-slot-control]')) return
   emit('select', null)
 }
 
@@ -279,13 +300,13 @@ function beginNameEdit(slotId: string, title: string, creatingId: string | null)
 }
 
 async function onBlockDoubleClick(vs: VisibleSlot) {
-  if (!ui.scheduleEditMode) return
+  if (!ui.scheduleEditMode || props.pasting) return
   await confirmName()
   beginNameEdit(vs.slot.id, vs.block.title, null)
 }
 
 async function onDayDoubleClick(day: number, event: MouseEvent) {
-  if (!ui.scheduleEditMode) return
+  if (!ui.scheduleEditMode || props.pasting) return
   const rowHeight = rowHeightPx.value
   if (rowHeight <= 0) return
 
@@ -402,13 +423,13 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function onBlockPointerDown(vs: VisibleSlot, event: PointerEvent) {
-  if (!ui.scheduleEditMode) return
+  if (!ui.scheduleEditMode || props.pasting) return
   gestureCandidate.value = { vs, kind: 'move' }
   beginGesture(event)
 }
 
 function onResizePointerDown(vs: VisibleSlot, edge: 'top' | 'bottom', event: PointerEvent) {
-  if (!ui.scheduleEditMode) return
+  if (!ui.scheduleEditMode || props.pasting) return
   gestureCandidate.value = { vs, kind: edge === 'top' ? 'resize-top' : 'resize-bottom' }
   beginGesture(event)
 }
@@ -520,6 +541,111 @@ const gestureRangeLabel = computed(() => {
   return `${minutesToHHMM(state.start)} → ${minutesToHHMM(state.end)}`
 })
 
+// ── Copiar y pegar (solo en el modo edición del cronograma) ──
+interface PastePoint {
+  minutes: number
+  clientX: number
+  clientY: number
+}
+
+const PASTE_GHOST_OFFSET_X = 14
+const PASTE_GHOST_OFFSET_Y = 18
+const pastePoint = ref<PastePoint | null>(null)
+
+const pasteActive = computed(() => props.pasting === true && props.clipboard != null)
+
+watch(
+  () => props.pasting,
+  (active) => {
+    if (!active) pastePoint.value = null
+  }
+)
+
+/** El fantasma sigue al puntero sobre la columna de un día habilitado. */
+function onDayPointerMove(event: PointerEvent) {
+  if (!pasteActive.value) return
+  if (minuteHeightPx.value <= 0) return
+  const column = event.currentTarget as HTMLElement | null
+  if (!column) return
+  const rect = column.getBoundingClientRect()
+  const minutes = Math.round(windowStart.value + (event.clientY - rect.top) / minuteHeightPx.value)
+  pastePoint.value = {
+    minutes: clamp(minutes, 0, 1440),
+    clientX: event.clientX,
+    clientY: event.clientY,
+  }
+}
+
+const pasteRange = computed(() => {
+  const clip = props.clipboard
+  const point = pastePoint.value
+  if (!pasteActive.value || !clip || !point) return null
+  const start = clamp(point.minutes, 0, 1440 - clip.durationMinutes)
+  return { start, end: start + clip.durationMinutes }
+})
+
+const pasteGhostHeightPx = computed(() => {
+  const clip = props.clipboard
+  if (!clip) return 0
+  return Math.max(16, clip.durationMinutes * minuteHeightPx.value)
+})
+
+const pasteGhostStyle = computed(() => {
+  const point = pastePoint.value
+  if (!pasteActive.value || !point) return null
+  return {
+    left: `${point.clientX + PASTE_GHOST_OFFSET_X}px`,
+    top: `${point.clientY + PASTE_GHOST_OFFSET_Y}px`,
+    width: '120px',
+    height: `${pasteGhostHeightPx.value}px`,
+  }
+})
+
+const pasteBadgeStyle = computed(() => {
+  const point = pastePoint.value
+  if (!pasteActive.value || !point) return null
+  return {
+    left: `${point.clientX + PASTE_GHOST_OFFSET_X}px`,
+    top: `${point.clientY + PASTE_GHOST_OFFSET_Y + pasteGhostHeightPx.value + 6}px`,
+  }
+})
+
+const pasteRangeLabel = computed(() => {
+  const range = pasteRange.value
+  return range ? `${minutesToHHMM(range.start)} → ${minutesToHHMM(range.end)}` : ''
+})
+
+const floatingBadgeStyle = computed(() => gestureBadgeStyle.value ?? pasteBadgeStyle.value)
+const floatingBadgeLabel = computed(() =>
+  gestureState.value ? gestureRangeLabel.value : pasteRangeLabel.value
+)
+
+/** Un click sobre una columna habilitada coloca la copia en ese día y minuto. */
+function placePaste(event: MouseEvent) {
+  const clip = props.clipboard
+  if (!clip || minuteHeightPx.value <= 0) return
+  const target = event.target as HTMLElement | null
+  const column = target?.closest?.('[data-day]') as HTMLElement | null
+  if (!column) return
+  const day = Number(column.dataset.day)
+  if (!enabledDays.value.includes(day)) return
+  const rect = column.getBoundingClientRect()
+  const minutes = Math.round(windowStart.value + (event.clientY - rect.top) / minuteHeightPx.value)
+  const start = clamp(minutes, 0, 1440 - clip.durationMinutes)
+  const end = start + clip.durationMinutes
+  if (end <= start) return
+  const validation = store.validateSlot({
+    day_of_week: day,
+    start_minutes: start,
+    end_minutes: end,
+  })
+  if (!validation.ok) {
+    gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
+    return
+  }
+  emit('paste', day, start)
+}
+
 // Si el modo se apaga mientras se edita el nombre, se confirma lo escrito
 // para no dejar el editor colgado; un arrastre en curso se cancela.
 watch(
@@ -574,6 +700,7 @@ watch(
           ref="daysGridRef"
           class="relative grid flex-1 select-none border-l border-hairline"
           :style="dayGridStyle"
+          data-testid="schedule-days-grid"
           @click="onGridClick"
         >
           <div
@@ -584,6 +711,7 @@ watch(
             :data-day="dayIndex"
             :data-testid="dayIndex === todayIndex ? 'schedule-today-column' : undefined"
             @dblclick="onDayDoubleClick(dayIndex, $event)"
+            @pointermove="onDayPointerMove($event)"
           >
             <div
               v-for="hl in hourLabels"
@@ -614,7 +742,7 @@ watch(
               />
 
               <!-- Manijas de resize: solo los bordes superior e inferior -->
-              <template v-if="ui.scheduleEditMode">
+              <template v-if="ui.scheduleEditMode && !pasting">
                 <div
                   class="group absolute z-20 flex cursor-ns-resize items-center justify-center"
                   :style="{
@@ -653,14 +781,49 @@ watch(
                 v-if="isDeleteVisible(vs.slot.id)"
                 type="button"
                 data-testid="schedule-slot-delete"
+                data-schedule-slot-control
+                :data-slot-id="vs.slot.id"
                 :aria-label="`Borrar ${vs.block.title} del ${DAYS[vs.slot.day_of_week]}`"
                 class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink"
                 :style="{ top: slotTopPx(vs) + 'px', right: '2%' }"
                 @mouseenter="onSlotEnter(vs.slot.id)"
-                @mouseleave="hoveredSlotId = null"
-                @click="emit('remove', vs.slot.id)"
+                @mouseleave="onSlotLeave(vs.slot.id, $event)"
+                @click.stop="emit('remove', vs.slot.id)"
               >
                 <X :size="10" />
+              </button>
+
+              <button
+                v-if="isHoverVisible(vs.slot.id)"
+                type="button"
+                data-testid="schedule-slot-copy"
+                data-schedule-slot-control
+                :data-slot-id="vs.slot.id"
+                :aria-label="`Copiar ${vs.block.title} del ${DAYS[vs.slot.day_of_week]}`"
+                class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink"
+                :style="{ top: slotTopPx(vs) + 'px', right: 'calc(2% + 18px)' }"
+                @mouseenter="onSlotEnter(vs.slot.id)"
+                @mouseleave="onSlotLeave(vs.slot.id, $event)"
+                @click.stop="emit('copy', vs.slot.id)"
+              >
+                <Copy :size="10" />
+              </button>
+
+              <button
+                v-if="isHoverVisible(vs.slot.id)"
+                type="button"
+                data-testid="schedule-slot-paste"
+                data-schedule-slot-control
+                :data-slot-id="vs.slot.id"
+                aria-label="Pegar bloque"
+                :disabled="!clipboard"
+                class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-surface-2 disabled:hover:text-ink-muted"
+                :style="{ top: slotTopPx(vs) + 'px', right: 'calc(2% + 36px)' }"
+                @mouseenter="onSlotEnter(vs.slot.id)"
+                @mouseleave="onSlotLeave(vs.slot.id, $event)"
+                @click.stop="emit('paste-start')"
+              >
+                <ClipboardPaste :size="10" />
               </button>
 
               <input
@@ -719,16 +882,33 @@ watch(
       </div>
     </div>
 
-    <!-- Cartelito flotante con el rango exacto durante el gesto -->
+    <!-- Fantasma del pegado: bloque translúcido enganchado al puntero -->
     <Teleport to="body">
       <div
-        v-if="gestureState && gestureBadgeStyle"
+        v-if="pasteGhostStyle && clipboard"
+        data-testid="schedule-paste-ghost"
+        aria-hidden="true"
+        class="pointer-events-none fixed z-40 opacity-50"
+        :style="pasteGhostStyle"
+      >
+        <WeeklyScheduleBlock
+          :title="clipboard.title"
+          :color="clipboard.color"
+          :style="{ top: '0px', left: '0px', width: '100%', height: '100%' }"
+        />
+      </div>
+    </Teleport>
+
+    <!-- Cartelito flotante con el rango exacto durante el gesto o el pegado -->
+    <Teleport to="body">
+      <div
+        v-if="floatingBadgeStyle"
         data-testid="schedule-drag-badge"
         role="status"
         class="glass-overlay pointer-events-none fixed z-50 rounded-md px-2 py-1 text-caption text-ink shadow-lg"
-        :style="gestureBadgeStyle"
+        :style="floatingBadgeStyle"
       >
-        {{ gestureRangeLabel }}
+        {{ floatingBadgeLabel }}
       </div>
     </Teleport>
 
