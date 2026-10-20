@@ -17,7 +17,9 @@ withDefaults(
 
 const exams = useExamsStore()
 
-const list = computed(() => exams.exams)
+// El store ya entrega el listado ordenado: los próximos arriba y los que ya
+// pasaron abajo (el más reciente primero).
+const list = computed(() => exams.orderedExams)
 </script>
 
 <template>

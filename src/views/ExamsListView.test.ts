@@ -23,6 +23,11 @@ const examsMock = {
   get exams() {
     return examsState.value
   },
+  // El store expone el listado ya ordenado; el mock lo devuelve al revés
+  // para comprobar que la vista consume ese orden y no el crudo.
+  get orderedExams() {
+    return [...examsState.value].reverse()
+  },
   toggleTopic: vi.fn().mockResolvedValue(undefined),
   blockFor: vi.fn().mockReturnValue(undefined),
   colorFor: vi.fn().mockReturnValue('lavender'),
@@ -83,6 +88,13 @@ describe('ExamsListView', () => {
     examsState.value = [makeExam('exam-1', 'Parcial 1'), makeExam('exam-2', 'Parcial 2')]
     const wrapper = mount(ExamsListView)
     expect(wrapper.findAllComponents({ name: 'ExamCard' })).toHaveLength(2)
+  })
+
+  it('lista en el orden que entrega el store (ya ordenados por el store)', () => {
+    examsState.value = [makeExam('exam-1', 'Parcial 1'), makeExam('exam-2', 'Parcial 2')]
+    const wrapper = mount(ExamsListView)
+    const titles = wrapper.findAllComponents({ name: 'ExamCard' }).map((c) => c.props('exam').title)
+    expect(titles).toEqual(['Parcial 2', 'Parcial 1'])
   })
 
   it('lista un examen con vínculo huérfano sin romper', () => {

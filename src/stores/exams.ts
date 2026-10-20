@@ -15,6 +15,7 @@ import { useCalendarStore } from './calendar'
 import type { ScheduleBlock } from '@/schemas/weeklySchedule'
 import type { DayOverlayByDate } from '@/schemas/calendar'
 import { resolvedEntityLinkKeys } from '@/lib/entityEventLink'
+import { sortExamsForList } from '@/lib/examOrder'
 import type { EventChoice } from '@/lib/entityEventLink'
 import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
 
@@ -307,6 +308,13 @@ export const useExamsStore = defineStore('exams', () => {
     resolvedEntityLinkKeys(exams.value, useCalendarStore().events)
   )
 
+  /**
+   * Listado para mostrar: los próximos arriba (el más cercano primero) y los
+   * ya pasados abajo (el más reciente primero). `exams` conserva su orden
+   * canónico por fecha ascendente; este es el orden que ve la persona.
+   */
+  const orderedExams = computed<Exam[]>(() => sortExamsForList(exams.value))
+
   return {
     exams,
     loading,
@@ -331,5 +339,6 @@ export const useExamsStore = defineStore('exams', () => {
     colorFor,
     overlayByDate,
     linkedEventKeys,
+    orderedExams,
   }
 })

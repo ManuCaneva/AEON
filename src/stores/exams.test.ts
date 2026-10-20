@@ -6,6 +6,7 @@ import { useCalendarStore } from './calendar'
 import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
 import type { CalendarEvent } from '@/schemas/calendar'
 import { eventKey } from '@/lib/entityEventLink'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 import * as db from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({
@@ -32,6 +33,13 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   }
+}
+
+/** Fecha local (YYYY-MM-DD) a `days` días de hoy. */
+function dateOffset(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return formatYyyyMmDd(d)
 }
 
 describe('exams store - loadExams', () => {
@@ -763,5 +771,39 @@ describe('exams store - vínculo al evento (dedup)', () => {
 
     expect(store.exams[0].date).toBe('2026-07-01')
     expect(store.overlayByDate.get('2026-07-01')![0].id).toBe(`exam_${examId}`)
+  })
+})
+
+describe('exams store - listado ordenado', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('deja los próximos arriba y los ya pasados abajo', async () => {
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ title: 'Pasado lejano', date: dateOffset(-10) }),
+      makeRow({ title: 'Próximo lejano', date: dateOffset(10) }),
+      makeRow({ title: 'Próximo cercano', date: dateOffset(3) }),
+      makeRow({ title: 'Pasado reciente', date: dateOffset(-1) }),
+    ])
+    const store = useExamsStore()
+    await store.loadExams()
+    expect(store.orderedExams.map((e) => e.title)).toEqual([
+      'Próximo cercano',
+      'Próximo lejano',
+      'Pasado reciente',
+      'Pasado lejano',
+    ])
+  })
+
+  it('el array exams conserva su orden canónico por fecha ascendente', async () => {
+    vi.mocked(db.listExams).mockResolvedValue([
+      makeRow({ title: 'Pasado', date: dateOffset(-10) }),
+      makeRow({ title: 'Próximo', date: dateOffset(10) }),
+    ])
+    const store = useExamsStore()
+    await store.loadExams()
+    expect(store.exams.map((e) => e.title)).toEqual(['Pasado', 'Próximo'])
   })
 })
