@@ -3,7 +3,7 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
-import type { ValidationResult } from '@/stores/weeklySchedule'
+import type { ValidationResult, VisibleWindow } from '@/stores/weeklySchedule'
 import { useUiStore } from '@/stores/ui'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import Toast from '@/components/ui/Toast.vue'
@@ -11,7 +11,11 @@ import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import { useScheduleDrag } from '@/composables/useScheduleDrag'
 import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
-import type { ScheduleDragPoint } from '@/lib/scheduleDragGeometry'
+import {
+  growWindowAtEdge,
+  pointerToSchedulePosition,
+  type ScheduleDragPoint,
+} from '@/lib/scheduleDragGeometry'
 import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
 
 const props = defineProps<{
@@ -135,8 +139,21 @@ onUnmounted(() => {
 
 watch(() => [store.settings, store.visibleWindow], measure, { deep: true })
 
+// Horas extra que se muestran mientras un gesto se acerca a un borde. La
+// ventana base sigue siendo la derivada del store: al soltar, esto vuelve a 0.
+const gestureWindowGrowth = ref({ above: 0, below: 0 })
+
+const effectiveWindow = computed<VisibleWindow>(() => ({
+  start_minutes: Math.max(0, store.visibleWindow.start_minutes - gestureWindowGrowth.value.above),
+  end_minutes: Math.min(1440, store.visibleWindow.end_minutes + gestureWindowGrowth.value.below),
+}))
+
+function resetGestureWindow() {
+  gestureWindowGrowth.value = { above: 0, below: 0 }
+}
+
 const visibleRows = computed(() => {
-  const diff = store.visibleWindow.end_minutes - store.visibleWindow.start_minutes
+  const diff = effectiveWindow.value.end_minutes - effectiveWindow.value.start_minutes
   return Math.max(1, Math.floor(diff / store.settings.granularity_minutes))
 })
 
@@ -146,18 +163,18 @@ const rowHeightPx = computed(() => {
 })
 
 const minuteHeightPx = computed(() => rowHeightPx.value / store.settings.granularity_minutes)
-const windowStart = computed(() => store.visibleWindow.start_minutes)
+const windowStart = computed(() => effectiveWindow.value.start_minutes)
 
 // Línea de la hora actual: depende de nowRef (tick cada 60 s) y de la Ventana
 // visible, así recalcula sola cuando cambia la ventana o pasa el minuto.
 const nowLineTop = computed(() =>
-  nowLineTopPx(minutesSinceMidnight(nowRef.value), store.visibleWindow, minuteHeightPx.value)
+  nowLineTopPx(minutesSinceMidnight(nowRef.value), effectiveWindow.value, minuteHeightPx.value)
 )
 
 const hourLabels = computed(() => {
   const out: { minute: number; label: string }[] = []
-  const start = store.visibleWindow.start_minutes
-  const end = store.visibleWindow.end_minutes
+  const start = effectiveWindow.value.start_minutes
+  const end = effectiveWindow.value.end_minutes
   const step = store.settings.granularity_minutes
   for (let m = start; m < end; m += step) {
     out.push({ minute: m, label: minutesToHHMM(m) })
@@ -185,8 +202,8 @@ function slotHeightPx(vs: VisibleSlot) {
 }
 
 const visibleSlots = computed((): VisibleSlot[] => {
-  const start = store.visibleWindow.start_minutes
-  const end = store.visibleWindow.end_minutes
+  const start = effectiveWindow.value.start_minutes
+  const end = effectiveWindow.value.end_minutes
   const result: VisibleSlot[] = []
   for (const bw of store.blocksWithSlots) {
     for (const slot of bw.slots) {
@@ -279,6 +296,7 @@ const { begin: beginGesture } = useScheduleDrag(
     onStart() {
       const candidate = gestureCandidate.value
       if (!candidate) return
+      resetGestureWindow()
       gestureState.value = {
         kind: candidate.kind,
         slot: candidate.vs.slot,
@@ -318,9 +336,36 @@ function onResizePointerDown(vs: VisibleSlot, edge: 'top' | 'bottom', event: Poi
   beginGesture(event)
 }
 
+function growWindowAtPointer(point: ScheduleDragPoint): ScheduleDragPoint {
+  const grid = daysGridRef.value
+  if (!grid) return point
+  const rect = grid.getBoundingClientRect()
+  const grown = growWindowAtEdge(effectiveWindow.value, point.clientY, rect)
+  if (
+    grown.start_minutes === effectiveWindow.value.start_minutes &&
+    grown.end_minutes === effectiveWindow.value.end_minutes
+  ) {
+    return point
+  }
+  const base = store.visibleWindow
+  gestureWindowGrowth.value = {
+    above: base.start_minutes - grown.start_minutes,
+    below: grown.end_minutes - base.end_minutes,
+  }
+  // El crecimiento cambia el mapeo píxeles → minutos: el mismo puntero se
+  // traduce con la ventana vigente para que el bloque no se despegue.
+  return pointerToSchedulePosition(point.clientX, point.clientY, rect, {
+    enabledDays: enabledDays.value,
+    windowStart: effectiveWindow.value.start_minutes,
+    minuteHeightPx: minuteHeightPx.value,
+  })
+}
+
 function moveGesture(point: ScheduleDragPoint) {
   const state = gestureState.value
   if (!state) return
+
+  point = growWindowAtPointer(point)
 
   if (state.kind === 'move') {
     // Los días deshabilitados no son destino de arrastre.
@@ -354,6 +399,7 @@ function moveGesture(point: ScheduleDragPoint) {
 function cancelGesture() {
   gestureState.value = null
   gestureCandidate.value = null
+  resetGestureWindow()
 }
 
 function overlapBlockTitle(validation: ValidationResult): string {
@@ -366,34 +412,41 @@ async function finishGesture() {
   const state = gestureState.value
   gestureState.value = null
   gestureCandidate.value = null
-  if (!state) return
-  if (!enabledDays.value.includes(state.day)) return
-  if (
-    state.day === state.slot.day_of_week &&
-    state.start === state.slot.start_minutes &&
-    state.end === state.slot.end_minutes
-  ) {
-    return
-  }
-
-  const validation = store.validateSlot(
-    { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end },
-    state.slot.id
-  )
-  if (!validation.ok) {
-    gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
-    return
-  }
-
   try {
-    await store.updateSlot(
-      state.slot.id,
-      state.kind === 'move'
-        ? { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end }
-        : { start_minutes: state.start, end_minutes: state.end }
+    if (!state) return
+    if (!enabledDays.value.includes(state.day)) return
+    if (
+      state.day === state.slot.day_of_week &&
+      state.start === state.slot.start_minutes &&
+      state.end === state.slot.end_minutes
+    ) {
+      return
+    }
+
+    const validation = store.validateSlot(
+      { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end },
+      state.slot.id
     )
-  } catch {
-    gestureToast.value = 'No se pudo actualizar el bloque'
+    if (!validation.ok) {
+      gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
+      return
+    }
+
+    try {
+      await store.updateSlot(
+        state.slot.id,
+        state.kind === 'move'
+          ? { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end }
+          : { start_minutes: state.start, end_minutes: state.end }
+      )
+    } catch {
+      gestureToast.value = 'No se pudo actualizar el bloque'
+    }
+  } finally {
+    // Al soltar, la ventana visible vuelve a derivarse del rango de los
+    // horarios. Se hace después de persistir para que el horario nuevo ya
+    // esté en el rango y la grilla no se achique en el medio.
+    resetGestureWindow()
   }
 }
 
@@ -466,7 +519,7 @@ watch(
             v-for="hl in hourLabels"
             :key="hl.minute"
             :style="{ height: rowHeightStyle }"
-            class="schedule-hour-label flex items-center justify-center border-b border-hairline/30 px-1 text-ink-subtle"
+            class="schedule-hour-label flex items-center justify-center border-b border-hairline/30 px-1 text-ink-subtle transition-[height] duration-200 ease-out"
           >
             <span class="leading-3">{{ hl.label }}</span>
           </div>
@@ -474,6 +527,7 @@ watch(
 
         <div
           ref="daysGridRef"
+          data-testid="schedule-days-grid"
           class="relative grid flex-1 select-none border-l border-hairline"
           :style="dayGridStyle"
           @click="onGridClick"
@@ -490,7 +544,7 @@ watch(
               v-for="hl in hourLabels"
               :key="hl.minute"
               :style="{ height: rowHeightStyle }"
-              class="w-full border-b border-hairline/30"
+              class="w-full border-b border-hairline/30 transition-[height] duration-200 ease-out"
             />
 
             <template v-for="vs in slotsForDay(dayIndex)" :key="vs.slot.id">
