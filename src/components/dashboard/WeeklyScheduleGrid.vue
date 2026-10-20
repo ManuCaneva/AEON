@@ -269,10 +269,6 @@ function isHoverVisible(slotId: string): boolean {
   return ui.scheduleEditMode && !props.pasting && hoveredSlotId.value === slotId
 }
 
-function isDeleteVisible(slotId: string): boolean {
-  return isHoverVisible(slotId)
-}
-
 function onSlotClick(vs: VisibleSlot) {
   if (props.pasting) return
   if (!ui.scheduleEditMode) {
@@ -775,25 +771,36 @@ watch(
             v-for="dayIndex in enabledDays"
             :key="dayIndex"
             class="relative border-r border-hairline"
-            :class="dayIndex === todayIndex ? 'bg-accent-purple-tint/40' : undefined"
             :data-day="dayIndex"
             :data-testid="dayIndex === todayIndex ? 'schedule-today-column' : undefined"
             @dblclick="onDayDoubleClick(dayIndex, $event)"
             @pointermove="onDayPointerMove($event)"
           >
+            <!-- Capa desaturada: solo los días y sus bloques. Los controles
+                 del modo (×, copiar/pegar, manijas, nombre) viven fuera. -->
             <div
-              v-for="hl in hourLabels"
-              :key="hl.minute"
-              :style="{ height: rowHeightStyle }"
-              class="w-full border-b border-hairline/30 transition-[height] duration-200 ease-out"
-            />
+              class="relative"
+              :class="[
+                dayIndex === todayIndex ? 'bg-accent-purple-tint/40' : undefined,
+                ui.scheduleEditMode && 'grayscale',
+              ]"
+              data-testid="schedule-day-content"
+            >
+              <div
+                v-for="hl in hourLabels"
+                :key="hl.minute"
+                :style="{ height: rowHeightStyle }"
+                class="w-full border-b border-hairline/30 transition-[height] duration-200 ease-out"
+              />
 
-            <template v-for="vs in slotsForDay(dayIndex)" :key="vs.slot.id">
               <WeeklyScheduleBlock
+                v-for="vs in slotsForDay(dayIndex)"
+                :key="vs.slot.id"
                 :title="vs.block.title"
                 :color="vs.block.color"
                 :today="dayIndex === todayIndex"
                 :selected="props.selectedSlotId === vs.slot.id"
+                :data-slot-id="vs.slot.id"
                 class="absolute z-10 shadow-sm"
                 :class="gestureState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
                 :style="{
@@ -808,11 +815,16 @@ watch(
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
               />
+            </div>
 
-              <!-- Manijas de resize: solo los bordes superior e inferior -->
-              <template v-if="ui.scheduleEditMode && !pasting">
+            <template v-for="vs in slotsForDay(dayIndex)" :key="vs.slot.id">
+              <!-- Manijas de resize: solo los bordes superior e inferior, y
+                   solo mientras el puntero está sobre la ocurrencia. -->
+              <template v-if="isHoverVisible(vs.slot.id)">
                 <div
-                  class="group absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  class="absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  data-schedule-slot-control
+                  :data-slot-id="vs.slot.id"
                   :style="{
                     top: slotTopPx(vs) - 4 + 'px',
                     height: '8px',
@@ -820,15 +832,17 @@ watch(
                     width: '96%',
                   }"
                   data-testid="schedule-resize-handle-top"
-                  :data-slot-id="vs.slot.id"
                   @pointerdown.stop="onResizePointerDown(vs, 'top', $event)"
+                  @dblclick.stop
+                  @mouseenter="onSlotEnter(vs.slot.id)"
+                  @mouseleave="onSlotLeave(vs.slot.id, $event)"
                 >
-                  <span
-                    class="h-0.5 w-8 rounded-full bg-accent-purple/60 opacity-40 transition-opacity group-hover:opacity-100"
-                  />
+                  <span class="h-0.5 w-8 rounded-full bg-accent-purple/60" />
                 </div>
                 <div
-                  class="group absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  class="absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  data-schedule-slot-control
+                  :data-slot-id="vs.slot.id"
                   :style="{
                     top: slotTopPx(vs) + slotHeightPx(vs) - 4 + 'px',
                     height: '8px',
@@ -836,17 +850,17 @@ watch(
                     width: '96%',
                   }"
                   data-testid="schedule-resize-handle-bottom"
-                  :data-slot-id="vs.slot.id"
                   @pointerdown.stop="onResizePointerDown(vs, 'bottom', $event)"
+                  @dblclick.stop
+                  @mouseenter="onSlotEnter(vs.slot.id)"
+                  @mouseleave="onSlotLeave(vs.slot.id, $event)"
                 >
-                  <span
-                    class="h-0.5 w-8 rounded-full bg-accent-purple/60 opacity-40 transition-opacity group-hover:opacity-100"
-                  />
+                  <span class="h-0.5 w-8 rounded-full bg-accent-purple/60" />
                 </div>
               </template>
 
               <button
-                v-if="isDeleteVisible(vs.slot.id)"
+                v-if="isHoverVisible(vs.slot.id)"
                 type="button"
                 data-testid="schedule-slot-delete"
                 data-schedule-slot-control
@@ -854,11 +868,12 @@ watch(
                 :aria-label="`Borrar ${vs.block.title} del ${DAYS[vs.slot.day_of_week]}`"
                 class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink"
                 :style="{ top: slotTopPx(vs) + 'px', right: '2%' }"
+                @dblclick.stop
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
                 @click.stop="emit('remove', vs.slot.id)"
               >
-                <X :size="10" />
+                <X :size="14" />
               </button>
 
               <button
@@ -870,11 +885,12 @@ watch(
                 :aria-label="`Copiar ${vs.block.title} del ${DAYS[vs.slot.day_of_week]}`"
                 class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink"
                 :style="{ top: slotTopPx(vs) + 'px', right: 'calc(2% + 18px)' }"
+                @dblclick.stop
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
                 @click.stop="emit('copy', vs.slot.id)"
               >
-                <Copy :size="10" />
+                <Copy :size="14" />
               </button>
 
               <button
@@ -887,11 +903,12 @@ watch(
                 :disabled="!clipboard"
                 class="absolute z-20 flex h-3.5 w-3.5 -translate-y-1/2 items-center justify-center rounded-full border border-hairline-strong bg-surface-2 text-ink-muted shadow-sm transition-colors duration-150 hover:bg-surface-3 hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-surface-2 disabled:hover:text-ink-muted"
                 :style="{ top: slotTopPx(vs) + 'px', right: 'calc(2% + 36px)' }"
+                @dblclick.stop
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
                 @click.stop="emit('paste-start')"
               >
-                <ClipboardPaste :size="10" />
+                <ClipboardPaste :size="14" />
               </button>
 
               <input
@@ -922,7 +939,7 @@ watch(
           <!-- El bloque en gesto sigue al puntero por posición, no por acumulación de píxeles -->
           <div
             v-if="gestureState"
-            class="pointer-events-none absolute z-30"
+            class="pointer-events-none absolute z-30 grayscale"
             :style="gestureGhostStyle"
             data-testid="schedule-drag-ghost"
           >
@@ -943,6 +960,7 @@ watch(
           <div
             v-if="nowLineTop !== null"
             class="pointer-events-none absolute inset-x-0 z-20 h-px bg-accent-purple/40"
+            :class="ui.scheduleEditMode && 'grayscale'"
             :style="{ top: nowLineTop + 'px' }"
             data-testid="schedule-now-line"
           />
@@ -956,7 +974,7 @@ watch(
         v-if="pasteGhostStyle && clipboard"
         data-testid="schedule-paste-ghost"
         aria-hidden="true"
-        class="pointer-events-none fixed z-40 opacity-50"
+        class="pointer-events-none fixed z-40 opacity-50 grayscale"
         :style="pasteGhostStyle"
       >
         <WeeklyScheduleBlock

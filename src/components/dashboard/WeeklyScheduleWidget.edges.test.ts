@@ -188,6 +188,8 @@ async function startResize(
   slotId: string,
   edge: 'top' | 'bottom'
 ) {
+  // Las manijas aparecen al pasar el mouse por su ocurrencia.
+  await wrapper.get(`.schedule-block[data-slot-id="${slotId}"]`).trigger('mouseenter')
   const handle = wrapper.get(
     `[data-testid="schedule-resize-handle-${edge}"][data-slot-id="${slotId}"]`
   )

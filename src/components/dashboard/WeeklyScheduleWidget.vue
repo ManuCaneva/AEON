@@ -178,11 +178,7 @@ function openEdit(b: ScheduleBlockWithSlots) {
       >
         Error al cargar: {{ store.lastError }}
       </div>
-      <div
-        data-testid="schedule-edit-content"
-        class="min-h-0 flex-1 overflow-hidden"
-        :class="ui.scheduleEditMode && 'grayscale'"
-      >
+      <div data-testid="schedule-edit-content" class="min-h-0 flex-1 overflow-hidden">
         <WeeklyScheduleGrid
           class="h-full"
           :selected-slot-id="selectedSlotId"

@@ -193,6 +193,8 @@ async function startResize(
   slotId: string,
   edge: 'top' | 'bottom'
 ) {
+  // Las manijas aparecen al pasar el mouse por su ocurrencia.
+  await wrapper.get(`.schedule-block[data-slot-id="${slotId}"]`).trigger('mouseenter')
   const handle = wrapper.get(
     `[data-testid="schedule-resize-handle-${edge}"][data-slot-id="${slotId}"]`
   )
@@ -238,15 +240,30 @@ describe('WeeklyScheduleWidget · estirar ocurrencias en modo edición', () => {
     document.body.innerHTML = ''
   })
 
-  it('ofrece manijas solo en los bordes superior e inferior de cada ocurrencia', async () => {
+  it('ofrece manijas al pasar el mouse por la ocurrencia, solo en sus bordes superior e inferior', async () => {
     const { wrapper } = await mountEditor()
+
+    // Sin hover no hay manijas: mismo gating que la × y copiar/pegar.
+    expect(wrapper.find('[data-testid="schedule-resize-handle-top"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="schedule-resize-handle-bottom"]').exists()).toBe(false)
+
+    const gym = wrapper.get(`.schedule-block[data-slot-id="${GYM_SLOT_ID}"]`)
+    await gym.trigger('mouseenter')
 
     const tops = wrapper.findAll('[data-testid="schedule-resize-handle-top"]')
     const bottoms = wrapper.findAll('[data-testid="schedule-resize-handle-bottom"]')
-    expect(tops).toHaveLength(2)
-    expect(bottoms).toHaveLength(2)
-    expect(tops.map((h) => h.attributes('data-slot-id'))).toEqual([GYM_SLOT_ID, STUDY_SLOT_ID])
-    expect(bottoms.map((h) => h.attributes('data-slot-id'))).toEqual([GYM_SLOT_ID, STUDY_SLOT_ID])
+    expect(tops).toHaveLength(1)
+    expect(bottoms).toHaveLength(1)
+    expect(tops[0].attributes('data-slot-id')).toBe(GYM_SLOT_ID)
+    expect(bottoms[0].attributes('data-slot-id')).toBe(GYM_SLOT_ID)
+
+    // El puntero pasa del bloque a su manija: sigue a mano.
+    await gym.trigger('mouseleave', { relatedTarget: tops[0].element })
+    expect(wrapper.findAll('[data-testid="schedule-resize-handle-top"]')).toHaveLength(1)
+
+    // Al salir del bloque y sus controles, desaparecen.
+    await tops[0].trigger('mouseleave')
+    expect(wrapper.find('[data-testid="schedule-resize-handle-top"]').exists()).toBe(false)
 
     wrapper.unmount()
   })
@@ -256,9 +273,22 @@ describe('WeeklyScheduleWidget · estirar ocurrencias en modo edición', () => {
     ui.scheduleEditMode = false
     await nextTick()
 
+    await wrapper.get(`.schedule-block[data-slot-id="${GYM_SLOT_ID}"]`).trigger('mouseenter')
     expect(wrapper.find('[data-testid="schedule-resize-handle-top"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="schedule-resize-handle-bottom"]').exists()).toBe(false)
     expect(gestureHarness.beginCount).toBe(0)
+
+    wrapper.unmount()
+  })
+
+  it('el doble click en una manija no crea un bloque en la columna', async () => {
+    const { wrapper } = await mountEditor()
+    await wrapper.get(`.schedule-block[data-slot-id="${GYM_SLOT_ID}"]`).trigger('mouseenter')
+
+    await wrapper.get('[data-testid="schedule-resize-handle-bottom"]').trigger('dblclick')
+    await flushPromises()
+
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })
