@@ -10,6 +10,7 @@ import {
   type ActivePomodoroSession,
   type PomodoroPhase,
   type PomodoroSettings,
+  type PomodoroSyncPayload,
 } from '@/schemas/pomodoro'
 import { getPhaseDurationMs, getRemainingMs, nextPhase } from '@/lib/pomodoro'
 import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomodoroSounds'
@@ -99,11 +100,12 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    * ni re-emitirlo.
    */
   function publish(): void {
-    void emit(POMODORO_SYNC_EVENT, {
+    const snapshot: PomodoroSyncPayload = {
       origin,
       settings: { ...settings.value },
       session: { ...session.value },
-    })
+    }
+    void emit(POMODORO_SYNC_EVENT, snapshot)
   }
 
   /**
