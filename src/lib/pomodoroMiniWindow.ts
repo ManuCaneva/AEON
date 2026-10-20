@@ -5,6 +5,7 @@ import {
   loadPomodoroMiniWindowState,
   savePomodoroMiniWindowState,
 } from '@/lib/pomodoroMiniWindowState'
+import { focusWindow, windowExists } from '@/lib/appWindows'
 import type { PomodoroMiniWindowState } from '@/schemas/pomodoroMiniWindow'
 
 /** Label único de la ventana mini: la identifica como singleton entre webviews. */
@@ -44,30 +45,39 @@ export function isPomodoroMiniWindow(): boolean {
 /**
  * Abre la ventana mini como singleton: si ya existe la enfoca; si no, la crea
  * fija, siempre arriba y en la posición donde quedó (o en la esquina inferior
- * derecha del monitor de la principal si nunca se movió). Deja el flag de
- * apertura persistido para que el próximo arranque la reabra.
+ * derecha del monitor de la principal si nunca se movió). Es la acción
+ * explícita del usuario (botón pop-out): la única que enfoca la mini. Deja el
+ * flag de apertura persistido para que el próximo arranque la reabra.
  */
 export async function openPomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
   await savePomodoroMiniWindowState({ isOpen: true, x: state.x, y: state.y })
-  await presentPomodoroMiniWindow(state)
+  await showPomodoroMiniWindow(state, { focus: true })
 }
 
 /**
  * Arranque de la app: reabre la ventana mini solo si el usuario la dejó abierta,
  * en la posición donde quedó. No mira el temporizador: la disposición de pantalla
- * es independiente del estado del pomodoro.
+ * es independiente del estado del pomodoro. Nunca enfoca: la restauración no
+ * roba la atención y el foco no rebota a la mini cuando se recrea la ventana
+ * principal desde su título.
  */
 export async function restorePomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
-  if (state.isOpen) await presentPomodoroMiniWindow(state)
+  if (state.isOpen) await showPomodoroMiniWindow(state, { focus: false })
 }
 
-async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promise<void> {
-  const existing = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL)
-  if (existing) {
-    await existing.show()
-    await existing.setFocus()
+/**
+ * Deja la mini visible en la posición dada. `focus` distingue los dos caminos:
+ * la acción del usuario la trae al frente y la enfoca; la restauración solo la
+ * crea si falta, sin tocar el foco de nadie.
+ */
+async function showPomodoroMiniWindow(
+  state: PomodoroMiniWindowState,
+  { focus }: { focus: boolean }
+): Promise<void> {
+  if (await windowExists(POMODORO_MINI_LABEL)) {
+    if (focus) await focusWindow(POMODORO_MINI_LABEL)
     return
   }
 
@@ -77,7 +87,7 @@ async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promis
       : await bottomRightOnMainMonitor()
 
   // La creación es fire-and-forget: Tauri avisa con `tauri://created`/`tauri://error`.
-  const win = new WebviewWindow(POMODORO_MINI_LABEL, {
+  new WebviewWindow(POMODORO_MINI_LABEL, {
     url: 'index.html',
     title: POMODORO_MINI_TITLE,
     width: POMODORO_MINI_WIDTH,
@@ -85,9 +95,9 @@ async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promis
     resizable: false,
     alwaysOnTop: true,
     decorations: true,
+    focus,
     ...placement,
   })
-  trackPomodoroMiniWindow(win)
 }
 
 /** Espera tras el último movimiento: una sola escritura por arrastre. */
@@ -100,12 +110,15 @@ let pendingPosition: PhysicalPosition | null = null
 let positionTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * Sigue la ventana mini para persistir su disposición de pantalla. El flag de
- * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la X):
- * la destrucción de la ventana por el cierre de la app no pasa por acá y deja
- * el flag como estaba, así la próxima sesión la reabre.
+ * La ventana mini persiste su propia disposición de pantalla. Se registra sobre
+ * su propia webview y no sobre el handle de quien la creó: con la ventana
+ * principal cerrada nadie más la seguiría y la X no se escribiría. El flag de
+ * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la
+ * X): la destrucción de la ventana por el cierre de la app no pasa por acá y
+ * deja el flag como estaba, así la próxima sesión la reabre.
  */
-function trackPomodoroMiniWindow(win: WebviewWindow): void {
+export function trackPomodoroMiniWindow(): void {
+  const win = getCurrentWebviewWindow()
   if (trackedWindows.has(win)) return
   trackedWindows.add(win)
 

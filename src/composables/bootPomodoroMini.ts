@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import PomodoroMini from '@/components/pomodoro/PomodoroMini.vue'
 import { useTheme } from '@/composables/useTheme'
 import { showPomodoroInMainWindow } from '@/lib/pomodoroMainWindow'
+import { trackPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import { useUiStore } from '@/stores/ui'
 
@@ -12,6 +13,9 @@ import { useUiStore } from '@/stores/ui'
  * app se carga acá: la mini es solo el pomodoro.
  */
 export async function bootPomodoroMini(): Promise<void> {
+  // La mini se sigue a sí misma: persiste su posición y el cierre con la X,
+  // aunque la ventana que la creó ya no exista.
+  trackPomodoroMiniWindow()
   // El título de la mini no navega por cuenta propia: le pide a la ventana
   // principal que aparezca en la página Pomodoro.
   const app = createApp(PomodoroMini, {

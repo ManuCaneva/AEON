@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { emit, listen } from '@tauri-apps/api/event'
 import {
   onShowPomodoroInMain,
@@ -68,6 +69,19 @@ describe('ventana principal pedida desde la ventana mini', () => {
       },
     ])
     expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('la ventana recreada coincide con la de tauri.conf.json: el espejo no se despega', async () => {
+    const configurada = (
+      JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf-8')) as {
+        app: { windows: Array<Record<string, unknown>> }
+      }
+    ).app.windows[0]
+    getByLabel.mockResolvedValue(null)
+
+    await showPomodoroInMainWindow()
+
+    expect(constructions[0].options).toMatchObject(configurada)
   })
 
   it('reconoce el pedido de página Pomodoro en la consulta de arranque de la ventana', () => {

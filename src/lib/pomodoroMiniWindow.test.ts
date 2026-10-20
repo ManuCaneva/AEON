@@ -5,6 +5,7 @@ import {
   isPomodoroMiniWindow,
   openPomodoroMiniWindow,
   restorePomodoroMiniWindow,
+  trackPomodoroMiniWindow,
   POMODORO_MINI_LABEL,
 } from './pomodoroMiniWindow'
 import * as db from '@/lib/db'
@@ -145,6 +146,7 @@ describe('ventana mini del pomodoro', () => {
         resizable: false,
         alwaysOnTop: true,
         decorations: true,
+        focus: true,
       }),
     })
   })
@@ -271,6 +273,30 @@ describe('persistencia de la ventana mini entre sesiones', () => {
     expect(getByLabel).not.toHaveBeenCalled()
   })
 
+  it('la restauración no roba el foco: con la mini ya abierta no la muestra ni la enfoca', async () => {
+    persistMini({ isOpen: true, x: 500, y: 400 })
+    const show = vi.fn().mockResolvedValue(undefined)
+    const setFocus = vi.fn().mockResolvedValue(undefined)
+    getByLabel.mockResolvedValue({ show, setFocus })
+
+    await restorePomodoroMiniWindow()
+
+    // Al recrear la ventana principal el foco no rebota a la mini.
+    expect(show).not.toHaveBeenCalled()
+    expect(setFocus).not.toHaveBeenCalled()
+    expect(constructions).toHaveLength(0)
+  })
+
+  it('la restauración la reabre sin foco: el arranque de la app no roba la atención', async () => {
+    persistMini({ isOpen: true, x: 500, y: 400 })
+    getByLabel.mockResolvedValue(null)
+
+    await restorePomodoroMiniWindow()
+
+    expect(windows).toHaveLength(1)
+    expect(windows[0].options).toMatchObject({ focus: false })
+  })
+
   it.each([
     [
       'idle',
@@ -337,6 +363,29 @@ describe('persistencia de la ventana mini entre sesiones', () => {
   })
 })
 
+/** La ventana mini actual: la webview que se sigue a sí misma y persiste su estado. */
+function registrarMiniActual() {
+  type Handler = (event: unknown) => unknown
+  const handlers = new Map<string, Handler>()
+  const mini = {
+    scaleFactorValue: 1,
+    handlers,
+    scaleFactor: () => Promise.resolve(mini.scaleFactorValue),
+    onMoved: (handler: Handler) => {
+      handlers.set('tauri://move', handler)
+      return Promise.resolve(() => {})
+    },
+    onCloseRequested: (handler: Handler) => {
+      handlers.set('tauri://close-requested', handler)
+      return Promise.resolve(() => {})
+    },
+    emit: (event: string, payload?: unknown) => handlers.get(event)?.({ payload }),
+  }
+  vi.mocked(getCurrentWebviewWindow).mockReturnValue(mini as unknown as WebviewWindow)
+  trackPomodoroMiniWindow()
+  return mini
+}
+
 describe('ciclo de vida de la ventana mini', () => {
   beforeEach(() => {
     resetFakes()
@@ -348,57 +397,65 @@ describe('ciclo de vida de la ventana mini', () => {
   })
 
   it('persiste la posición al mover la mini, con una sola escritura por arrastre', async () => {
-    await openPomodoroMiniWindow()
-    const win = windows[0]
-    win.scaleFactorValue = 2
+    const mini = registrarMiniActual()
+    mini.scaleFactorValue = 2
     const toLogical = vi.fn().mockReturnValue({ x: 33, y: 44 })
 
-    win.emit('tauri://move', { toLogical })
+    mini.emit('tauri://move', { toLogical })
     await vi.advanceTimersByTimeAsync(100)
-    win.emit('tauri://move', { toLogical })
+    mini.emit('tauri://move', { toLogical })
     await vi.advanceTimersByTimeAsync(250)
 
     expect(toLogical).toHaveBeenCalledWith(2)
     expect(persistedState()).toEqual({ isOpen: true, x: 33, y: 44 })
-    // Una sola escritura del arrastre: la que hubo al abrir no se repite.
-    expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(2)
+    // Una sola escritura para todo el arrastre.
+    expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(1)
   })
 
   it('la X del usuario la marca cerrada y guarda la última posición movida', async () => {
-    await openPomodoroMiniWindow()
-    const win = windows[0]
+    const mini = registrarMiniActual()
 
-    win.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
-    await win.emit('tauri://close-requested', { preventDefault: () => {} })
+    mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
+    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
 
     expect(persistedState()).toEqual({ isOpen: false, x: 700, y: 500 })
   })
 
   it('cerrar la app con la mini abierta no la marca cerrada: la próxima sesión la reabre donde quedó', async () => {
-    await openPomodoroMiniWindow()
-    const win = windows[0]
-    win.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
+    const mini = registrarMiniActual()
+    mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
     await vi.advanceTimersByTimeAsync(250)
 
     // La app se cierra: la ventana se destruye sin pasar por la acción de cerrar.
-    await win.emit('tauri://destroyed', undefined)
+    mini.emit('tauri://destroyed', undefined)
 
     expect(persistedState()).toEqual({ isOpen: true, x: 700, y: 500 })
 
     await restorePomodoroMiniWindow()
 
-    expect(windows).toHaveLength(2)
-    expect(windows[1].options).toMatchObject({ x: 700, y: 500 })
+    expect(windows).toHaveLength(1)
+    expect(windows[0].options).toMatchObject({ x: 700, y: 500 })
   })
 
   it('tras cerrarla con la X, al reabrirla vuelve a seguir su posición', async () => {
-    await openPomodoroMiniWindow()
-    await windows[0].emit('tauri://close-requested', { preventDefault: () => {} })
+    const mini = registrarMiniActual()
+    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
 
     await openPomodoroMiniWindow()
-    windows[1].emit('tauri://move', { toLogical: () => ({ x: 10, y: 20 }) })
+    const reabierta = registrarMiniActual()
+    reabierta.emit('tauri://move', { toLogical: () => ({ x: 10, y: 20 }) })
     await vi.advanceTimersByTimeAsync(250)
 
     expect(persistedState()).toEqual({ isOpen: true, x: 10, y: 20 })
+  })
+
+  it('si el usuario la cerró con la X, la próxima restauración no la reabre', async () => {
+    const mini = registrarMiniActual()
+    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
+
+    await restorePomodoroMiniWindow()
+
+    expect(windows).toHaveLength(0)
+    expect(getByLabel).not.toHaveBeenCalled()
   })
 })

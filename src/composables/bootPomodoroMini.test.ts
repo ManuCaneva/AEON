@@ -36,16 +36,59 @@ vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }))
 
+/**
+ * La ventana mini real: la que corre el JS que persiste su propio estado de
+ * ventana. Vive en la misma webview que se está cerrando o moviendo, así que
+ * el tracking anda aunque la ventana que la creó ya no exista. Cada test crea
+ * la suya: el seguimiento se registra una sola vez por ventana.
+ */
+const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
+  type Handler = (event: unknown) => unknown
+  function crearVentanaMini() {
+    const handlers = new Map<string, Handler[]>()
+    function registrar(event: string, handler: Handler): Promise<() => void> {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler])
+      return Promise.resolve(() => {})
+    }
+    return {
+      async emitir(event: string, payload?: unknown): Promise<void> {
+        await Promise.all((handlers.get(event) ?? []).map((handler) => handler({ payload })))
+      },
+      scaleFactor: () => Promise.resolve(1),
+      onMoved: (handler: Handler) => registrar('tauri://move', handler),
+      onCloseRequested: (handler: Handler) => registrar('tauri://close-requested', handler),
+    }
+  }
+  return { crearVentanaMini, getCurrentWebviewWindow: vi.fn() }
+})
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getCurrentWebviewWindow,
+  WebviewWindow: { getByLabel: vi.fn().mockResolvedValue(null) },
+}))
+
 function countdown(): string {
   return (
     document.querySelector('[data-testid="pomodoro-mini-countdown"]')?.textContent?.trim() ?? ''
   )
 }
 
+/** Último estado de la ventana mini escrito en la config. */
+function estadoDeVentanaPersistido(): unknown {
+  const escritas = vi
+    .mocked(db.saveConfig)
+    .mock.calls.filter(([key]) => key === 'pomodoro-mini-window')
+  return JSON.parse(escritas[escritas.length - 1]?.[1] ?? 'null')
+}
+
 describe('arranque de la ventana mini', () => {
+  let ventanaMini: ReturnType<typeof crearVentanaMini>
+
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>'
     showPomodoroInMainWindow.mockClear()
+    ventanaMini = crearVentanaMini()
+    getCurrentWebviewWindow.mockReturnValue(ventanaMini)
     const values = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => values.get(key) ?? null,
@@ -55,7 +98,13 @@ describe('arranque de la ventana mini', () => {
     })
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-01T12:00:00.000Z'))
-    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    // Config en memoria: lo que se guarda es lo que se recupera, como en SQLite.
+    const config = new Map<string, string>()
+    vi.mocked(db.loadConfig).mockImplementation(async (key) => config.get(key) ?? null)
+    vi.mocked(db.saveConfig).mockImplementation(async (key, value) => {
+      config.set(key, value)
+    })
+    vi.mocked(db.saveConfig).mockClear()
   })
 
   afterEach(() => {
@@ -100,12 +149,14 @@ describe('arranque de la ventana mini', () => {
   it('el título de la mini pide la página Pomodoro en la ventana principal, con click y teclado', async () => {
     await bootPomodoroMini()
     const header = document.querySelector('[data-testid="pomodoro-mini-header"]')
+    const title = document.querySelector('[data-testid="pomodoro-mini-header-title"]')
 
     header?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    header?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-    header?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+    title?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    title?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    title?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
 
-    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(3)
+    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(4)
   })
 
   it('el disco y los controles de la mini no piden navegación', async () => {
@@ -121,5 +172,16 @@ describe('arranque de la ventana mini', () => {
     click('pomodoro-mini-skip')
 
     expect(showPomodoroInMainWindow).not.toHaveBeenCalled()
+  })
+
+  it('la mini persiste su propio cierre y su posición, aunque la ventana que la creó ya no exista', async () => {
+    await bootPomodoroMini()
+
+    await ventanaMini.emitir('tauri://move', { toLogical: () => ({ x: 120, y: 340 }) })
+    await vi.advanceTimersByTimeAsync(250)
+    expect(estadoDeVentanaPersistido()).toEqual({ isOpen: true, x: 120, y: 340 })
+
+    await ventanaMini.emitir('tauri://close-requested', { preventDefault: () => {} })
+    expect(estadoDeVentanaPersistido()).toEqual({ isOpen: false, x: 120, y: 340 })
   })
 })

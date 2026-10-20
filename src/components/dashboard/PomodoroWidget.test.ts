@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { reactive } from 'vue'
 import PomodoroWidget from './PomodoroWidget.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { createPomodoroState } from '@/test/pomodoroState'
+import { DEFAULT_THEME } from '@/lib/themes'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
 const mockStart = vi.fn().mockResolvedValue(undefined)
@@ -13,29 +15,6 @@ const mockReset = vi.fn().mockResolvedValue(undefined)
 const mockSkip = vi.fn().mockResolvedValue(undefined)
 const mockSetViewMode = vi.fn()
 const mockOpenMini = vi.fn().mockResolvedValue(undefined)
-
-function createPomodoroState() {
-  return reactive({
-    settings: {
-      focusMinutes: 25,
-      shortBreakMinutes: 5,
-      longBreakMinutes: 15,
-      longBreakInterval: 4,
-      autoStartBreak: true,
-      autoStartFocus: false,
-      volume: 0.7,
-      muted: false,
-    },
-    session: {
-      phase: 'focus' as const,
-      isRunning: false,
-      endsAt: null,
-      remainingMs: 25 * 60 * 1000,
-      completedFocusSessions: 0,
-    },
-    remainingMs: 25 * 60 * 1000,
-  })
-}
 
 let pomodoroState = createPomodoroState()
 
@@ -214,40 +193,45 @@ describe('PomodoroWidget', () => {
     expect(mockOpenMini).not.toHaveBeenCalled()
   })
 
-  it('el header es accesible por teclado con Enter y Espacio', async () => {
+  it('el título del header es accesible por teclado con Enter y Espacio', async () => {
     const wrapper = mount(PomodoroWidget)
-    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
 
-    await header.trigger('keydown', { key: 'Enter' })
+    await title.trigger('keydown', { key: 'Enter' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(1)
     expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
 
-    await header.trigger('keydown', { key: ' ' })
+    await title.trigger('keydown', { key: ' ' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(2)
 
-    await header.trigger('keydown', { key: 'Escape' })
+    await title.trigger('keydown', { key: 'Escape' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(2)
   })
 
-  it('el header anuncia que navega a la página Pomodoro', () => {
+  it('el título anuncia el destino y el header no anida controles', () => {
     const wrapper = mount(PomodoroWidget)
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
 
-    expect(header.attributes('role')).toBe('button')
-    expect(header.attributes('tabindex')).toBe('0')
-    expect(header.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(header.attributes('role')).toBeUndefined()
+    expect(header.attributes('tabindex')).toBeUndefined()
+    expect(
+      title.element.contains(header.get('[data-testid="pomodoro-widget-popout"]').element)
+    ).toBe(false)
   })
 
-  it('el header muestra cursor pointer y el título se ilumina en hover', () => {
-    const wrapper = mount(PomodoroWidget)
+  it('el header muestra cursor pointer y el título se ilumina en hover', async () => {
+    const wrapper = mount(PomodoroWidget, { attachTo: document.body })
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
-    const title = header.get('.text-card-title')
+    const title = header.get('.text-card-title').element
 
     expect(header.classes()).toContain('cursor-pointer')
     expect(header.classes()).toContain('group')
-    expect(title.classes()).toContain('text-ink-muted')
-    expect(title.classes()).toContain('transition-colors')
-    expect(title.classes()).toContain('group-hover:text-ink')
+
+    const { rest, hover } = await computedTextColors(title)
+    expect(rest).toBe(themeRgb(DEFAULT_THEME, 'ink'))
+    expect(hover).toBe(themeRgb(DEFAULT_THEME, 'primary'))
   })
 
   it('tiene el header Pomodoro y el contrato de widget compartido (ESTRUCTURA)', () => {
