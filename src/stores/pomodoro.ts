@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { emit } from '@tauri-apps/api/event'
+import { emit, listen } from '@tauri-apps/api/event'
 import * as db from '@/lib/db'
 import {
   ActivePomodoroSessionSchema,
   defaultPomodoroSettings,
   PomodoroSettingsSchema,
+  PomodoroSyncPayloadSchema,
   type ActivePomodoroSession,
   type PomodoroPhase,
   type PomodoroSettings,
@@ -105,6 +106,20 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     })
   }
 
+  /**
+   * Aplica el snapshot de otra ventana sin persistir ni re-emitir: la ventana
+   * que originó el cambio ya escribió en SQLite y el eco propio se descarta.
+   */
+  function applyRemote(payload: unknown): void {
+    const snapshot = PomodoroSyncPayloadSchema.safeParse(payload)
+    if (!snapshot.success || snapshot.data.origin === origin) return
+    settings.value = snapshot.data.settings
+    session.value = snapshot.data.session
+    clock.value = Date.now()
+  }
+
+  let syncRegistered = false
+
   function setPhase(
     phase: Exclude<PomodoroPhase, 'idle'>,
     isRunning: boolean,
@@ -172,6 +187,10 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function load(): Promise<void> {
+    if (!syncRegistered) {
+      syncRegistered = true
+      await listen(POMODORO_SYNC_EVENT, (event) => applyRemote(event.payload))
+    }
     const [rawSettings, rawSession] = await Promise.all([
       db.loadConfig(POMODORO_SETTINGS_KEY),
       db.loadConfig(POMODORO_SESSION_KEY),

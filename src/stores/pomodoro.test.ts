@@ -6,7 +6,7 @@ import {
   type ActivePomodoroSession,
 } from '@/schemas/pomodoro'
 import * as db from '@/lib/db'
-import { usePomodoroStore } from './pomodoro'
+import { POMODORO_SESSION_KEY, usePomodoroStore } from './pomodoro'
 
 vi.mock('@/lib/db', () => ({
   loadConfig: vi.fn().mockResolvedValue(null),
@@ -28,6 +28,7 @@ const busEventos = vi.hoisted(() => {
   }
   return {
     handlers,
+    entregar,
     emit: vi.fn((_evento: string, payload?: unknown) => {
       entregar(payload)
       return Promise.resolve()
@@ -446,4 +447,88 @@ describe('pomodoro: las mutaciones se publican a las demás ventanas', () => {
       expect(snapshot.origin).not.toBe('')
     }
   )
+})
+
+describe('pomodoro: las demás ventanas aplican los eventos', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    busEventos.reiniciar()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(start))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Abre una ventana nueva: pinia propio, igual que una webview aparte. */
+  async function abrirVentana(): Promise<StorePomodoro> {
+    setActivePinia(createPinia())
+    const store = usePomodoroStore()
+    await store.load()
+    return store
+  }
+
+  it('una mutación a distancia deja el mismo estado en la ventana remota', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(mini.session.isRunning).toBe(true)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+  })
+
+  it('solo la ventana que originó el cambio escribe la sesión en SQLite', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      POMODORO_SESSION_KEY,
+      JSON.stringify(escritorio.session)
+    )
+  })
+
+  it('aplicar un evento remoto no re-emite ni re-persiste: sin eco', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(busEventos.emit).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('la ventana emisora descarta su propio eco y aplica lo que llega de otras', async () => {
+    const escritorio = await abrirVentana()
+    await escritorio.start()
+    await entregarEventos()
+    const [, propio] = vi.mocked(busEventos.emit).mock.calls[0]
+    const enCurso = { ...escritorio.session }
+    const remoto = {
+      origin: 'otra-ventana',
+      settings: { ...defaultPomodoroSettings },
+      session: session(),
+    }
+
+    busEventos.entregar({ ...remoto, origin: (propio as { origin: string }).origin })
+    await entregarEventos()
+    expect(escritorio.session).toEqual(enCurso)
+
+    busEventos.entregar(remoto)
+    await entregarEventos()
+    expect(escritorio.session).toEqual(session())
+  })
 })
