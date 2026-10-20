@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
+import type { ValidationResult } from '@/stores/weeklySchedule'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
 import Toast from '@/components/ui/Toast.vue'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
@@ -195,26 +196,37 @@ function slotsForDay(day: number): VisibleSlot[] {
   return visibleSlots.value.filter((vs) => vs.slot.day_of_week === day)
 }
 
-interface DragState {
+/** Duración mínima de una ocurrencia: no se puede achicar más allá. */
+const MIN_SLOT_DURATION_MINUTES = 5
+
+type GestureKind = 'move' | 'resize-top' | 'resize-bottom'
+
+interface GestureState {
+  kind: GestureKind
   slot: ScheduleSlot
   block: ScheduleBlockWithSlots
   day: number
   start: number
-  duration: number
+  end: number
   pointerX: number | null
   pointerY: number | null
 }
 
+interface GestureCandidate {
+  vs: VisibleSlot
+  kind: GestureKind
+}
+
 const daysGridRef = ref<HTMLElement | null>(null)
-const dragCandidate = ref<VisibleSlot | null>(null)
-const dragState = ref<DragState | null>(null)
-const dragToast = ref<string | null>(null)
+const gestureCandidate = ref<GestureCandidate | null>(null)
+const gestureState = ref<GestureState | null>(null)
+const gestureToast = ref<string | null>(null)
 
-const dragEnabled = computed(() => ui.scheduleEditMode)
+const gestureEnabled = computed(() => ui.scheduleEditMode)
 
-const { begin: beginDrag } = useScheduleDrag(
+const { begin: beginGesture } = useScheduleDrag(
   daysGridRef,
-  dragEnabled,
+  gestureEnabled,
   () => ({
     enabledDays: enabledDays.value,
     windowStart: windowStart.value,
@@ -222,88 +234,128 @@ const { begin: beginDrag } = useScheduleDrag(
   }),
   {
     onStart() {
-      const candidate = dragCandidate.value
+      const candidate = gestureCandidate.value
       if (!candidate) return
-      dragState.value = {
-        slot: candidate.slot,
-        block: candidate.block,
-        day: candidate.slot.day_of_week,
-        start: candidate.slot.start_minutes,
-        duration: candidate.slot.end_minutes - candidate.slot.start_minutes,
+      gestureState.value = {
+        kind: candidate.kind,
+        slot: candidate.vs.slot,
+        block: candidate.vs.block,
+        day: candidate.vs.slot.day_of_week,
+        start: candidate.vs.slot.start_minutes,
+        end: candidate.vs.slot.end_minutes,
         pointerX: null,
         pointerY: null,
       }
     },
     onMove(point) {
-      moveDrag(point)
+      moveGesture(point)
     },
     onEnd() {
-      void finishDrag()
+      void finishGesture()
     },
     onCancel() {
-      cancelDrag()
+      cancelGesture()
     },
   }
 )
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max))
+}
+
 function onBlockPointerDown(vs: VisibleSlot, event: PointerEvent) {
   if (!ui.scheduleEditMode) return
-  dragCandidate.value = vs
-  beginDrag(event)
+  gestureCandidate.value = { vs, kind: 'move' }
+  beginGesture(event)
 }
 
-function moveDrag(point: ScheduleDragPoint) {
-  const state = dragState.value
+function onResizePointerDown(vs: VisibleSlot, edge: 'top' | 'bottom', event: PointerEvent) {
+  if (!ui.scheduleEditMode) return
+  gestureCandidate.value = { vs, kind: edge === 'top' ? 'resize-top' : 'resize-bottom' }
+  beginGesture(event)
+}
+
+function moveGesture(point: ScheduleDragPoint) {
+  const state = gestureState.value
   if (!state) return
-  // Los días deshabilitados no son destino de arrastre.
-  if (!enabledDays.value.includes(point.day)) return
-  const start = Math.max(0, Math.min(point.minutes, 1440 - state.duration))
-  dragState.value = {
-    ...state,
-    day: point.day,
-    start,
-    pointerX: point.clientX,
-    pointerY: point.clientY,
+
+  if (state.kind === 'move') {
+    // Los días deshabilitados no son destino de arrastre.
+    if (!enabledDays.value.includes(point.day)) return
+    const duration = state.end - state.start
+    const start = clamp(point.minutes, 0, 1440 - duration)
+    gestureState.value = {
+      ...state,
+      day: point.day,
+      start,
+      end: start + duration,
+      pointerX: point.clientX,
+      pointerY: point.clientY,
+    }
+    return
   }
+
+  // La arista opuesta queda anclada: estirar desde arriba mueve el inicio con
+  // el fin fijo; estirar desde abajo mueve el fin con el inicio fijo.
+  const start =
+    state.kind === 'resize-top'
+      ? clamp(point.minutes, 0, state.end - MIN_SLOT_DURATION_MINUTES)
+      : state.start
+  const end =
+    state.kind === 'resize-bottom'
+      ? clamp(point.minutes, state.start + MIN_SLOT_DURATION_MINUTES, 1440)
+      : state.end
+  gestureState.value = { ...state, start, end, pointerX: point.clientX, pointerY: point.clientY }
 }
 
-function cancelDrag() {
-  dragState.value = null
-  dragCandidate.value = null
+function cancelGesture() {
+  gestureState.value = null
+  gestureCandidate.value = null
 }
 
-async function finishDrag() {
-  const state = dragState.value
-  dragState.value = null
-  dragCandidate.value = null
+function overlapBlockTitle(validation: ValidationResult): string {
+  return validation.ok || validation.reason !== 'overlapBlock'
+    ? 'otro bloque'
+    : validation.blockTitle
+}
+
+async function finishGesture() {
+  const state = gestureState.value
+  gestureState.value = null
+  gestureCandidate.value = null
   if (!state) return
   if (!enabledDays.value.includes(state.day)) return
-  if (state.day === state.slot.day_of_week && state.start === state.slot.start_minutes) return
+  if (
+    state.day === state.slot.day_of_week &&
+    state.start === state.slot.start_minutes &&
+    state.end === state.slot.end_minutes
+  ) {
+    return
+  }
 
-  const end = state.start + state.duration
   const validation = store.validateSlot(
-    { day_of_week: state.day, start_minutes: state.start, end_minutes: end },
+    { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end },
     state.slot.id
   )
   if (!validation.ok) {
-    const blockTitle = validation.reason === 'overlapBlock' ? validation.blockTitle : 'otro bloque'
-    dragToast.value = `Los horarios se superponen con «${blockTitle}»`
+    gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
     return
   }
 
   try {
-    await store.updateSlot(state.slot.id, {
-      day_of_week: state.day,
-      start_minutes: state.start,
-      end_minutes: end,
-    })
+    await store.updateSlot(
+      state.slot.id,
+      state.kind === 'move'
+        ? { day_of_week: state.day, start_minutes: state.start, end_minutes: state.end }
+        : { start_minutes: state.start, end_minutes: state.end }
+    )
   } catch {
-    dragToast.value = 'No se pudo mover el bloque'
+    gestureToast.value = 'No se pudo actualizar el bloque'
   }
 }
 
-const dragGhostStyle = computed(() => {
-  const state = dragState.value
+const gestureGhostStyle = computed(() => {
+  const state = gestureState.value
   if (!state) return null
   const count = Math.max(1, enabledDays.value.length)
   const column = Math.max(0, enabledDays.value.indexOf(state.day))
@@ -311,12 +363,12 @@ const dragGhostStyle = computed(() => {
     left: `${(column * 100) / count}%`,
     width: `${100 / count}%`,
     top: `${(state.start - windowStart.value) * minuteHeightPx.value}px`,
-    height: `${state.duration * minuteHeightPx.value}px`,
+    height: `${(state.end - state.start) * minuteHeightPx.value}px`,
   }
 })
 
-const dragBadgeStyle = computed(() => {
-  const state = dragState.value
+const gestureBadgeStyle = computed(() => {
+  const state = gestureState.value
   if (!state || state.pointerX === null || state.pointerY === null) return null
   return {
     left: `${state.pointerX + 12}px`,
@@ -324,16 +376,16 @@ const dragBadgeStyle = computed(() => {
   }
 })
 
-const dragRangeLabel = computed(() => {
-  const state = dragState.value
+const gestureRangeLabel = computed(() => {
+  const state = gestureState.value
   if (!state) return ''
-  return `${minutesToHHMM(state.start)} → ${minutesToHHMM(state.start + state.duration)}`
+  return `${minutesToHHMM(state.start)} → ${minutesToHHMM(state.end)}`
 })
 
 watch(
   () => ui.scheduleEditMode,
   (on) => {
-    if (!on) cancelDrag()
+    if (!on) cancelGesture()
   }
 )
 </script>
@@ -394,35 +446,71 @@ watch(
               class="w-full border-b border-hairline/30"
             />
 
-            <WeeklyScheduleBlock
-              v-for="vs in slotsForDay(dayIndex)"
-              :key="vs.slot.id"
-              :title="vs.block.title"
-              :color="vs.block.color"
-              :today="dayIndex === todayIndex"
-              class="absolute z-10 shadow-sm"
-              :class="dragState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
-              :style="{
-                top: slotTopPx(vs) + 'px',
-                height: slotHeightPx(vs) + 'px',
-                left: '2%',
-                width: '96%',
-              }"
-              @click="emit('edit', vs.block)"
-              @pointerdown="onBlockPointerDown(vs, $event)"
-            />
+            <template v-for="vs in slotsForDay(dayIndex)" :key="vs.slot.id">
+              <WeeklyScheduleBlock
+                :title="vs.block.title"
+                :color="vs.block.color"
+                :today="dayIndex === todayIndex"
+                class="absolute z-10 shadow-sm"
+                :class="gestureState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
+                :style="{
+                  top: slotTopPx(vs) + 'px',
+                  height: slotHeightPx(vs) + 'px',
+                  left: '2%',
+                  width: '96%',
+                }"
+                @click="emit('edit', vs.block)"
+                @pointerdown="onBlockPointerDown(vs, $event)"
+              />
+
+              <!-- Manijas de resize: solo los bordes superior e inferior -->
+              <template v-if="ui.scheduleEditMode">
+                <div
+                  class="group absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  :style="{
+                    top: slotTopPx(vs) - 4 + 'px',
+                    height: '8px',
+                    left: '2%',
+                    width: '96%',
+                  }"
+                  data-testid="schedule-resize-handle-top"
+                  :data-slot-id="vs.slot.id"
+                  @pointerdown.stop="onResizePointerDown(vs, 'top', $event)"
+                >
+                  <span
+                    class="h-0.5 w-8 rounded-full bg-accent-purple/60 opacity-40 transition-opacity group-hover:opacity-100"
+                  />
+                </div>
+                <div
+                  class="group absolute z-20 flex cursor-ns-resize items-center justify-center"
+                  :style="{
+                    top: slotTopPx(vs) + slotHeightPx(vs) - 4 + 'px',
+                    height: '8px',
+                    left: '2%',
+                    width: '96%',
+                  }"
+                  data-testid="schedule-resize-handle-bottom"
+                  :data-slot-id="vs.slot.id"
+                  @pointerdown.stop="onResizePointerDown(vs, 'bottom', $event)"
+                >
+                  <span
+                    class="h-0.5 w-8 rounded-full bg-accent-purple/60 opacity-40 transition-opacity group-hover:opacity-100"
+                  />
+                </div>
+              </template>
+            </template>
           </div>
 
-          <!-- El bloque arrastrado sigue al puntero por posición, no por acumulación de píxeles -->
+          <!-- El bloque en gesto sigue al puntero por posición, no por acumulación de píxeles -->
           <div
-            v-if="dragState"
+            v-if="gestureState"
             class="pointer-events-none absolute z-30"
-            :style="dragGhostStyle"
+            :style="gestureGhostStyle"
             data-testid="schedule-drag-ghost"
           >
             <WeeklyScheduleBlock
-              :title="dragState.block.title"
-              :color="dragState.block.color"
+              :title="gestureState.block.title"
+              :color="gestureState.block.color"
               :style="{
                 top: '0px',
                 left: '2%',
@@ -444,19 +532,23 @@ watch(
       </div>
     </div>
 
-    <!-- Cartelito flotante con el rango exacto mientras se arrastra -->
+    <!-- Cartelito flotante con el rango exacto durante el gesto -->
     <Teleport to="body">
       <div
-        v-if="dragState && dragBadgeStyle"
+        v-if="gestureState && gestureBadgeStyle"
         data-testid="schedule-drag-badge"
         role="status"
         class="glass-overlay pointer-events-none fixed z-50 rounded-md px-2 py-1 text-caption text-ink shadow-lg"
-        :style="dragBadgeStyle"
+        :style="gestureBadgeStyle"
       >
-        {{ dragRangeLabel }}
+        {{ gestureRangeLabel }}
       </div>
     </Teleport>
 
-    <Toast :open="dragToast !== null" :message="dragToast ?? ''" @update:open="dragToast = null" />
+    <Toast
+      :open="gestureToast !== null"
+      :message="gestureToast ?? ''"
+      @update:open="gestureToast = null"
+    />
   </div>
 </template>
