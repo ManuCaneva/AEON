@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { reactive } from 'vue'
 import PomodoroMini from './PomodoroMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { createPomodoroState } from '@/test/pomodoroState'
 import { DEFAULT_THEME } from '@/lib/themes'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
@@ -12,29 +12,6 @@ const mockStart = vi.fn().mockResolvedValue(undefined)
 const mockPause = vi.fn().mockResolvedValue(undefined)
 const mockReset = vi.fn().mockResolvedValue(undefined)
 const mockSkip = vi.fn().mockResolvedValue(undefined)
-
-function createPomodoroState() {
-  return reactive({
-    settings: {
-      focusMinutes: 25,
-      shortBreakMinutes: 5,
-      longBreakMinutes: 15,
-      longBreakInterval: 4,
-      autoStartBreak: true,
-      autoStartFocus: false,
-      volume: 0.7,
-      muted: false,
-    },
-    session: {
-      phase: 'focus' as const,
-      isRunning: false,
-      endsAt: null,
-      remainingMs: 25 * 60 * 1000,
-      completedFocusSessions: 0,
-    },
-    remainingMs: 25 * 60 * 1000,
-  })
-}
 
 let pomodoroState = createPomodoroState()
 
