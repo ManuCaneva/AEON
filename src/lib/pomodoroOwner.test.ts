@@ -7,8 +7,8 @@ type Presencia = 'abierta' | 'oculta'
 
 /**
  * Ventanas de la app simuladas: `getCurrentWebviewWindow` dice desde qué
- * ventana se consulta y `getByLabel` qué ventanas hay (existentes y visibles),
- * que es todo lo que el dueño del pomodoro necesita saber.
+ * ventana se consulta y `getByLabel` qué ventanas existen. Una ventana oculta
+ * o minimizada existe: para el dueño del pomodoro, «abierta» es existir.
  */
 const ventanas = vi.hoisted(() => {
   const estado = {
@@ -90,14 +90,14 @@ describe('dueño del pomodoro según qué ventanas están presentes', () => {
     expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
-  it('con la principal oculta y la mini abierta, la dueña es la mini', async () => {
+  it('la principal oculta o minimizada sigue siendo la dueña: «abierta» es existir', async () => {
     ventanas.ocultar(POMODORO_MAIN_LABEL)
     ventanas.abrir(POMODORO_MINI_LABEL)
 
-    expect(await duena()).toBe(POMODORO_MINI_LABEL)
+    expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
-  it('sin ninguna ventana abierta, la dueña es la principal para no perder el aviso', async () => {
+  it('con las dos ventanas ocultas, la dueña sigue siendo la principal', async () => {
     ventanas.ocultar(POMODORO_MAIN_LABEL)
     ventanas.ocultar(POMODORO_MINI_LABEL)
 
