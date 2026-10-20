@@ -100,12 +100,14 @@ describe('arranque de la ventana mini', () => {
   it('el título de la mini pide la página Pomodoro en la ventana principal, con click y teclado', async () => {
     await bootPomodoroMini()
     const header = document.querySelector('[data-testid="pomodoro-mini-header"]')
+    const title = document.querySelector('[data-testid="pomodoro-mini-header-title"]')
 
     header?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    header?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-    header?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+    title?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    title?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    title?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
 
-    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(3)
+    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(4)
   })
 
   it('el disco y los controles de la mini no piden navegación', async () => {

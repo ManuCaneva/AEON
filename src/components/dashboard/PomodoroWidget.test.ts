@@ -214,28 +214,32 @@ describe('PomodoroWidget', () => {
     expect(mockOpenMini).not.toHaveBeenCalled()
   })
 
-  it('el header es accesible por teclado con Enter y Espacio', async () => {
+  it('el título del header es accesible por teclado con Enter y Espacio', async () => {
     const wrapper = mount(PomodoroWidget)
-    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
 
-    await header.trigger('keydown', { key: 'Enter' })
+    await title.trigger('keydown', { key: 'Enter' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(1)
     expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
 
-    await header.trigger('keydown', { key: ' ' })
+    await title.trigger('keydown', { key: ' ' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(2)
 
-    await header.trigger('keydown', { key: 'Escape' })
+    await title.trigger('keydown', { key: 'Escape' })
     expect(mockSetViewMode).toHaveBeenCalledTimes(2)
   })
 
-  it('el header anuncia que navega a la página Pomodoro', () => {
+  it('el título anuncia el destino y el header no anida controles', () => {
     const wrapper = mount(PomodoroWidget)
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
 
-    expect(header.attributes('role')).toBe('button')
-    expect(header.attributes('tabindex')).toBe('0')
-    expect(header.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(header.attributes('role')).toBeUndefined()
+    expect(header.attributes('tabindex')).toBeUndefined()
+    expect(title.element.contains(header.get('[data-testid="pomodoro-widget-popout"]').element)).toBe(
+      false
+    )
   })
 
   it('el header muestra cursor pointer y el título se ilumina en hover', () => {

@@ -149,19 +149,24 @@ describe('PomodoroMini', () => {
   it('el header queda accionable para la acción que defina la ventana', async () => {
     const wrapper = mount(PomodoroMini)
     const header = wrapper.get('[data-testid="pomodoro-mini-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-mini-header-title"]')
 
-    expect(header.attributes('role')).toBe('button')
-    expect(header.attributes('tabindex')).toBe('0')
+    expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(header.attributes('role')).toBeUndefined()
+    expect(header.attributes('tabindex')).toBeUndefined()
 
     await header.trigger('click')
     expect(wrapper.emitted('header-activate')).toHaveLength(1)
 
-    await header.trigger('keydown', { key: 'Enter' })
-    await header.trigger('keydown', { key: ' ' })
-    expect(wrapper.emitted('header-activate')).toHaveLength(3)
+    await title.trigger('click')
+    expect(wrapper.emitted('header-activate')).toHaveLength(2)
 
-    await header.trigger('keydown', { key: 'Escape' })
-    expect(wrapper.emitted('header-activate')).toHaveLength(3)
+    await title.trigger('keydown', { key: 'Enter' })
+    await title.trigger('keydown', { key: ' ' })
+    expect(wrapper.emitted('header-activate')).toHaveLength(4)
+
+    await title.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('header-activate')).toHaveLength(4)
   })
 
   it('el header muestra cursor pointer y el título se ilumina en hover, igual que en el widget', () => {
