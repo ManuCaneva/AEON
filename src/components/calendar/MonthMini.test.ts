@@ -357,18 +357,34 @@ describe('MonthMini', () => {
       wrapper.unmount()
     })
 
-    it('el tooltip sigue mostrando el evento vinculado aunque su punto se omita (dedup)', async () => {
+    it('el tooltip omite el evento ya representado por un examen (dedup)', async () => {
+      const overlayByDate = new Map([
+        [
+          '2026-01-15',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
       const wrapper = mountAttached({
         eventsByDate,
+        overlayByDate,
         linkedEventKeys: new Set([eventKey('primary', 'e1')]),
       })
       const cell15 = hoverCell(wrapper, 14) // 15 de Enero
-      // El punto del evento vinculado no se pinta; el otro sí.
-      expect(cell15.findAll("[data-testid='event-dot']")).toHaveLength(1)
+      // El punto del evento vinculado no se pinta; el otro sí, más el del examen.
+      expect(cell15.findAll("[data-testid='event-dot']")).toHaveLength(2)
       await cell15.trigger('mouseenter')
       const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
-      expect(tooltip!.textContent).toContain('Standup')
+      // El examen aparece una sola vez: el evento de Google no se lista.
+      expect(tooltip!.textContent).not.toContain('Standup')
       expect(tooltip!.textContent).toContain('Review')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.querySelectorAll("[data-testid='day-tooltip-item']")).toHaveLength(2)
       wrapper.unmount()
     })
 

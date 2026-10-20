@@ -244,8 +244,20 @@ describe('YearStrip', () => {
       wrapper.unmount()
     })
 
-    it('el tooltip sigue mostrando el evento vinculado aunque su punto se omita (dedup)', async () => {
+    it('el tooltip omite el evento ya representado por un examen (dedup)', async () => {
       const events = new Map([['2026-06-04', dayEvents('2026-06-04', 2)]])
+      const overlayByDate = new Map([
+        [
+          '2026-06-04',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
       const wrapper = mount(YearStrip, {
         attachTo: document.body,
         props: {
@@ -253,15 +265,19 @@ describe('YearStrip', () => {
           eventsByDate: events,
           monthNames: MONTH_NAMES,
           cellSize: 10,
+          overlayByDate,
           linkedEventKeys: new Set([eventKey('primary', '2026-06-04-0')]),
         },
       })
       const cell = wrapper.find("[data-date='2026-06-04']")
-      expect(cell.findAll("[data-testid='event-dot']")).toHaveLength(1)
+      expect(cell.findAll("[data-testid='event-dot']")).toHaveLength(2)
       await cell.trigger('mouseenter')
       const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
-      expect(tooltip!.textContent).toContain('Evento 0')
+      // El examen aparece una sola vez: el evento de Google no se lista.
+      expect(tooltip!.textContent).not.toContain('Evento 0')
       expect(tooltip!.textContent).toContain('Evento 1')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.querySelectorAll("[data-testid='day-tooltip-item']")).toHaveLength(2)
       wrapper.unmount()
     })
 

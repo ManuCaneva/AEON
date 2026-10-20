@@ -24,7 +24,8 @@ const props = withDefaults(
     // sin entrar en el CRUD del calendario.
     overlayByDate?: DayOverlayByDate
     // Eventos ya representados por un examen vinculado del mismo día: no se
-    // pintan como punto (dedup), pero el tooltip los sigue mostrando.
+    // pintan como punto ni se listan en el tooltip (dedup). El examen los
+    // representa una sola vez.
     linkedEventKeys?: ReadonlySet<string>
     monthNames?: string[]
     highlightMonth?: number | null
@@ -96,7 +97,11 @@ function dotEvents(date: string | null): CalendarEvent[] {
   return getEvents(date).filter((e) => !props.linkedEventKeys.has(eventKey(e.calendarId, e.id)))
 }
 
-/** Lo que dice el tooltip de un día: eventos + exámenes (overlay). */
+/**
+ * Lo que dice el tooltip de un día: eventos + exámenes (overlay). Usa los
+ * mismos eventos que los puntos: un evento ya representado por un examen no
+ * se lista, así el tooltip muestra el examen una sola vez.
+ */
 function tooltipItems(date: string | null): DayTooltipItem[] {
   if (!date) return []
   const overlay = getOverlay(date).map((dot) => ({
@@ -104,7 +109,7 @@ function tooltipItems(date: string | null): DayTooltipItem[] {
     title: dot.title,
     color: dot.color,
   }))
-  return [...getEvents(date), ...overlay]
+  return [...dotEvents(date), ...overlay]
 }
 
 const { hovered, hideTooltip, onDayEnter } = useDayTooltip(tooltipItems)
