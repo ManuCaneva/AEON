@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isPomodoroOwnerWindow, MAIN_WINDOW_LABEL } from './pomodoroOwner'
+import { isPomodoroOwnerWindow } from './pomodoroOwner'
+import { POMODORO_MAIN_LABEL } from '@/lib/pomodoroMainWindow'
 import { POMODORO_MINI_LABEL } from '@/lib/pomodoroMiniWindow'
 
 type Presencia = 'abierta' | 'oculta'
@@ -53,12 +54,12 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 
 /** Consulta la dueña desde las dos ventanas y devuelve la etiqueta de la única dueña. */
 async function duena(): Promise<string | null> {
-  ventanas.estado.etiquetaActual = MAIN_WINDOW_LABEL
+  ventanas.estado.etiquetaActual = POMODORO_MAIN_LABEL
   const esMain = await isPomodoroOwnerWindow()
   ventanas.estado.etiquetaActual = POMODORO_MINI_LABEL
   const esMini = await isPomodoroOwnerWindow()
   if (esMain === esMini) return null
-  return esMain ? MAIN_WINDOW_LABEL : POMODORO_MINI_LABEL
+  return esMain ? POMODORO_MAIN_LABEL : POMODORO_MINI_LABEL
 }
 
 describe('dueño del pomodoro según qué ventanas están presentes', () => {
@@ -71,10 +72,10 @@ describe('dueño del pomodoro según qué ventanas están presentes', () => {
   })
 
   it('con la principal y la mini abiertas, la dueña es la principal', async () => {
-    ventanas.abrir(MAIN_WINDOW_LABEL)
+    ventanas.abrir(POMODORO_MAIN_LABEL)
     ventanas.abrir(POMODORO_MINI_LABEL)
 
-    expect(await duena()).toBe(MAIN_WINDOW_LABEL)
+    expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
   it('con la mini sola, la dueña es la mini', async () => {
@@ -84,32 +85,32 @@ describe('dueño del pomodoro según qué ventanas están presentes', () => {
   })
 
   it('con la principal sola, la dueña es la principal', async () => {
-    ventanas.abrir(MAIN_WINDOW_LABEL)
+    ventanas.abrir(POMODORO_MAIN_LABEL)
 
-    expect(await duena()).toBe(MAIN_WINDOW_LABEL)
+    expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
   it('con la principal oculta y la mini abierta, la dueña es la mini', async () => {
-    ventanas.ocultar(MAIN_WINDOW_LABEL)
+    ventanas.ocultar(POMODORO_MAIN_LABEL)
     ventanas.abrir(POMODORO_MINI_LABEL)
 
     expect(await duena()).toBe(POMODORO_MINI_LABEL)
   })
 
   it('sin ninguna ventana abierta, la dueña es la principal para no perder el aviso', async () => {
-    ventanas.ocultar(MAIN_WINDOW_LABEL)
+    ventanas.ocultar(POMODORO_MAIN_LABEL)
     ventanas.ocultar(POMODORO_MINI_LABEL)
 
-    expect(await duena()).toBe(MAIN_WINDOW_LABEL)
+    expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
   it('si la API de ventanas no responde, cada ventana se comporta como única', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    ventanas.abrir(MAIN_WINDOW_LABEL)
+    ventanas.abrir(POMODORO_MAIN_LABEL)
     ventanas.abrir(POMODORO_MINI_LABEL)
     ventanas.estado.falla = true
 
-    ventanas.estado.etiquetaActual = MAIN_WINDOW_LABEL
+    ventanas.estado.etiquetaActual = POMODORO_MAIN_LABEL
     await expect(isPomodoroOwnerWindow()).resolves.toBe(true)
     ventanas.estado.etiquetaActual = POMODORO_MINI_LABEL
     await expect(isPomodoroOwnerWindow()).resolves.toBe(true)

@@ -1,8 +1,6 @@
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { POMODORO_MAIN_LABEL } from '@/lib/pomodoroMainWindow'
 import { POMODORO_MINI_LABEL } from '@/lib/pomodoroMiniWindow'
-
-/** Label de la ventana principal: la que nace de `tauri.conf.json` sin label propio. */
-export const MAIN_WINDOW_LABEL = 'main'
 
 /** true cuando la ventana está abierta: existe y no está oculta. */
 async function isWindowOpen(label: string): Promise<boolean> {
@@ -21,9 +19,9 @@ async function isWindowOpen(label: string): Promise<boolean> {
 export async function isPomodoroOwnerWindow(): Promise<boolean> {
   try {
     const actual = getCurrentWebviewWindow().label
-    const mainAbierta = await isWindowOpen(MAIN_WINDOW_LABEL)
+    const mainAbierta = await isWindowOpen(POMODORO_MAIN_LABEL)
     const miniAbierta = await isWindowOpen(POMODORO_MINI_LABEL)
-    const duena = miniAbierta && !mainAbierta ? POMODORO_MINI_LABEL : MAIN_WINDOW_LABEL
+    const duena = miniAbierta && !mainAbierta ? POMODORO_MINI_LABEL : POMODORO_MAIN_LABEL
     return actual === duena
   } catch (error) {
     console.warn('[pomodoro] ventanas no consultables; se asume ventana única:', error)
