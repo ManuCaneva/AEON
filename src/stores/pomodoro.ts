@@ -111,6 +111,15 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   /**
+   * Único escritor de la sesión persistida: la ventana que muta escribe en
+   * SQLite y publica el snapshot a las demás, que solo lo aplican.
+   */
+  async function persistAndPublish(): Promise<void> {
+    await persistSession()
+    publish()
+  }
+
+  /**
    * Aplica el snapshot de otra ventana sin persistir ni re-emitir: la ventana
    * que originó el cambio ya escribió en SQLite y el eco propio se descarta.
    */
@@ -172,8 +181,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     // La transición se publica antes de sonar: la otra ventana la aplica y cede
     // antes de que suene nada. Si esta ventana muere en el medio, se pierde el
     // aviso en vez de sonar dos veces.
-    await persistSession()
-    publish()
+    await persistAndPublish()
 
     if (!completedNaturally || windowClosing) return
     if (focusCompletado) player().playFocusEndChime(settings.value)
@@ -258,8 +266,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: new Date(now + remaining).toISOString(),
       remainingMs: null,
     }
-    await persistSession()
-    publish()
+    await persistAndPublish()
   }
 
   async function pause(): Promise<void> {
@@ -270,8 +277,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: null,
       remainingMs: getRemainingMs(session.value.endsAt),
     }
-    await persistSession()
-    publish()
+    await persistAndPublish()
   }
 
   async function resume(): Promise<void> {
@@ -287,8 +293,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
 
   async function reset(): Promise<void> {
     session.value = freshSession()
-    await persistSession()
-    publish()
+    await persistAndPublish()
   }
 
   /**
