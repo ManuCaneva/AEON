@@ -604,29 +604,33 @@ interface PastePoint {
 const PASTE_GHOST_OFFSET_X = 14
 const PASTE_GHOST_OFFSET_Y = 18
 const pastePoint = ref<PastePoint | null>(null)
+// Última posición del puntero sobre una columna: al iniciar el pegado el
+// fantasma aparece ya enganchado, sin esperar a que el mouse se mueva.
+const lastPointer = ref<PastePoint | null>(null)
 
 const pasteActive = computed(() => props.pasting === true && props.clipboard != null)
 
 watch(
   () => props.pasting,
   (active) => {
-    if (!active) pastePoint.value = null
+    pastePoint.value = active ? lastPointer.value : null
   }
 )
 
 /** El fantasma sigue al puntero sobre la columna de un día habilitado. */
 function onDayPointerMove(event: PointerEvent) {
-  if (!pasteActive.value) return
   if (minuteHeightPx.value <= 0) return
   const column = event.currentTarget as HTMLElement | null
   if (!column) return
   const rect = column.getBoundingClientRect()
   const minutes = Math.round(windowStart.value + (event.clientY - rect.top) / minuteHeightPx.value)
-  pastePoint.value = {
+  const point = {
     minutes: clamp(minutes, 0, 1440),
     clientX: event.clientX,
     clientY: event.clientY,
   }
+  lastPointer.value = point
+  if (pasteActive.value) pastePoint.value = point
 }
 
 const pasteRange = computed(() => {
@@ -707,6 +711,7 @@ watch(
     if (active) return
     hoveredSlotId.value = null
     cancelGesture()
+    lastPointer.value = null
     void confirmName()
   }
 )

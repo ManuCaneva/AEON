@@ -222,11 +222,15 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
 
   it('el botón al hover copia y Ctrl/Cmd+V pega con un fantasma que sigue al mouse', async () => {
     const { wrapper } = await mountEditor()
+    await hoverDay(wrapper, 0, 300, 175)
     await blockAt(wrapper, 0).trigger('mouseenter')
 
     await copyFromHover(wrapper)
     press('v', { ctrlKey: true })
     await nextTick()
+
+    // El fantasma aparece ya enganchado donde estaba el puntero.
+    expect(ghost()).not.toBeNull()
 
     await hoverDay(wrapper, 2, 300, 175) // miércoles 16:35
 
