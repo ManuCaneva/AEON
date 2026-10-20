@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Pause, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
+import { Pause, PictureInPicture2, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
+import IconButton from '@/components/ui/IconButton.vue'
 import Text from '@/components/ui/Text.vue'
 import PomodoroSettingsPanel from '@/components/pomodoro/PomodoroSettingsPanel.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
+import { openPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
 const pomodoro = usePomodoroStore()
@@ -27,6 +29,10 @@ function start() {
   void pomodoro.prepareAudio().catch(() => {})
   void pomodoro.start()
 }
+
+function openMini() {
+  void openPomodoroMiniWindow()
+}
 </script>
 
 <template>
@@ -40,9 +46,20 @@ function start() {
           class="flex w-full flex-col items-center gap-6 py-10"
           data-testid="pomodoro-card"
         >
-          <Text data-testid="pomodoro-phase" variant="eyebrow" color="subtle" class="uppercase">
-            {{ phaseLabel }}
-          </Text>
+          <div class="flex items-center gap-2">
+            <Text data-testid="pomodoro-phase" variant="eyebrow" color="subtle" class="uppercase">
+              {{ phaseLabel }}
+            </Text>
+            <IconButton
+              data-testid="pomodoro-view-popout"
+              label="Abrir ventana mini"
+              variant="ghost"
+              size="sm"
+              @click="openMini"
+            >
+              <PictureInPicture2 :size="14" aria-hidden="true" />
+            </IconButton>
+          </div>
           <div
             data-testid="pomodoro-progress"
             class="relative flex h-64 w-64 items-center justify-center rounded-full"

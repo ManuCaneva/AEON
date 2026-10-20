@@ -12,6 +12,7 @@ const mockPause = vi.fn().mockResolvedValue(undefined)
 const mockReset = vi.fn().mockResolvedValue(undefined)
 const mockSkip = vi.fn().mockResolvedValue(undefined)
 const mockSetViewMode = vi.fn()
+const mockOpenMini = vi.fn().mockResolvedValue(undefined)
 
 function createPomodoroState() {
   return reactive({
@@ -56,6 +57,10 @@ vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({ setViewMode: mockSetViewMode }),
 }))
 
+vi.mock('@/lib/pomodoroMiniWindow', () => ({
+  openPomodoroMiniWindow: (...args: unknown[]) => mockOpenMini(...args),
+}))
+
 describe('PomodoroWidget', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -65,6 +70,7 @@ describe('PomodoroWidget', () => {
     mockReset.mockClear()
     mockSkip.mockClear()
     mockSetViewMode.mockClear()
+    mockOpenMini.mockClear()
     pomodoroState = createPomodoroState()
   })
 
@@ -186,6 +192,26 @@ describe('PomodoroWidget', () => {
     expect(container.attributes('role')).not.toBe('button')
     expect(container.attributes('tabindex')).toBeUndefined()
     expect(container.classes()).not.toContain('cursor-pointer')
+  })
+
+  it('el botón pop-out del header abre la ventana mini sin navegar', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    const popout = wrapper.get('[data-testid="pomodoro-widget-popout"]')
+    expect(popout.attributes('aria-label')).toBe('Abrir ventana mini')
+    expect(popout.find('svg.lucide-picture-in-picture2-icon').exists()).toBe(true)
+
+    await popout.trigger('click')
+    expect(mockOpenMini).toHaveBeenCalledOnce()
+    expect(mockSetViewMode).not.toHaveBeenCalled()
+  })
+
+  it('el click en el header navega aunque el botón pop-out esté presente', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    await wrapper.get('[data-testid="pomodoro-widget-header"]').trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+    expect(mockOpenMini).not.toHaveBeenCalled()
   })
 
   it('el header es accesible por teclado con Enter y Espacio', async () => {
