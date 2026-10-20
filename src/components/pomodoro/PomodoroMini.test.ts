@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { reactive } from 'vue'
 import PomodoroMini from './PomodoroMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { DEFAULT_THEME } from '@/lib/themes'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
 const mockStart = vi.fn().mockResolvedValue(undefined)
@@ -169,16 +171,17 @@ describe('PomodoroMini', () => {
     expect(wrapper.emitted('header-activate')).toHaveLength(4)
   })
 
-  it('el header muestra cursor pointer y el título se ilumina en hover, igual que en el widget', () => {
-    const wrapper = mount(PomodoroMini)
+  it('el header muestra cursor pointer y el título se ilumina en hover, igual que en el widget', async () => {
+    const wrapper = mount(PomodoroMini, { attachTo: document.body })
     const header = wrapper.get('[data-testid="pomodoro-mini-header"]')
-    const title = header.get('.text-card-title')
+    const title = header.get('.text-card-title').element
 
     expect(header.classes()).toContain('cursor-pointer')
     expect(header.classes()).toContain('group')
-    expect(title.classes()).toContain('text-ink-muted')
-    expect(title.classes()).toContain('transition-colors')
-    expect(title.classes()).toContain('group-hover:text-ink')
+
+    const { rest, hover } = await computedTextColors(title)
+    expect(rest).toBe(themeRgb(DEFAULT_THEME, 'ink'))
+    expect(hover).toBe(themeRgb(DEFAULT_THEME, 'primary'))
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {

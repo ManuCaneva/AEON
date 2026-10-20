@@ -8,6 +8,10 @@ import Text from '@/components/ui/Text.vue'
  * `role="button"`): así los botones que viven en el header, como el de pop-out,
  * no quedan anidados dentro de otro control ni desaparecen del árbol de
  * accesibilidad.
+ *
+ * La paleta del título no cambia en reposo: sigue en el `text-ink` de siempre.
+ * En hover se ilumina con `text-primary` vía una clase hover explícita, que
+ * gana por especificidad y no por el orden de emisión de Tailwind.
  */
 const props = defineProps<{ testIdPrefix: string }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -50,7 +54,7 @@ function onTitleKeydown(event: KeyboardEvent): void {
         variant="card-title"
         weight="600"
         as="span"
-        class="text-left text-ink-muted transition-colors group-hover:text-ink"
+        class="text-left transition-colors group-hover:text-primary"
         >Pomodoro</Text
       >
     </button>

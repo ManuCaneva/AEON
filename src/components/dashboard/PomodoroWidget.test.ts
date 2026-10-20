@@ -5,6 +5,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { reactive } from 'vue'
 import PomodoroWidget from './PomodoroWidget.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { DEFAULT_THEME } from '@/lib/themes'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
 const mockStart = vi.fn().mockResolvedValue(undefined)
@@ -237,21 +239,22 @@ describe('PomodoroWidget', () => {
     expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
     expect(header.attributes('role')).toBeUndefined()
     expect(header.attributes('tabindex')).toBeUndefined()
-    expect(title.element.contains(header.get('[data-testid="pomodoro-widget-popout"]').element)).toBe(
-      false
-    )
+    expect(
+      title.element.contains(header.get('[data-testid="pomodoro-widget-popout"]').element)
+    ).toBe(false)
   })
 
-  it('el header muestra cursor pointer y el título se ilumina en hover', () => {
-    const wrapper = mount(PomodoroWidget)
+  it('el header muestra cursor pointer y el título se ilumina en hover', async () => {
+    const wrapper = mount(PomodoroWidget, { attachTo: document.body })
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
-    const title = header.get('.text-card-title')
+    const title = header.get('.text-card-title').element
 
     expect(header.classes()).toContain('cursor-pointer')
     expect(header.classes()).toContain('group')
-    expect(title.classes()).toContain('text-ink-muted')
-    expect(title.classes()).toContain('transition-colors')
-    expect(title.classes()).toContain('group-hover:text-ink')
+
+    const { rest, hover } = await computedTextColors(title)
+    expect(rest).toBe(themeRgb(DEFAULT_THEME, 'ink'))
+    expect(hover).toBe(themeRgb(DEFAULT_THEME, 'primary'))
   })
 
   it('tiene el header Pomodoro y el contrato de widget compartido (ESTRUCTURA)', () => {

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PomodoroHeader from './PomodoroHeader.vue'
+import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { themes } from '@/lib/themes'
 
 /** Monta el header con un botón de acción, como lo usa el widget. */
 function mountHeader() {
   return mount(PomodoroHeader, {
     props: { testIdPrefix: 'pomodoro-test' },
     slots: { actions: '<button data-testid="acciones" type="button">pop-out</button>' },
+    attachTo: document.body,
   })
 }
 
@@ -67,5 +70,20 @@ describe('PomodoroHeader', () => {
     expect(title.classes()).toContain('cursor-pointer')
     expect(title.classes()).toContain('text-left')
     expect(title.classes()).toContain('transition-colors')
+  })
+
+  it('el título ilumina en hover y vuelve a su color de siempre en reposo, sin depender del orden de emisión', async () => {
+    const wrapper = mountHeader()
+    const texto = wrapper.get('.text-card-title').element
+
+    for (const theme of themes) {
+      for (const reversed of [false, true]) {
+        const orden = reversed ? 'orden invertido' : 'orden de emisión'
+        const { rest, hover } = await computedTextColors(texto, { theme, reversed })
+
+        expect(rest, `reposo (${theme.name}, ${orden})`).toBe(themeRgb(theme, 'ink'))
+        expect(hover, `hover (${theme.name}, ${orden})`).toBe(themeRgb(theme, 'primary'))
+      }
+    }
   })
 })
