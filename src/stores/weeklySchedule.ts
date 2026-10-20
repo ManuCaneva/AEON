@@ -137,15 +137,25 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     draft: { day_of_week: number; start_minutes: number; end_minutes: number },
     ignoreSlotId?: string
   ): ValidationResult {
-    if (wouldOverlapOnDay(draft.day_of_week, draft.start_minutes, draft.end_minutes, ignoreSlotId))
-      return {
-        ok: false,
-        reason: 'overlap',
-        day: draft.day_of_week,
-        start: draft.start_minutes,
-        end: draft.end_minutes,
-      }
-    return { ok: true }
+    const clash = (blocksByDay.value.get(draft.day_of_week) ?? []).find(
+      (slot) =>
+        (ignoreSlotId === undefined || slot.id !== ignoreSlotId) &&
+        overlaps(slot, {
+          start_minutes: draft.start_minutes,
+          end_minutes: draft.end_minutes,
+        })
+    )
+    if (!clash) return { ok: true }
+    const blockTitle =
+      blocksWithSlots.value.find((block) => block.id === clash.block_id)?.title ?? 'otro bloque'
+    return {
+      ok: false,
+      reason: 'overlapBlock',
+      day: draft.day_of_week,
+      start: draft.start_minutes,
+      end: draft.end_minutes,
+      blockTitle,
+    }
   }
 
   /**

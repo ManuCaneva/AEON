@@ -65,6 +65,69 @@ describe('weeklySchedule store', () => {
     })
   })
 
+  describe('validateSlot (destino de un arrastre)', () => {
+    const gym = {
+      id: '333e8400-e29b-41d4-a716-446655440000',
+      title: 'Gimnasio',
+      color: 'lavender' as const,
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+      slots: [
+        {
+          id: '333e8400-e29b-41d4-a716-446655440001',
+          block_id: '333e8400-e29b-41d4-a716-446655440000',
+          day_of_week: 1,
+          start_minutes: 960,
+          end_minutes: 1020,
+          created_at: validIso,
+          updated_at: validIso,
+        },
+      ],
+    }
+
+    it('identifica el bloque que ocupa el destino', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [gym]
+
+      const result = store.validateSlot({
+        day_of_week: 1,
+        start_minutes: 995,
+        end_minutes: 1040,
+      })
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'overlapBlock',
+        day: 1,
+        start: 995,
+        end: 1040,
+        blockTitle: 'Gimnasio',
+      })
+    })
+
+    it('no cuenta el propio slot que se mueve como choque', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [gym]
+
+      const result = store.validateSlot(
+        { day_of_week: 1, start_minutes: 995, end_minutes: 1040 },
+        gym.slots[0].id
+      )
+
+      expect(result).toEqual({ ok: true })
+    })
+
+    it('acepta un destino libre', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [gym]
+
+      expect(store.validateSlot({ day_of_week: 2, start_minutes: 995, end_minutes: 1040 })).toEqual(
+        { ok: true }
+      )
+    })
+  })
+
   describe('visibleWindow (Ventana visible auto-ajustable)', () => {
     const slot = (
       overrides: Partial<{ day_of_week: number; start_minutes: number; end_minutes: number }>,
