@@ -531,4 +531,57 @@ describe('pomodoro: las demás ventanas aplican los eventos', () => {
     await entregarEventos()
     expect(escritorio.session).toEqual(session())
   })
+
+  it('una ventana que se abre en mitad de la fase muestra el tiempo derivado del fin absoluto', async () => {
+    const faseMs = defaultPomodoroSettings.focusMinutes * 60_000
+    const almacen = new Map<string, string>()
+    vi.mocked(db.loadConfig).mockImplementation(async (key) => almacen.get(key) ?? null)
+    vi.mocked(db.saveConfig).mockImplementation(async (key, value) => {
+      almacen.set(key, value)
+    })
+
+    const escritorio = await abrirVentana()
+    escritorio.startTicker()
+    await escritorio.start()
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    const mini = await abrirVentana()
+    mini.startTicker()
+
+    expect(mini.remainingMs).toBe(faseMs - 5_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await escritorio.pause()
+    await entregarEventos()
+    expect(mini.remainingMs).toBe(faseMs - 15_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+
+    await escritorio.resume()
+    await entregarEventos()
+    for (const lapso of [3_000, 7_000, 20_000]) {
+      await vi.advanceTimersByTimeAsync(lapso)
+      expect(mini.remainingMs).toBe(escritorio.remainingMs)
+    }
+    expect(mini.remainingMs).toBe(faseMs - 45_000)
+
+    escritorio.stopTicker()
+    mini.stopTicker()
+  })
+
+  it('la configuración se sincroniza por el mismo mecanismo', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.saveSettings({ focusMinutes: 30, muted: true, volume: 0.4 })
+    await entregarEventos()
+
+    expect(mini.settings).toEqual(escritorio.settings)
+    expect(mini.settings.focusMinutes).toBe(30)
+    expect(mini.settings.muted).toBe(true)
+    expect(mini.settings.volume).toBe(0.4)
+    expect(mini.session.remainingMs).toBe(30 * 60_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+    expect(db.saveConfig).toHaveBeenCalledTimes(2)
+  })
 })
