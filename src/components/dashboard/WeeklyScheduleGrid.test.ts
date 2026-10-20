@@ -109,6 +109,7 @@ vi.mock('@/stores/weeklySchedule', () => ({
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({
     editMode: false,
+    scheduleEditMode: false,
   }),
 }))
 

@@ -16,11 +16,15 @@ const ui = useUiStore()
 const editingBlock = ref<ScheduleBlockWithSlots | null>(null)
 const showCreate = ref(false)
 const showSettings = ref(false)
+// La grilla avisa cuando hay un nombre editándose inline: ese Esc cancela el
+// nombre, no cierra el modo edición.
+const inlineNameEditing = ref(false)
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'Escape' || !ui.scheduleEditMode) return
   // Un modal abierto consume su propio Esc: el modo no se cierra a la vez.
-  if (showCreate.value || showSettings.value || editingBlock.value) return
+  if (showCreate.value || showSettings.value || editingBlock.value || inlineNameEditing.value)
+    return
   ui.exitScheduleEditMode()
 }
 
@@ -89,7 +93,11 @@ function openEdit(b: ScheduleBlockWithSlots) {
         class="min-h-0 flex-1 overflow-hidden"
         :class="ui.scheduleEditMode && 'grayscale'"
       >
-        <WeeklyScheduleGrid class="h-full" @edit="openEdit" />
+        <WeeklyScheduleGrid
+          class="h-full"
+          @edit="openEdit"
+          @name-edit-state="inlineNameEditing = $event"
+        />
       </div>
     </div>
     <WeeklyScheduleModal :open="showCreate" :block="null" @close="showCreate = false" />
