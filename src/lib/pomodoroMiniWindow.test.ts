@@ -90,6 +90,33 @@ function monitorWith(rect: { x: number; y: number; width: number; height: number
   } as unknown as Monitor
 }
 
+/** Config falsa en memoria: lo que se guarda es lo que se recupera. */
+let stored: Map<string, string>
+
+function persistMini(state: unknown): void {
+  stored.set('pomodoro-mini-window', JSON.stringify(state))
+}
+
+function persistedState(): unknown {
+  return JSON.parse(stored.get('pomodoro-mini-window') ?? 'null')
+}
+
+function resetFakes(): void {
+  stored = new Map()
+  constructions.length = 0
+  windows.length = 0
+  getByLabel.mockReset().mockResolvedValue(null)
+  vi.mocked(currentMonitor).mockReset().mockResolvedValue(null)
+  vi.mocked(db.loadConfig)
+    .mockReset()
+    .mockImplementation(async (key) => stored.get(key) ?? null)
+  vi.mocked(db.saveConfig)
+    .mockReset()
+    .mockImplementation(async (key, value) => {
+      stored.set(key, value)
+    })
+}
+
 describe('ventana mini del pomodoro', () => {
   beforeEach(() => {
     constructions.length = 0
@@ -193,31 +220,7 @@ describe('ventana mini del pomodoro', () => {
 })
 
 describe('persistencia de la ventana mini entre sesiones', () => {
-  let stored: Map<string, string>
-
-  function persistMini(state: unknown): void {
-    stored.set('pomodoro-mini-window', JSON.stringify(state))
-  }
-
-  function persistedState(): unknown {
-    return JSON.parse(stored.get('pomodoro-mini-window') ?? 'null')
-  }
-
-  beforeEach(() => {
-    stored = new Map()
-    constructions.length = 0
-    windows.length = 0
-    getByLabel.mockReset().mockResolvedValue(null)
-    vi.mocked(currentMonitor).mockReset().mockResolvedValue(null)
-    vi.mocked(db.loadConfig)
-      .mockReset()
-      .mockImplementation(async (key) => stored.get(key) ?? null)
-    vi.mocked(db.saveConfig)
-      .mockReset()
-      .mockImplementation(async (key, value) => {
-        stored.set(key, value)
-      })
-  })
+  beforeEach(resetFakes)
 
   it('si estaba abierta al cerrar la app, la reabre en la posición donde quedó', async () => {
     persistMini({ isOpen: true, x: 1620, y: 1120 })
@@ -308,7 +311,9 @@ describe('persistencia de la ventana mini entre sesiones', () => {
     expect(windows).toHaveLength(1)
     expect(windows[0].options).toMatchObject({ x: 10, y: 20 })
     // Solo consulta el estado de la ventana, nunca la sesión del temporizador.
-    expect(vi.mocked(db.loadConfig).mock.calls.map(([key]) => key)).toEqual(['pomodoro-mini-window'])
+    expect(vi.mocked(db.loadConfig).mock.calls.map(([key]) => key)).toEqual([
+      'pomodoro-mini-window',
+    ])
   })
 
   it('abrir la mini la deja marcada como abierta, conservando la posición guardada', async () => {
@@ -329,5 +334,71 @@ describe('persistencia de la ventana mini entre sesiones', () => {
 
     expect(windows).toHaveLength(1)
     expect(windows[0].options).toMatchObject({ x: 500, y: 400 })
+  })
+})
+
+describe('ciclo de vida de la ventana mini', () => {
+  beforeEach(() => {
+    resetFakes()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('persiste la posición al mover la mini, con una sola escritura por arrastre', async () => {
+    await openPomodoroMiniWindow()
+    const win = windows[0]
+    win.scaleFactorValue = 2
+    const toLogical = vi.fn().mockReturnValue({ x: 33, y: 44 })
+
+    win.emit('tauri://move', { toLogical })
+    await vi.advanceTimersByTimeAsync(100)
+    win.emit('tauri://move', { toLogical })
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(toLogical).toHaveBeenCalledWith(2)
+    expect(persistedState()).toEqual({ isOpen: true, x: 33, y: 44 })
+    // Una sola escritura del arrastre: la que hubo al abrir no se repite.
+    expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(2)
+  })
+
+  it('la X del usuario la marca cerrada y guarda la última posición movida', async () => {
+    await openPomodoroMiniWindow()
+    const win = windows[0]
+
+    win.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
+    await win.emit('tauri://close-requested', { preventDefault: () => {} })
+
+    expect(persistedState()).toEqual({ isOpen: false, x: 700, y: 500 })
+  })
+
+  it('cerrar la app con la mini abierta no la marca cerrada: la próxima sesión la reabre donde quedó', async () => {
+    await openPomodoroMiniWindow()
+    const win = windows[0]
+    win.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
+    await vi.advanceTimersByTimeAsync(250)
+
+    // La app se cierra: la ventana se destruye sin pasar por la acción de cerrar.
+    await win.emit('tauri://destroyed', undefined)
+
+    expect(persistedState()).toEqual({ isOpen: true, x: 700, y: 500 })
+
+    await restorePomodoroMiniWindow()
+
+    expect(windows).toHaveLength(2)
+    expect(windows[1].options).toMatchObject({ x: 700, y: 500 })
+  })
+
+  it('tras cerrarla con la X, al reabrirla vuelve a seguir su posición', async () => {
+    await openPomodoroMiniWindow()
+    await windows[0].emit('tauri://close-requested', { preventDefault: () => {} })
+
+    await openPomodoroMiniWindow()
+    windows[1].emit('tauri://move', { toLogical: () => ({ x: 10, y: 20 }) })
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(persistedState()).toEqual({ isOpen: true, x: 10, y: 20 })
   })
 })
