@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import PomodoroHeader from './PomodoroHeader.vue'
 import { computedTextColors, themeRgb } from '@/test/computedColors'
@@ -70,6 +71,30 @@ describe('PomodoroHeader', () => {
     expect(title.classes()).toContain('cursor-pointer')
     expect(title.classes()).toContain('text-left')
     expect(title.classes()).toContain('transition-colors')
+  })
+
+  it('deja las acciones en el extremo derecho de la fila', () => {
+    const wrapper = mountHeader()
+    const header = wrapper.get('[data-testid="pomodoro-test-header"]')
+    const acciones = wrapper.get('[data-testid="acciones"]')
+
+    expect(header.classes()).toContain('justify-between')
+    expect(header.element.lastElementChild).toBe(acciones.element)
+  })
+
+  it('la fila es compacta para no robarle alto al disco', () => {
+    const wrapper = mountHeader()
+    const header = wrapper.get('[data-testid="pomodoro-test-header"]')
+
+    expect(header.classes()).toContain('pomodoro-header')
+    expect(header.classes()).toContain('py-0.5')
+    expect(header.classes()).not.toContain('py-1')
+
+    // Dentro de un widget el título del pomodoro baja un escalón de tamaño.
+    const css = readFileSync('src/styles/tailwind.css', 'utf-8')
+    expect(css).toMatch(
+      /\.container-widget \.pomodoro-header \.text-card-title\s*\{[^}]*calc\(0\.875rem \* var\(--text-scale\)\)/
+    )
   })
 
   it('el título ilumina en hover y vuelve a su color de siempre en reposo, sin depender del orden de emisión', async () => {

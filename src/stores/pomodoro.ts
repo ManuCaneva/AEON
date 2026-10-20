@@ -14,6 +14,7 @@ import {
   type PomodoroSyncPayload,
 } from '@/schemas/pomodoro'
 import { getPhaseDurationMs, getRemainingMs, nextPhase } from '@/lib/pomodoro'
+import { flushPomodoroMiniWindowClosed, POMODORO_MINI_LABEL } from '@/lib/pomodoroMiniWindow'
 import { isPomodoroOwnerWindow } from '@/lib/pomodoroOwner'
 import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomodoroSounds'
 
@@ -222,9 +223,19 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       await listen(POMODORO_SYNC_EVENT, (event) => applyRemote(event.payload))
       // Al cerrarse, esta ventana entrega el fin de fase a la otra: con la
       // principal cerrándose en la expiración, el aviso suena una sola vez.
-      await getCurrentWebviewWindow().onCloseRequested(() => {
+      const ventana = getCurrentWebviewWindow()
+      await ventana.onCloseRequested(async () => {
         windowClosing = true
         stopTicker()
+        if (ventana.label === POMODORO_MINI_LABEL) {
+          // La ventana se destruye cuando este handler termina: persistir el
+          // cierre acá evita que el destroy gane la carrera contra el guardado.
+          try {
+            await flushPomodoroMiniWindowClosed()
+          } catch {
+            // Cerrar manda: un fallo de persistencia no puede dejar la X muerta.
+          }
+        }
       })
     }
     const [rawSettings, rawSession] = await Promise.all([

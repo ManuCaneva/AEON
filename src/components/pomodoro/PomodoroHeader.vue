@@ -39,7 +39,7 @@ function onTitleKeydown(event: KeyboardEvent): void {
 <template>
   <header
     :data-testid="testId('header')"
-    class="group flex shrink-0 cursor-pointer items-center justify-start border-b border-hairline bg-surface-2 px-2 py-1"
+    class="pomodoro-header group flex shrink-0 cursor-pointer items-center justify-between border-b border-hairline bg-surface-2 px-2 py-0.5"
     @click="activate"
   >
     <button

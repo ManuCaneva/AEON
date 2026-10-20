@@ -51,6 +51,7 @@ const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
       return Promise.resolve(() => {})
     }
     return {
+      label: 'pomodoro-mini',
       async emitir(event: string, payload?: unknown): Promise<void> {
         await Promise.all((handlers.get(event) ?? []).map((handler) => handler({ payload })))
       },

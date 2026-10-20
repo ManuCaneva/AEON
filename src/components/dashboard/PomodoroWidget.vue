@@ -35,7 +35,6 @@ function onPopOut(event: MouseEvent) {
           label="Abrir ventana mini"
           variant="ghost"
           size="sm"
-          class="ml-1"
           @click="onPopOut"
         >
           <PictureInPicture2 :size="14" aria-hidden="true" />

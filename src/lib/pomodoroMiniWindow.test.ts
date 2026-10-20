@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { currentMonitor, type Monitor } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow, type WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {
+  flushPomodoroMiniWindowClosed,
   isPomodoroMiniWindow,
   openPomodoroMiniWindow,
   restorePomodoroMiniWindow,
   trackPomodoroMiniWindow,
+  POMODORO_MINI_HEIGHT,
   POMODORO_MINI_LABEL,
+  POMODORO_MINI_WIDTH,
 } from './pomodoroMiniWindow'
 import * as db from '@/lib/db'
 
@@ -141,14 +144,19 @@ describe('ventana mini del pomodoro', () => {
       options: expect.objectContaining({
         url: 'index.html',
         title: 'AEON — Pomodoro',
-        width: 300,
-        height: 320,
+        width: POMODORO_MINI_WIDTH,
+        height: POMODORO_MINI_HEIGHT,
         resizable: false,
         alwaysOnTop: true,
         decorations: true,
         focus: true,
       }),
     })
+  })
+
+  it('la mini es chica de verdad: geometría fija acordada de 210×224', () => {
+    expect(POMODORO_MINI_WIDTH).toBe(210)
+    expect(POMODORO_MINI_HEIGHT).toBe(224)
   })
 
   it('si la ventana ya existe la enfoca y no crea una segunda', async () => {
@@ -173,8 +181,8 @@ describe('ventana mini del pomodoro', () => {
     await openPomodoroMiniWindow()
 
     expect(constructions[0].options).toMatchObject({
-      x: 1920 + 2560 - 300,
-      y: 0 + 1440 - 320,
+      x: 1920 + 2560 - POMODORO_MINI_WIDTH,
+      y: 0 + 1440 - POMODORO_MINI_HEIGHT,
     })
   })
 
@@ -193,8 +201,8 @@ describe('ventana mini del pomodoro', () => {
     expect(sizeToLogical).toHaveBeenCalledWith(2)
     expect(toLogical).toHaveBeenCalledWith(2)
     expect(constructions[0].options).toMatchObject({
-      x: 1280 - 300,
-      y: 720 - 320,
+      x: 1280 - POMODORO_MINI_WIDTH,
+      y: 720 - POMODORO_MINI_HEIGHT,
     })
   })
 
@@ -243,8 +251,8 @@ describe('persistencia de la ventana mini entre sesiones', () => {
 
     expect(windows).toHaveLength(1)
     expect(windows[0].options).toMatchObject({
-      x: 1920 + 2560 - 300,
-      y: 0 + 1440 - 320,
+      x: 1920 + 2560 - POMODORO_MINI_WIDTH,
+      y: 0 + 1440 - POMODORO_MINI_HEIGHT,
     })
   })
 
@@ -412,11 +420,18 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(1)
   })
 
+  it('el seguimiento solo escucha el movimiento: el cierre lo coordina el store', () => {
+    const mini = registrarMiniActual()
+
+    expect(mini.handlers.has('tauri://move')).toBe(true)
+    expect(mini.handlers.has('tauri://close-requested')).toBe(false)
+  })
+
   it('la X del usuario la marca cerrada y guarda la última posición movida', async () => {
     const mini = registrarMiniActual()
 
     mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
-    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
+    await flushPomodoroMiniWindowClosed()
 
     expect(persistedState()).toEqual({ isOpen: false, x: 700, y: 500 })
   })
@@ -438,8 +453,8 @@ describe('ciclo de vida de la ventana mini', () => {
   })
 
   it('tras cerrarla con la X, al reabrirla vuelve a seguir su posición', async () => {
-    const mini = registrarMiniActual()
-    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
+    registrarMiniActual()
+    await flushPomodoroMiniWindowClosed()
 
     await openPomodoroMiniWindow()
     const reabierta = registrarMiniActual()
@@ -450,8 +465,8 @@ describe('ciclo de vida de la ventana mini', () => {
   })
 
   it('si el usuario la cerró con la X, la próxima restauración no la reabre', async () => {
-    const mini = registrarMiniActual()
-    await mini.emit('tauri://close-requested', { preventDefault: () => {} })
+    registrarMiniActual()
+    await flushPomodoroMiniWindowClosed()
 
     await restorePomodoroMiniWindow()
 

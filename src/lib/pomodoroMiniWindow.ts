@@ -15,8 +15,8 @@ export const POMODORO_MINI_LABEL = 'pomodoro-mini'
 export const POMODORO_MINI_TITLE = 'AEON — Pomodoro'
 
 /** Geometría fija de la ventana mini, en píxeles lógicos. */
-export const POMODORO_MINI_WIDTH = 300
-export const POMODORO_MINI_HEIGHT = 320
+export const POMODORO_MINI_WIDTH = 210
+export const POMODORO_MINI_HEIGHT = 224
 
 interface Rect {
   x: number
@@ -115,7 +115,9 @@ let positionTimer: ReturnType<typeof setTimeout> | undefined
  * principal cerrada nadie más la seguiría y la X no se escribiría. El flag de
  * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la
  * X): la destrucción de la ventana por el cierre de la app no pasa por acá y
- * deja el flag como estaba, así la próxima sesión la reabre.
+ * deja el flag como estaba, así la próxima sesión la reabre. El cierre lo
+ * coordina el store (marca `windowClosing` y espera el guardado antes de
+ * destruir), así la X no compite contra la escritura del estado.
  */
 export function trackPomodoroMiniWindow(): void {
   const win = getCurrentWebviewWindow()
@@ -131,14 +133,20 @@ export function trackPomodoroMiniWindow(): void {
       return flushMiniWindowState(win, true)
     }, POSITION_SAVE_DELAY_MS)
   })
+}
 
-  void win.onCloseRequested(() => {
-    if (positionTimer !== undefined) {
-      clearTimeout(positionTimer)
-      positionTimer = undefined
-    }
-    return flushMiniWindowState(win, false)
-  })
+/**
+ * Persiste el cierre de la mini por la X: deja el flag de apertura en false y
+ * guarda la última posición pendiente. La espera el handler de cierre del store
+ * antes de que Tauri destruya la ventana: si el destroy gana la carrera, el
+ * cierre no se guarda y la mini reaparece en el próximo arranque.
+ */
+export async function flushPomodoroMiniWindowClosed(): Promise<void> {
+  if (positionTimer !== undefined) {
+    clearTimeout(positionTimer)
+    positionTimer = undefined
+  }
+  await flushMiniWindowState(getCurrentWebviewWindow(), false)
 }
 
 /** Persiste el flag indicado junto a la última posición pendiente (si hay). */

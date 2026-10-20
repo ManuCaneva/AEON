@@ -243,16 +243,18 @@ describe('PomodoroWidget', () => {
     expect(wrapper.find('[data-testid="pomodoro-widget-progress"]').exists()).toBe(true)
   })
 
-  it('tiene el título alineado a la izquierda, como el estándar de listing (ALINEACIÓN)', () => {
+  it('tiene el título a la izquierda y las acciones en el extremo derecho (ALINEACIÓN)', () => {
     const wrapper = mount(PomodoroWidget)
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
     const title = header.get('.text-card-title')
+    const popout = header.get('[data-testid="pomodoro-widget-popout"]')
 
     expect(header.classes()).not.toContain('justify-center')
-    expect(header.classes()).toContain('justify-start')
+    expect(header.classes()).toContain('justify-between')
     expect(title.classes()).not.toContain('text-center')
     expect(title.classes()).toContain('text-left')
     expect(header.element.firstElementChild?.textContent).toContain('Pomodoro')
+    expect(header.element.lastElementChild).toBe(popout.element)
   })
 
   it('el anillo usa token primario en enfoque y success en descansos', async () => {
@@ -353,6 +355,10 @@ describe('PomodoroWidget', () => {
     // La cuenta regresiva escala con el widget (piso según Configuración).
     expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*cqmin/)
     expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*var\(--text-scale\)/)
+    // En contenedores chicos (la ventana mini) el piso baja junto con el disco.
+    expect(css).toMatch(
+      /@container \(max-width: 240px\)[\s\S]*?\.container-widget \.pomodoro-countdown\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/
+    )
     // Los controles escalan con el widget.
     expect(css).toMatch(/\.container-widget \.pomodoro-btn\s*\{[^}]*cqmin/)
   })

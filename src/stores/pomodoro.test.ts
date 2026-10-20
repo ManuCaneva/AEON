@@ -809,6 +809,20 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
     expect(mini.session).toMatchObject({ phase: 'shortBreak', completedFocusSessions: 1 })
   })
 
+  it('la X de la mini persiste el cierre antes de que la ventana se destruya', async () => {
+    ventanas.abrir('pomodoro-mini')
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    await abrirVentana()
+
+    ventanas.recibirLaX('pomodoro-mini')
+    await entregarEventos()
+
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      'pomodoro-mini-window',
+      JSON.stringify({ isOpen: false, x: null, y: null })
+    )
+  })
+
   it('el fin de fase se publica antes de sonar, para que la otra ventana ceda sin doble aviso', async () => {
     ventanas.estado.etiquetaActual = 'main'
     const escritorio = await abrirVentana()
