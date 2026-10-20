@@ -1,5 +1,6 @@
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { focusWindow, windowExists } from '@/lib/appWindows'
 
 /** Label de la ventana principal de la app (el de `tauri.conf.json`). */
 export const POMODORO_MAIN_LABEL = 'main'
@@ -47,8 +48,7 @@ export function onShowPomodoroInMain(handler: () => void): Promise<UnlistenFn> {
  * a una ventana que recién arranca.
  */
 export async function showPomodoroInMainWindow(): Promise<void> {
-  const main = await WebviewWindow.getByLabel(POMODORO_MAIN_LABEL)
-  if (!main) {
+  if (!(await windowExists(POMODORO_MAIN_LABEL))) {
     new WebviewWindow(POMODORO_MAIN_LABEL, {
       ...MAIN_WINDOW_OPTIONS,
       url: POMODORO_MAIN_URL,
@@ -57,6 +57,5 @@ export async function showPomodoroInMainWindow(): Promise<void> {
   }
 
   await emit(SHOW_POMODORO_IN_MAIN_EVENT)
-  await main.show()
-  await main.setFocus()
+  await focusWindow(POMODORO_MAIN_LABEL)
 }

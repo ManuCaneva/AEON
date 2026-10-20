@@ -1,11 +1,6 @@
-import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { windowExists } from '@/lib/appWindows'
 import { POMODORO_MAIN_LABEL } from '@/lib/pomodoroMainWindow'
-
-/** true cuando la ventana existe: abierta aunque esté minimizada u oculta. */
-async function windowExists(label: string): Promise<boolean> {
-  const target = await WebviewWindow.getByLabel(label)
-  return target !== null && target !== undefined
-}
 
 /**
  * ¿Es la ventana actual la dueña del pomodoro? La dueña resuelve los fines de

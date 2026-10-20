@@ -5,6 +5,7 @@ import {
   loadPomodoroMiniWindowState,
   savePomodoroMiniWindowState,
 } from '@/lib/pomodoroMiniWindowState'
+import { focusWindow, windowExists } from '@/lib/appWindows'
 import type { PomodoroMiniWindowState } from '@/schemas/pomodoroMiniWindow'
 
 /** Label único de la ventana mini: la identifica como singleton entre webviews. */
@@ -75,11 +76,8 @@ async function showPomodoroMiniWindow(
   state: PomodoroMiniWindowState,
   { focus }: { focus: boolean }
 ): Promise<void> {
-  const existing = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL)
-  if (existing) {
-    if (!focus) return
-    await existing.show()
-    await existing.setFocus()
+  if (await windowExists(POMODORO_MINI_LABEL)) {
+    if (focus) await focusWindow(POMODORO_MINI_LABEL)
     return
   }
 
