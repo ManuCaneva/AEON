@@ -1456,3 +1456,54 @@ describe('tasks store - eventos representados en la agenda', () => {
     expect([...store.representedEventKeys]).toEqual([])
   })
 })
+
+describe('tasks store - ítems de eventos vinculados en el calendario', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    useWeeklyScheduleStore().blocksWithSlots = []
+  })
+
+  it('expone el título y el color de la tarea, no los del evento de Google', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: 'task-1',
+        title: 'Estudiar U3',
+        color: '#123456',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect(store.linkedEventItems.get('local\u0000evt-1')).toEqual({
+      id: 'task_task-1',
+      title: 'Estudiar U3',
+      color: '#123456',
+    })
+  })
+
+  it('usa el color del bloque cuando la tarea lo tiene', () => {
+    useWeeklyScheduleStore().blocksWithSlots = [makeBlock()]
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({ block_id: blockUuid, event_link: { calendarId: 'local', eventId: 'evt-1' } }),
+    ]
+
+    expect(store.linkedEventItems.get('local\u0000evt-1')?.color).toBe(
+      'rgb(var(--color-block-green))'
+    )
+  })
+
+  it('una tarea archivada sin completar no aporta ítem (su evento debe verse)', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'todo',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect(store.linkedEventItems.size).toBe(0)
+  })
+})

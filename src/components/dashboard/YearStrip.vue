@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
-import { eventKey } from '@/lib/entityEventLink'
+import { eventKey, type LinkedEventItem } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
 import type { DayTooltipItem } from '@/composables/useDayTooltip'
 import DayTooltip from '@/components/calendar/DayTooltip.vue'
@@ -27,6 +27,9 @@ const props = withDefaults(
     // pintan como punto ni se listan en el tooltip (dedup). El examen los
     // representa una sola vez.
     linkedEventKeys?: ReadonlySet<string>
+    // Cómo se pinta un evento que ya representa a una entidad (ej. una tarea):
+    // con el título y el color de la entidad, igual que en «Agenda del Día».
+    linkedEventItems?: ReadonlyMap<string, LinkedEventItem>
     monthNames?: string[]
     highlightMonth?: number | null
     today?: string
@@ -35,6 +38,7 @@ const props = withDefaults(
   {
     overlayByDate: () => new Map(),
     linkedEventKeys: () => new Set<string>(),
+    linkedEventItems: () => new Map(),
     monthNames: () => [
       'enero',
       'febrero',
@@ -99,8 +103,9 @@ function dotEvents(date: string | null): CalendarEvent[] {
 
 /**
  * Lo que dice el tooltip de un día: eventos + exámenes (overlay). Usa los
- * mismos eventos que los puntos: un evento ya representado por un examen no
- * se lista, así el tooltip muestra el examen una sola vez.
+ * mismos eventos y colores que los puntos: un evento ya representado por un
+ * examen no se lista, y uno que representa a una tarea se pinta con el título
+ * y el color de la tarea.
  */
 function tooltipItems(date: string | null): DayTooltipItem[] {
   if (!date) return []
@@ -109,7 +114,7 @@ function tooltipItems(date: string | null): DayTooltipItem[] {
     title: dot.title,
     color: dot.color,
   }))
-  return [...dotEvents(date), ...overlay]
+  return [...dotEvents(date).map(calendarItem), ...overlay]
 }
 
 const { hovered, hideTooltip, onDayEnter } = useDayTooltip(tooltipItems)
@@ -119,8 +124,13 @@ function onDaySelect(date: string | null) {
   emit('select-day', date)
 }
 
-function visibleDots(date: string | null): CalendarEvent[] {
-  return dotEvents(date).slice(0, MAX_DOTS)
+function visibleDots(date: string | null): LinkedEventItem[] {
+  return dotEvents(date).slice(0, MAX_DOTS).map(calendarItem)
+}
+
+/** Cómo se pinta un evento: con los datos de su entidad si la representa. */
+function calendarItem(evt: CalendarEvent): LinkedEventItem {
+  return props.linkedEventItems.get(eventKey(evt.calendarId, evt.id)) ?? evt
 }
 
 function overflowCount(date: string | null): number {

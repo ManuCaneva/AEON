@@ -34,6 +34,17 @@ export function eventKey(calendarId: string, eventId: string): string {
   return `${calendarId}\u0000${eventId}`
 }
 
+/**
+ * Cómo se pinta un evento que ya representa a una entidad (tarea, examen): con
+ * el título y el color de la entidad, igual que en «Agenda del Día». El evento
+ * de Google sigue existiendo; sólo se muestra a través de su entidad.
+ */
+export interface LinkedEventItem {
+  id: string
+  title: string
+  color: string
+}
+
 /** Evento resuelto del mismo día, o undefined si no existe / es de otro día. */
 export function resolveEntityLink(
   entity: EventLinkedEntity,

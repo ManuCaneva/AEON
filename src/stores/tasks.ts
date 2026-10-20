@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
 import { blockColorRgb } from '@/lib/scheduleColors'
-import { eventKey, type EventChoice } from '@/lib/entityEventLink'
+import { eventKey, type EventChoice, type LinkedEventItem } from '@/lib/entityEventLink'
 import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
 import { taskInAgenda } from '@/lib/taskAgenda'
 import {
@@ -93,6 +93,27 @@ export const useTasksStore = defineStore('tasks', () => {
       if (link) keys.add(eventKey(link.calendarId, link.eventId))
     }
     return keys
+  })
+
+  /**
+   * Cómo se pinta el evento de cada tarea agendada: con el título y el color
+   * de la tarea, nunca con los del evento de Google. Espeja
+   * `representedEventKeys` (misma regla de agenda) para que calendario y
+   * «Agenda del Día» se vean igual.
+   */
+  const linkedEventItems = computed<Map<string, LinkedEventItem>>(() => {
+    const items = new Map<string, LinkedEventItem>()
+    for (const task of tasks.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (!link) continue
+      items.set(eventKey(link.calendarId, link.eventId), {
+        id: `task_${task.id}`,
+        title: task.title,
+        color: colorFor(task),
+      })
+    }
+    return items
   })
 
   /** Vacía el contenido en memoria (tareas y sus pasos). Para «Borrar datos». */
@@ -268,6 +289,7 @@ export const useTasksStore = defineStore('tasks', () => {
     archivedTasks,
     pendingTasks,
     representedEventKeys,
+    linkedEventItems,
     reset,
     loadTasks,
     createTask,

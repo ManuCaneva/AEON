@@ -388,6 +388,31 @@ describe('MonthMini', () => {
       wrapper.unmount()
     })
 
+    it('pinta el evento vinculado con el título y el color de la entidad, no con los de Google', async () => {
+      const linkedEventItems = new Map([
+        [
+          eventKey('primary', 'e1'),
+          { id: 'task_task-1', title: 'Estudiar U3', color: 'rgb(var(--color-block-red))' },
+        ],
+      ])
+      const wrapper = mountAttached({ linkedEventItems })
+      const cell15 = hoverCell(wrapper, 14) // 15 de Enero
+      // El punto del evento vinculado usa el color de la entidad, como en «Agenda del Día».
+      const dots = cell15.findAll("[data-testid='event-dot']")
+      expect(dots).toHaveLength(2)
+      expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-red))')
+      expect(dots[0].attributes('style')).not.toContain('#7986cb')
+      expect(dots[1].attributes('style')).toContain('#33b679')
+
+      await cell15.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip!.textContent).toContain('Estudiar U3')
+      expect(tooltip!.textContent).not.toContain('Standup')
+      const tooltipDots = tooltip!.querySelectorAll("[data-testid='day-tooltip-dot']")
+      expect(tooltipDots[0].getAttribute('style')).toContain('rgb(var(--color-block-red))')
+      wrapper.unmount()
+    })
+
     it('el tooltip muestra el examen del día (overlay) aunque no tenga eventos', async () => {
       const overlayByDate = new Map([
         [

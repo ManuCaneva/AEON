@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
 import { useExamsStore } from '@/stores/exams'
+import { useTasksStore } from '@/stores/tasks'
 import MonthMini from '@/components/calendar/MonthMini.vue'
 import YearStrip from '@/components/dashboard/YearStrip.vue'
 import YearCalendarSettingsModal from '@/components/dashboard/YearCalendarSettingsModal.vue'
@@ -29,6 +30,7 @@ const props = defineProps<{
 
 const store = useCalendarStore()
 const exams = useExamsStore()
+const tasks = useTasksStore()
 
 const MONTH_NAMES = [
   'enero',
@@ -297,6 +299,7 @@ watch(
           :year="store.currentYear"
           :events-by-date="store.eventsByDate"
           :linked-event-keys="exams.linkedEventKeys"
+          :linked-event-items="tasks.linkedEventItems"
           :overlay-by-date="exams.overlayByDate"
           :month-names="MONTH_NAMES"
           @select-day="openDayModal"
@@ -323,6 +326,7 @@ watch(
                 :month-name="MONTH_NAMES[m - 1]"
                 :events-by-date="store.eventsByDate"
                 :linked-event-keys="exams.linkedEventKeys"
+                :linked-event-items="tasks.linkedEventItems"
                 :overlay-by-date="exams.overlayByDate"
                 :show-header="false"
                 @select-day="openDayModal"
