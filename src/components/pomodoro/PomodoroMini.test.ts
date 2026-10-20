@@ -164,6 +164,18 @@ describe('PomodoroMini', () => {
     expect(wrapper.emitted('header-activate')).toHaveLength(3)
   })
 
+  it('el header muestra cursor pointer y el título se ilumina en hover, igual que en el widget', () => {
+    const wrapper = mount(PomodoroMini)
+    const header = wrapper.get('[data-testid="pomodoro-mini-header"]')
+    const title = header.get('.text-card-title')
+
+    expect(header.classes()).toContain('cursor-pointer')
+    expect(header.classes()).toContain('group')
+    expect(title.classes()).toContain('text-ink-muted')
+    expect(title.classes()).toContain('transition-colors')
+    expect(title.classes()).toContain('group-hover:text-ink')
+  })
+
   it('no usa colores de paleta cruda de Tailwind', () => {
     const wrapper = mount(PomodoroMini)
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)

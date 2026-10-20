@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { emit, listen } from '@tauri-apps/api/event'
-import { onShowPomodoroInMain, showPomodoroInMainWindow, requestsPomodoroView } from './pomodoroMainWindow'
+import {
+  onShowPomodoroInMain,
+  showPomodoroInMainWindow,
+  requestsPomodoroView,
+} from './pomodoroMainWindow'
 
 const { constructions, getByLabel } = vi.hoisted(() => ({
   constructions: [] as Array<{ label: string; options: Record<string, unknown> }>,
