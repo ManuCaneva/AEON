@@ -43,3 +43,15 @@ export const ActivePomodoroSessionSchema = z
     }
   })
 export type ActivePomodoroSession = z.infer<typeof ActivePomodoroSessionSchema>
+
+/**
+ * Snapshot del estado del pomodoro que una ventana publica al resto cuando muta.
+ * `origin` identifica a la ventana emisora para que no aplique su propio eco ni
+ * vuelva a escribir lo que ya persistió.
+ */
+export const PomodoroSyncPayloadSchema = z.object({
+  origin: z.string().min(1),
+  settings: PomodoroSettingsSchema,
+  session: ActivePomodoroSessionSchema,
+})
+export type PomodoroSyncPayload = z.infer<typeof PomodoroSyncPayloadSchema>
