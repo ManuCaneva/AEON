@@ -94,6 +94,21 @@ Los widgets se adaptan al tamaño de su celda sin desbordar el panel:
 - El redimensionado se descubre con handles invisibles sobre las cuatro aristas y las cuatro esquinas, cada uno con su cursor (`ns-resize` en horizontales, `ew-resize` en verticales, `nwse-resize`/`nesw-resize` en las diagonales). Al hacer hover en modo edición aparecen en las esquinas unos grips de dos líneas (una horizontal y una vertical) que marcan la affordance; sin hover no se ven.
 - La grilla (12×10) se dibuja en modo edición con líneas finas continuas de 1px a baja opacidad, con `repeating-linear-gradient` sobre el contenedor y solo tokens de color; en reposo no queda rastro. Un borde de 1px al 60% cierra la grilla por la derecha y por abajo (dibujado hacia adentro gracias a `box-sizing: border-box`).
 
+## Modo edición del cronograma
+
+El Cronograma semanal tiene su propio modo edición, separado del modo edición general del dashboard:
+
+- **Entrar y salir**: el lápiz del header del widget lo alterna; `Esc` sale. La navegación a otra vista lo apaga solo. Con el modo edición general activo el lápiz no está disponible: los modos son mutuamente excluyentes (entrar a uno apaga al otro).
+- **Qué se desatura**: solo el contenido del cronograma (días y bloques). La ×, las manijas, copiar/pegar y el editor de nombre quedan a color y activos; el resto de los widgets no cambia.
+- **Doble click en un hueco**: crea un bloque `lavender` de una fila en la fila clickeada, con el nombre editable ahí mismo (`Enter` confirma, `Esc` cancela y borra lo creado, click afuera confirma; nombre vacío → «Sin título»).
+- **Doble click en un bloque**: renombra el título del bloque compartido, así que cambia en todas sus ocurrencias.
+- **Selección y borrado**: un click selecciona la ocurrencia (borde fino). La × (al hover) o `Supr` borra esa ocurrencia; si era la última de su bloque, el bloque se borra también.
+- **Mover**: arrastrar una ocurrencia la lleva al día y al minuto del puntero, sin snap a la granularidad. Los días deshabilitados no son destino. Un destino ocupado vuelve a su lugar y avisa con el nombre del bloque que chocó.
+- **Estirar**: las manijas de los bordes superior e inferior aparecen al pasar el mouse por la ocurrencia. La arista opuesta queda anclada y la duración mínima es 5 minutos.
+- **Bordes que crecen**: durante un gesto, si el puntero entra en la banda de 40px junto al borde superior o inferior, la ventana visible crece una hora hacia ese lado, animada. Para sumar otra hora hay que salir de la banda y volver a entrar.
+- **Copiar y pegar**: `Ctrl/Cmd+C` copia la ocurrencia seleccionada (título, color y duración) y `Ctrl/Cmd+V` inicia un pegado que sigue al puntero como fantasma translúcido con el rango exacto. Un click coloca un bloque nuevo e independiente con un horario propio; `Esc` termina el pegado, así que se puede pegar varias veces. Si el destino se superpone o no entra en el día, no se persiste y un toast explica el motivo; el pegado sigue vivo.
+- Todos los gestos persisten al instante contra el store del cronograma: no hay sesión de borrador ni diálogo de guardado.
+
 ## Archivos relacionados
 
 - `src/components/dashboard/DashboardView.vue`: composición y render del dashboard (contenedor CSS Grid).

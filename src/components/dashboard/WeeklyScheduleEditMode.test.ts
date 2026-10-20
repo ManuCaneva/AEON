@@ -121,7 +121,9 @@ describe('cronograma: selección y borrado en el modo edición', () => {
 
     await dayColumn(wrapper, 1).get('.schedule-block').trigger('mouseenter')
 
-    expect(dayColumn(wrapper, 1).get('.schedule-block').element.closest('.grayscale')).not.toBeNull()
+    expect(
+      dayColumn(wrapper, 1).get('.schedule-block').element.closest('.grayscale')
+    ).not.toBeNull()
 
     const controls = [
       deleteButton(wrapper, 1),
