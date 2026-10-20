@@ -13,9 +13,13 @@ import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
 import {
   growWindowAtEdge,
+  growthEdgeAt,
+  pointerToScheduleMinutes,
   pointerToSchedulePosition,
   type ScheduleDragPoint,
+  type WindowGrowthEdge,
 } from '@/lib/scheduleDragGeometry'
+import { MINUTES_PER_DAY, clampMinutes } from '@/lib/scheduleTime'
 import { blockColorTint } from '@/lib/scheduleColors'
 import type {
   ScheduleBlockWithSlots,
@@ -155,14 +159,21 @@ watch(() => [store.settings, store.visibleWindow], measure, { deep: true })
 // Horas extra que se muestran mientras un gesto se acerca a un borde. La
 // ventana base sigue siendo la derivada del store: al soltar, esto vuelve a 0.
 const gestureWindowGrowth = ref({ above: 0, below: 0 })
+// Banda de borde alcanzada por el puntero. El crecimiento ocurre al entrar a la
+// banda: para sumar otra hora hay que salir y volver a entrar.
+const growthEdge = ref<WindowGrowthEdge | null>(null)
 
 const effectiveWindow = computed<VisibleWindow>(() => ({
   start_minutes: Math.max(0, store.visibleWindow.start_minutes - gestureWindowGrowth.value.above),
-  end_minutes: Math.min(1440, store.visibleWindow.end_minutes + gestureWindowGrowth.value.below),
+  end_minutes: Math.min(
+    MINUTES_PER_DAY,
+    store.visibleWindow.end_minutes + gestureWindowGrowth.value.below
+  ),
 }))
 
 function resetGestureWindow() {
   gestureWindowGrowth.value = { above: 0, below: 0 }
+  growthEdge.value = null
 }
 
 const visibleRows = computed(() => {
@@ -329,7 +340,7 @@ async function onDayDoubleClick(day: number, event: MouseEvent) {
   const rowIndex = Math.max(0, Math.min(visibleRows.value - 1, Math.floor(offsetY / rowHeight)))
   const granularity = store.settings.granularity_minutes
   const start = windowStart.value + rowIndex * granularity
-  const end = Math.min(1440, start + granularity)
+  const end = Math.min(MINUTES_PER_DAY, start + granularity)
   if (end <= start) return
   if (store.wouldOverlapOnDay(day, start, end)) return
 
@@ -432,10 +443,6 @@ const { begin: beginGesture } = useScheduleDrag(
   }
 )
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(value, max))
-}
-
 function onBlockPointerDown(vs: VisibleSlot, event: PointerEvent) {
   if (!ui.scheduleEditMode || props.pasting) return
   gestureCandidate.value = { vs, kind: 'move' }
@@ -452,13 +459,17 @@ function growWindowAtPointer(point: ScheduleDragPoint): ScheduleDragPoint {
   const grid = daysGridRef.value
   if (!grid) return point
   const rect = grid.getBoundingClientRect()
-  const grown = growWindowAtEdge(effectiveWindow.value, point.clientY, rect)
-  if (
-    grown.start_minutes === effectiveWindow.value.start_minutes &&
-    grown.end_minutes === effectiveWindow.value.end_minutes
-  ) {
+  const edge = growthEdgeAt(point.clientY, rect)
+  // Una hora por acercamiento: el crecimiento se dispara al ENTRAR a la banda
+  // del borde, no en cada pointermove. Para la segunda hora hay que salir de la
+  // banda y volver a entrar.
+  if (edge === null) {
+    growthEdge.value = null
     return point
   }
+  if (edge === growthEdge.value) return point
+  growthEdge.value = edge
+  const grown = growWindowAtEdge(effectiveWindow.value, edge)
   const base = store.visibleWindow
   gestureWindowGrowth.value = {
     above: base.start_minutes - grown.start_minutes,
@@ -483,7 +494,7 @@ function moveGesture(point: ScheduleDragPoint) {
     // Los días deshabilitados no son destino de arrastre.
     if (!enabledDays.value.includes(point.day)) return
     const duration = state.end - state.start
-    const start = clamp(point.minutes, 0, 1440 - duration)
+    const start = clampMinutes(point.minutes, 0, MINUTES_PER_DAY - duration)
     gestureState.value = {
       ...state,
       day: point.day,
@@ -499,11 +510,11 @@ function moveGesture(point: ScheduleDragPoint) {
   // el fin fijo; estirar desde abajo mueve el fin con el inicio fijo.
   const start =
     state.kind === 'resize-top'
-      ? clamp(point.minutes, 0, state.end - MIN_SLOT_DURATION_MINUTES)
+      ? clampMinutes(point.minutes, 0, state.end - MIN_SLOT_DURATION_MINUTES)
       : state.start
   const end =
     state.kind === 'resize-bottom'
-      ? clamp(point.minutes, state.start + MIN_SLOT_DURATION_MINUTES, 1440)
+      ? clampMinutes(point.minutes, state.start + MIN_SLOT_DURATION_MINUTES, MINUTES_PER_DAY)
       : state.end
   gestureState.value = { ...state, start, end, pointerX: point.clientX, pointerY: point.clientY }
 }
@@ -616,10 +627,12 @@ function onDayPointerMove(event: PointerEvent) {
   if (minuteHeightPx.value <= 0) return
   const column = event.currentTarget as HTMLElement | null
   if (!column) return
-  const rect = column.getBoundingClientRect()
-  const minutes = Math.round(windowStart.value + (event.clientY - rect.top) / minuteHeightPx.value)
+  const minutes = pointerToScheduleMinutes(event.clientY, column.getBoundingClientRect(), {
+    windowStart: windowStart.value,
+    minuteHeightPx: minuteHeightPx.value,
+  })
   const point = {
-    minutes: clamp(minutes, 0, 1440),
+    minutes: clampMinutes(minutes),
     clientX: event.clientX,
     clientY: event.clientY,
   }
@@ -631,7 +644,7 @@ const pasteRange = computed(() => {
   const clip = props.clipboard
   const point = pastePoint.value
   if (!pasteActive.value || !clip || !point) return null
-  const start = clamp(point.minutes, 0, 1440 - clip.durationMinutes)
+  const start = clampMinutes(point.minutes, 0, MINUTES_PER_DAY - clip.durationMinutes)
   return { start, end: start + clip.durationMinutes }
 })
 
@@ -681,8 +694,11 @@ function placePaste(event: MouseEvent) {
   const day = Number(column.dataset.day)
   if (!enabledDays.value.includes(day)) return
   const rect = column.getBoundingClientRect()
-  const minutes = Math.round(windowStart.value + (event.clientY - rect.top) / minuteHeightPx.value)
-  const start = clamp(minutes, 0, 1440 - clip.durationMinutes)
+  const minutes = pointerToScheduleMinutes(event.clientY, rect, {
+    windowStart: windowStart.value,
+    minuteHeightPx: minuteHeightPx.value,
+  })
+  const start = clampMinutes(minutes, 0, MINUTES_PER_DAY - clip.durationMinutes)
   const end = start + clip.durationMinutes
   if (end <= start) return
   const validation = store.validateSlot({

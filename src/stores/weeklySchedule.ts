@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as db from '../lib/db'
+import { MINUTES_PER_DAY } from '../lib/scheduleTime'
 import {
   type BlockColorToken,
   type CreateScheduleBlockDraft,
@@ -25,7 +26,7 @@ function uuidv4(): string {
 }
 
 export function minutesToHHMM(min: number): string {
-  const m = ((min % 1440) + 1440) % 1440
+  const m = ((min % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
   const h = Math.floor(m / 60)
   const mm = m % 60
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
