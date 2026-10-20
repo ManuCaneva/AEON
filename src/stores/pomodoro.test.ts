@@ -1,13 +1,52 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { defaultPomodoroSettings, type ActivePomodoroSession } from '@/schemas/pomodoro'
+import {
+  defaultPomodoroSettings,
+  PomodoroSyncPayloadSchema,
+  type ActivePomodoroSession,
+} from '@/schemas/pomodoro'
 import * as db from '@/lib/db'
-import { usePomodoroStore } from './pomodoro'
+import { POMODORO_SESSION_KEY, usePomodoroStore } from './pomodoro'
 
 vi.mock('@/lib/db', () => ({
   loadConfig: vi.fn().mockResolvedValue(null),
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }))
+
+/**
+ * Bus de eventos entre webviews: `emit` entrega el payload a todas las
+ * suscripciones registradas, incluida la de la ventana emisora (como hace
+ * Tauri), así las pruebas ejercitan el descarte del eco propio.
+ */
+const busEventos = vi.hoisted(() => {
+  type Handler = (event: { payload: unknown }) => void
+  const handlers: Handler[] = []
+  function entregar(payload: unknown): void {
+    queueMicrotask(() => {
+      for (const handler of [...handlers]) handler({ payload })
+    })
+  }
+  return {
+    handlers,
+    entregar,
+    emit: vi.fn((_evento: string, payload?: unknown) => {
+      entregar(payload)
+      return Promise.resolve()
+    }),
+    listen: vi.fn((_evento: string, handler: Handler) => {
+      handlers.push(handler)
+      return Promise.resolve(() => {
+        const index = handlers.indexOf(handler)
+        if (index >= 0) handlers.splice(index, 1)
+      })
+    }),
+    reiniciar() {
+      handlers.length = 0
+    },
+  }
+})
+
+vi.mock('@tauri-apps/api/event', () => ({ emit: busEventos.emit, listen: busEventos.listen }))
 
 const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } = vi.hoisted(
   () => ({
@@ -327,5 +366,222 @@ describe('pomodoro store', () => {
     expect(store.session.isRunning).toBe(true)
     expect(store.session.endsAt).toBe('2026-09-01T12:25:00.000Z')
     expect(store.remainingMs).toBe(21 * 60_000 + 48_000)
+  })
+})
+
+type StorePomodoro = ReturnType<typeof usePomodoroStore>
+
+/** Contrato del canal: nombre del evento con el que las ventanas se sincronizan. */
+const EVENTO_SYNC = 'pomodoro-state-changed'
+
+/** Espera a que el bus entregue los eventos ya emitidos a las suscripciones. */
+async function entregarEventos(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0)
+  await Promise.resolve()
+}
+
+describe('pomodoro: las mutaciones se publican a las demás ventanas', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    busEventos.reiniciar()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(start))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const mutaciones: Array<{
+    nombre: string
+    preparar?: (store: StorePomodoro) => Promise<void>
+    mutar: (store: StorePomodoro) => Promise<unknown> | unknown
+  }> = [
+    { nombre: 'iniciar', mutar: (store) => store.start() },
+    { nombre: 'pausar', preparar: (store) => store.start(), mutar: (store) => store.pause() },
+    {
+      nombre: 'reanudar',
+      preparar: async (store) => {
+        await store.start()
+        await store.pause()
+      },
+      mutar: (store) => store.resume(),
+    },
+    { nombre: 'saltear de fase', mutar: (store) => store.skip() },
+    { nombre: 'reiniciar', preparar: (store) => store.start(), mutar: (store) => store.reset() },
+    {
+      nombre: 'cambiar la configuración',
+      mutar: (store) => store.saveSettings({ focusMinutes: 30 }),
+    },
+    { nombre: 'reiniciar sin persistir', mutar: (store) => store.resetSession() },
+    {
+      nombre: 'expirar la fase',
+      preparar: (store) => store.start(),
+      mutar: async (store) => {
+        vi.setSystemTime(new Date(store.session.endsAt ?? Date.now()))
+        await store.advanceIfExpired()
+      },
+    },
+  ]
+
+  it.each(mutaciones.map((m) => [m.nombre, m] as const))(
+    'la mutación «%s» emite el estado completo con su origen',
+    async (_nombre, { preparar, mutar }) => {
+      const store = usePomodoroStore()
+      await store.load()
+      if (preparar) await preparar(store)
+      vi.mocked(busEventos.emit).mockClear()
+
+      await mutar(store)
+      await entregarEventos()
+
+      expect(busEventos.emit).toHaveBeenCalledTimes(1)
+      const [evento, payload] = vi.mocked(busEventos.emit).mock.calls[0]
+      expect(evento).toBe(EVENTO_SYNC)
+      const snapshot = PomodoroSyncPayloadSchema.parse(payload)
+      expect(snapshot.session).toEqual(store.session)
+      expect(snapshot.settings).toEqual(store.settings)
+      expect(snapshot.origin).not.toBe('')
+    }
+  )
+})
+
+describe('pomodoro: las demás ventanas aplican los eventos', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    busEventos.reiniciar()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(start))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Abre una ventana nueva: pinia propio, igual que una webview aparte. */
+  async function abrirVentana(): Promise<StorePomodoro> {
+    setActivePinia(createPinia())
+    const store = usePomodoroStore()
+    await store.load()
+    return store
+  }
+
+  it('una mutación a distancia deja el mismo estado en la ventana remota', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(mini.session.isRunning).toBe(true)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+  })
+
+  it('solo la ventana que originó el cambio escribe la sesión en SQLite', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledWith(
+      POMODORO_SESSION_KEY,
+      JSON.stringify(escritorio.session)
+    )
+  })
+
+  it('aplicar un evento remoto no re-emite ni re-persiste: sin eco', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.start()
+    await entregarEventos()
+
+    expect(mini.session).toEqual(escritorio.session)
+    expect(busEventos.emit).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('la ventana emisora descarta su propio eco y aplica lo que llega de otras', async () => {
+    const escritorio = await abrirVentana()
+    await escritorio.start()
+    await entregarEventos()
+    const [, propio] = vi.mocked(busEventos.emit).mock.calls[0]
+    const enCurso = { ...escritorio.session }
+    const remoto = {
+      origin: 'otra-ventana',
+      settings: { ...defaultPomodoroSettings },
+      session: session(),
+    }
+
+    busEventos.entregar({ ...remoto, origin: (propio as { origin: string }).origin })
+    await entregarEventos()
+    expect(escritorio.session).toEqual(enCurso)
+
+    busEventos.entregar(remoto)
+    await entregarEventos()
+    expect(escritorio.session).toEqual(session())
+  })
+
+  it('una ventana que se abre en mitad de la fase muestra el tiempo derivado del fin absoluto', async () => {
+    const faseMs = defaultPomodoroSettings.focusMinutes * 60_000
+    const almacen = new Map<string, string>()
+    vi.mocked(db.loadConfig).mockImplementation(async (key) => almacen.get(key) ?? null)
+    vi.mocked(db.saveConfig).mockImplementation(async (key, value) => {
+      almacen.set(key, value)
+    })
+
+    const escritorio = await abrirVentana()
+    escritorio.startTicker()
+    await escritorio.start()
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    const mini = await abrirVentana()
+    mini.startTicker()
+
+    expect(mini.remainingMs).toBe(faseMs - 5_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await escritorio.pause()
+    await entregarEventos()
+    expect(mini.remainingMs).toBe(faseMs - 15_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+
+    await escritorio.resume()
+    await entregarEventos()
+    for (const lapso of [3_000, 7_000, 20_000]) {
+      await vi.advanceTimersByTimeAsync(lapso)
+      expect(mini.remainingMs).toBe(escritorio.remainingMs)
+    }
+    expect(mini.remainingMs).toBe(faseMs - 45_000)
+
+    escritorio.stopTicker()
+    mini.stopTicker()
+  })
+
+  it('la configuración se sincroniza por el mismo mecanismo', async () => {
+    const escritorio = await abrirVentana()
+    const mini = await abrirVentana()
+
+    await escritorio.saveSettings({ focusMinutes: 30, muted: true, volume: 0.4 })
+    await entregarEventos()
+
+    expect(mini.settings).toEqual(escritorio.settings)
+    expect(mini.settings.focusMinutes).toBe(30)
+    expect(mini.settings.muted).toBe(true)
+    expect(mini.settings.volume).toBe(0.4)
+    expect(mini.session.remainingMs).toBe(30 * 60_000)
+    expect(mini.remainingMs).toBe(escritorio.remainingMs)
+    expect(db.saveConfig).toHaveBeenCalledTimes(2)
   })
 })

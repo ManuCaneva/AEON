@@ -1,13 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { emit, listen } from '@tauri-apps/api/event'
 import * as db from '@/lib/db'
 import {
   ActivePomodoroSessionSchema,
   defaultPomodoroSettings,
   PomodoroSettingsSchema,
+  PomodoroSyncPayloadSchema,
   type ActivePomodoroSession,
   type PomodoroPhase,
   type PomodoroSettings,
+  type PomodoroSyncPayload,
 } from '@/schemas/pomodoro'
 import { getPhaseDurationMs, getRemainingMs, nextPhase } from '@/lib/pomodoro'
 import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomodoroSounds'
@@ -15,10 +18,16 @@ import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomod
 export const POMODORO_SETTINGS_KEY = 'pomodoro-settings'
 export const POMODORO_SESSION_KEY = 'pomodoro-session'
 
+/** Canal de sincronización del pomodoro entre webviews (broadcast de Tauri). */
+const POMODORO_SYNC_EVENT = 'pomodoro-state-changed'
+
 /** Cadencia del chequeo de expiración de fase. */
 const TICK_INTERVAL_MS = 250
 
 export const usePomodoroStore = defineStore('pomodoro', () => {
+  /** Identifica a esta instancia entre las demás webviews para descartar su eco. */
+  const origin = crypto.randomUUID()
+
   const settings = ref<PomodoroSettings>({ ...defaultPomodoroSettings })
 
   /** Sesión en reposo calculada con la configuración vigente, no con la de fábrica. */
@@ -85,6 +94,34 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     await db.saveConfig(POMODORO_SETTINGS_KEY, JSON.stringify(settings.value))
   }
 
+  /**
+   * Publica el estado completo a las demás webviews. La ventana que muta es la
+   * única que persiste; las demás aplican el snapshot sin volver a escribirlo
+   * ni re-emitirlo.
+   */
+  function publish(): void {
+    const snapshot: PomodoroSyncPayload = {
+      origin,
+      settings: { ...settings.value },
+      session: { ...session.value },
+    }
+    void emit(POMODORO_SYNC_EVENT, snapshot)
+  }
+
+  /**
+   * Aplica el snapshot de otra ventana sin persistir ni re-emitir: la ventana
+   * que originó el cambio ya escribió en SQLite y el eco propio se descarta.
+   */
+  function applyRemote(payload: unknown): void {
+    const snapshot = PomodoroSyncPayloadSchema.safeParse(payload)
+    if (!snapshot.success || snapshot.data.origin === origin) return
+    settings.value = snapshot.data.settings
+    session.value = snapshot.data.session
+    clock.value = Date.now()
+  }
+
+  let syncRegistered = false
+
   function setPhase(
     phase: Exclude<PomodoroPhase, 'idle'>,
     isRunning: boolean,
@@ -129,6 +166,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       phase === 'focus' ? settings.value.autoStartFocus : settings.value.autoStartBreak
     setPhase(phase, isRunning, startsAt)
     await persistSession()
+    publish()
   }
 
   async function advanceIfExpired(): Promise<void> {
@@ -151,6 +189,10 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function load(): Promise<void> {
+    if (!syncRegistered) {
+      syncRegistered = true
+      await listen(POMODORO_SYNC_EVENT, (event) => applyRemote(event.payload))
+    }
     const [rawSettings, rawSession] = await Promise.all([
       db.loadConfig(POMODORO_SETTINGS_KEY),
       db.loadConfig(POMODORO_SESSION_KEY),
@@ -191,6 +233,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       remainingMs: null,
     }
     await persistSession()
+    publish()
   }
 
   async function pause(): Promise<void> {
@@ -202,6 +245,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       remainingMs: getRemainingMs(session.value.endsAt),
     }
     await persistSession()
+    publish()
   }
 
   async function resume(): Promise<void> {
@@ -218,6 +262,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   async function reset(): Promise<void> {
     session.value = freshSession()
     await persistSession()
+    publish()
   }
 
   /**
@@ -226,6 +271,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    */
   function resetSession(): void {
     session.value = freshSession()
+    publish()
   }
 
   async function saveSettings(patch: Partial<PomodoroSettings>): Promise<void> {
@@ -235,6 +281,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       await persistSession()
     }
     await persistSettings()
+    publish()
   }
 
   return {

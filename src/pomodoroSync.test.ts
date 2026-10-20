@@ -20,6 +20,11 @@ vi.mock('@/lib/pomodoroSounds', () => ({
   }),
 }))
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(vi.fn()),
+  emit: vi.fn().mockResolvedValue(undefined),
+}))
+
 const start = '2026-09-01T12:00:00.000Z'
 
 describe('pomodoro: una sola fuente de verdad para el tiempo', () => {
