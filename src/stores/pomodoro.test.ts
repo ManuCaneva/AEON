@@ -66,6 +66,60 @@ vi.mock('@/lib/pomodoroSounds', () => ({
   }),
 }))
 
+/**
+ * Ventanas de la app simuladas: `getCurrentWebviewWindow` dice desde qué
+ * ventana se consulta y `getByLabel` qué ventanas hay (existentes y visibles),
+ * que es todo lo que el dueño del pomodoro necesita saber.
+ */
+const ventanas = vi.hoisted(() => {
+  type Presencia = 'abierta' | 'oculta'
+  const estado = {
+    etiquetaActual: 'main',
+    presencia: { main: 'abierta' } as Record<string, Presencia>,
+    consultaEnEspera: false,
+  }
+  const pendientes: Array<() => void> = []
+  return {
+    estado,
+    pendientes,
+    abrir(label: string): void {
+      estado.presencia[label] = 'abierta'
+    },
+    cerrar(label: string): void {
+      delete estado.presencia[label]
+    },
+    reiniciar(): void {
+      estado.etiquetaActual = 'main'
+      estado.presencia = { main: 'abierta' }
+      estado.consultaEnEspera = false
+      pendientes.length = 0
+    },
+    continuarConsultas(): void {
+      estado.consultaEnEspera = false
+      while (pendientes.length > 0) pendientes.shift()!()
+    },
+  }
+})
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getCurrentWebviewWindow: () => ({ label: ventanas.estado.etiquetaActual }),
+  WebviewWindow: {
+    getByLabel: (label: string) =>
+      new Promise((resolve) => {
+        const contestar = (): void => {
+          const presencia = ventanas.estado.presencia[label]
+          resolve(
+            presencia === undefined
+              ? null
+              : { isVisible: () => Promise.resolve(presencia === 'abierta') }
+          )
+        }
+        if (ventanas.estado.consultaEnEspera) ventanas.pendientes.push(contestar)
+        else contestar()
+      }),
+  },
+}))
+
 const start = '2026-09-01T12:00:00.000Z'
 
 function session(overrides: Partial<ActivePomodoroSession> = {}): ActivePomodoroSession {
@@ -583,5 +637,126 @@ describe('pomodoro: las demás ventanas aplican los eventos', () => {
     expect(mini.session.remainingMs).toBe(30 * 60_000)
     expect(mini.remainingMs).toBe(escritorio.remainingMs)
     expect(db.saveConfig).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    busEventos.reiniciar()
+    ventanas.reiniciar()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(start))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Abre una ventana nueva: pinia propio, igual que una webview aparte. */
+  async function abrirVentana(): Promise<StorePomodoro> {
+    setActivePinia(createPinia())
+    const store = usePomodoroStore()
+    await store.load()
+    return store
+  }
+
+  /** Pone la fase a punto de expirar y deja la cuenta de escrituras en cero. */
+  async function expirarFase(store: StorePomodoro): Promise<void> {
+    await store.start()
+    await entregarEventos()
+    vi.mocked(db.saveConfig).mockClear()
+    vi.mocked(busEventos.emit).mockClear()
+    vi.setSystemTime(new Date(store.session.endsAt ?? Date.now()))
+  }
+
+  it('con la mini abierta y la principal cerrada, el fin de fase suena en la mini', async () => {
+    ventanas.cerrar('main')
+    ventanas.abrir('pomodoro-mini')
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    const mini = await abrirVentana()
+    await expirarFase(mini)
+
+    await mini.advanceIfExpired()
+
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
+    expect(playBreakEndChime).not.toHaveBeenCalled()
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+    expect(mini.session).toMatchObject({ phase: 'shortBreak', completedFocusSessions: 1 })
+  })
+
+  it('con la principal y la mini abiertas, el fin de fase suena una sola vez y en la principal', async () => {
+    ventanas.abrir('pomodoro-mini')
+    ventanas.estado.etiquetaActual = 'main'
+    const escritorio = await abrirVentana()
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    const mini = await abrirVentana()
+    await expirarFase(escritorio)
+
+    // La mini detecta la expiración primero: no suena, no escribe y no avanza.
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    await mini.advanceIfExpired()
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+    expect(prepareFromUserGesture).not.toHaveBeenCalled()
+    expect(db.saveConfig).not.toHaveBeenCalled()
+    expect(mini.session).toMatchObject({ phase: 'focus', isRunning: true })
+
+    // La principal es la dueña: suena y escribe una sola vez.
+    ventanas.estado.etiquetaActual = 'main'
+    await escritorio.advanceIfExpired()
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+
+    await entregarEventos()
+    expect(mini.session).toEqual(escritorio.session)
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('el aviso se emite con la configuración de silencio y volumen vigente', async () => {
+    ventanas.estado.etiquetaActual = 'main'
+    const escritorio = await abrirVentana()
+    await escritorio.saveSettings({ muted: true, volume: 0.3 })
+    await expirarFase(escritorio)
+
+    await escritorio.advanceIfExpired()
+
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
+    expect(playFocusEndChime).toHaveBeenCalledWith(escritorio.settings)
+    expect(escritorio.settings).toMatchObject({ muted: true, volume: 0.3 })
+  })
+
+  it('si el snapshot ajeno resolvió la expiración mientras se decidía la dueña, no se avanza de más', async () => {
+    ventanas.estado.etiquetaActual = 'main'
+    const escritorio = await abrirVentana()
+    await expirarFase(escritorio)
+
+    // La consulta de qué ventana es dueña queda en el aire...
+    ventanas.estado.consultaEnEspera = true
+    const resolucion = escritorio.advanceIfExpired()
+
+    // ...y mientras tanto otra ventana ya resolvió el fin de fase.
+    const yaResuelta: ActivePomodoroSession = {
+      phase: 'shortBreak',
+      isRunning: true,
+      endsAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      remainingMs: null,
+      completedFocusSessions: 1,
+    }
+    busEventos.entregar({
+      origin: 'otra-ventana',
+      settings: { ...defaultPomodoroSettings },
+      session: yaResuelta,
+    })
+    await entregarEventos()
+    ventanas.continuarConsultas()
+    await resolucion
+
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+    expect(db.saveConfig).not.toHaveBeenCalled()
+    expect(escritorio.session).toEqual(yaResuelta)
   })
 })

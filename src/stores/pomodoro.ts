@@ -13,6 +13,7 @@ import {
   type PomodoroSyncPayload,
 } from '@/schemas/pomodoro'
 import { getPhaseDurationMs, getRemainingMs, nextPhase } from '@/lib/pomodoro'
+import { isPomodoroOwnerWindow } from '@/lib/pomodoroOwner'
 import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomodoroSounds'
 
 export const POMODORO_SETTINGS_KEY = 'pomodoro-settings'
@@ -175,7 +176,13 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       session.value.endsAt &&
       new Date(session.value.endsAt).getTime() <= Date.now()
     ) {
-      await advanceToNextPhase(true, new Date(session.value.endsAt).getTime())
+      const expirada = session.value.endsAt
+      // Solo la ventana dueña resuelve el fin de fase: suena y persiste una
+      // sola vez; la otra se queda quieta y aplica el snapshot que llegue.
+      if (!(await isPomodoroOwnerWindow())) return
+      // Un snapshot ajeno pudo resolver la expiración mientras se decidía.
+      if (session.value.endsAt !== expirada) continue
+      await advanceToNextPhase(true, new Date(expirada).getTime())
       if (!session.value.isRunning) return
     }
   }
