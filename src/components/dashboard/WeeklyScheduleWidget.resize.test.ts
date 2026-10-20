@@ -155,6 +155,15 @@ async function mountEditor(slots = [GYM_SLOT, STUDY_SLOT]) {
     width: 700,
     height: 600,
   } as DOMRect)
+  const daysGridEl = wrapper.get('[data-testid="schedule-days-grid"]').element as HTMLElement
+  vi.spyOn(daysGridEl, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    top: 0,
+    right: 700,
+    bottom: 600,
+    width: 700,
+    height: 600,
+  } as DOMRect)
   const headerEl = wrapper.get('.schedule-header').element as HTMLElement
   vi.spyOn(headerEl, 'getBoundingClientRect').mockReturnValue({
     left: 0,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pointerToSchedulePosition } from './scheduleDragGeometry'
+import { growWindowAtEdge, pointerToSchedulePosition } from './scheduleDragGeometry'
 
 describe('pointerToSchedulePosition', () => {
   const rect = { left: 0, top: 0, width: 700, height: 600 }
@@ -32,5 +32,48 @@ describe('pointerToSchedulePosition', () => {
     const monWedFri = { ...geometry, enabledDays: [0, 2, 4] }
 
     expect(pointerToSchedulePosition(350, 0, rect, monWedFri).day).toBe(2)
+  })
+})
+
+describe('growWindowAtEdge', () => {
+  const rect = { top: 0, bottom: 600 }
+  const window = { start_minutes: 960, end_minutes: 1080 }
+
+  it('crece una hora hacia arriba cuando el puntero está cerca del borde superior', () => {
+    expect(growWindowAtEdge(window, 10, rect)).toEqual({
+      start_minutes: 900,
+      end_minutes: 1080,
+    })
+  })
+
+  it('crece una hora hacia abajo cuando el puntero está cerca del borde inferior', () => {
+    expect(growWindowAtEdge(window, 590, rect)).toEqual({
+      start_minutes: 960,
+      end_minutes: 1140,
+    })
+  })
+
+  it('no crece lejos de los bordes', () => {
+    expect(growWindowAtEdge(window, 300, rect)).toEqual(window)
+  })
+
+  it('crece de a una hora por vez: cada acercamiento suma sesenta minutos', () => {
+    const once = growWindowAtEdge(window, 0, rect)
+
+    expect(growWindowAtEdge(once, 0, rect)).toEqual({
+      start_minutes: 840,
+      end_minutes: 1080,
+    })
+  })
+
+  it('no se pasa del inicio ni del fin del día', () => {
+    expect(growWindowAtEdge({ start_minutes: 0, end_minutes: 60 }, 0, rect)).toEqual({
+      start_minutes: 0,
+      end_minutes: 60,
+    })
+    expect(growWindowAtEdge({ start_minutes: 1380, end_minutes: 1440 }, 600, rect)).toEqual({
+      start_minutes: 1380,
+      end_minutes: 1440,
+    })
   })
 })
