@@ -112,6 +112,32 @@ vi.mock('@/stores/ui', () => ({
   }),
 }))
 
+// El Cronograma semanal no lee exámenes: se mockea con un examen presente para
+// verificar que, aun así, la grilla no lo pinta (guarda de regresión).
+const examsMock = {
+  exams: [
+    {
+      id: 'exam-1',
+      title: 'Parcial de Análisis',
+      date: '2026-01-06',
+      status: 'pendiente',
+      grade: null,
+      block_id: null,
+      fallback_color: 'green',
+      topics: [],
+      sort_order: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+  colorFor: () => 'green',
+  blockFor: () => undefined,
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => examsMock,
+}))
+
 describe('WeeklyScheduleGrid', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -151,6 +177,14 @@ describe('WeeklyScheduleGrid', () => {
     const wrapper = mount(WeeklyScheduleGrid)
     expect(wrapper.text()).toContain('Lun')
     expect(wrapper.text()).toContain('Dom')
+    wrapper.unmount()
+  })
+
+  it('no pinta exámenes en la grilla del Cronograma semanal', () => {
+    // Aun con un examen presente en su store, la grilla sólo dibuja Bloques.
+    const wrapper = mount(WeeklyScheduleGrid)
+    expect(wrapper.findAll('.schedule-block')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Parcial de Análisis')
     wrapper.unmount()
   })
 

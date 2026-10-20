@@ -23,6 +23,7 @@ export const DATA_TABLES = [
   'goals',
   'tasks',
   'notes',
+  'exams',
   'schedule_block_slots',
   'schedule_blocks',
 ] as const

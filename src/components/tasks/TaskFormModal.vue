@@ -2,9 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useTasksStore } from '@/stores/tasks'
+import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { HABIT_COLORS } from '@/lib/habitColors'
-import type { TaskStep } from '@/schemas/tasks'
+import { blockColorRgb } from '@/lib/scheduleColors'
+import { pruneEmptySteps, type TaskStep } from '@/schemas/tasks'
+import type { EventChoice } from '@/lib/entityEventLink'
 import Modal from '@/components/ui/Modal.vue'
+import EventChoiceField from '@/components/ui/EventChoiceField.vue'
 import Input from '@/components/ui/Input.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import Button from '@/components/ui/Button.vue'
@@ -13,6 +17,7 @@ import { X } from 'lucide-vue-next'
 
 const ui = useUiStore()
 const tasks = useTasksStore()
+const weekly = useWeeklyScheduleStore()
 
 const editing = computed(() => {
   if (!ui.editingTaskId) return null
@@ -25,28 +30,54 @@ const title = ref('')
 const description = ref('')
 const color = ref<string>(HABIT_COLORS[0].value)
 const due_date = ref<string>('')
+const blockId = ref('')
 const steps = ref<TaskStep[]>([])
 const error = ref<string | null>(null)
+const calendarError = ref<string | null>(null)
 const saving = ref(false)
+
+// Id de la tarea ya persistida cuando la creación del evento falló: un
+// reintento edita en vez de crear una tarea duplicada.
+const savedTaskId = ref<string | null>(null)
+
+// Elección de evento del formulario (cuatro opciones excluyentes; ver
+// EventChoice). El apartado compartido la mantiene por v-model.
+const eventChoice = ref<EventChoice>({ mode: 'none' })
+
+const blocks = computed(() => weekly.blocksWithSlots)
+
+// Color de la vista previa: el del bloque elegido; si no, el manual.
+const previewColor = computed(() => {
+  const block = blocks.value.find((b) => b.id === blockId.value)
+  return block ? blockColorRgb(block.color) : color.value
+})
 
 watch(
   () => [ui.createTaskOpen, ui.editingTaskId] as const,
   ([open]) => {
     if (open) {
+      // Asegura que el selector liste los bloques aunque el widget del
+      // Cronograma semanal no esté montado en el dashboard.
+      void weekly.loadAll()
       if (editing.value) {
         title.value = editing.value.title
         description.value = editing.value.description ?? ''
         color.value = editing.value.color
         due_date.value = editing.value.due_date ?? ''
+        blockId.value = editing.value.block_id ?? ''
         steps.value = [...editing.value.steps]
       } else {
         title.value = ''
         description.value = ''
         color.value = HABIT_COLORS[0].value
         due_date.value = ''
+        blockId.value = ''
         steps.value = []
       }
+      eventChoice.value = { mode: 'none' }
+      savedTaskId.value = null
       error.value = null
+      calendarError.value = null
     }
   }
 )
@@ -75,35 +106,54 @@ async function handleSubmit(e: Event) {
     return
   }
 
-  const validSteps = steps.value.filter((s) => s.title.trim())
-  if (validSteps.length !== steps.value.length) {
-    error.value = 'Todos los pasos deben tener un título.'
-    return
+  // Las filas sin título se descartan: no bloquean el guardado de la tarea.
+  const validSteps = pruneEmptySteps(steps.value)
+  // Mismo borrador para alta, edición y reintento: sólo cambia la llamada.
+  const draft = {
+    title: trimmedTitle,
+    description: description.value.trim() || null,
+    color: color.value,
+    due_date: due_date.value || undefined,
+    block_id: blockId.value || null,
+    steps: validSteps,
   }
 
   saving.value = true
   error.value = null
-  const desc = description.value.trim() || null
-  const dueDate = due_date.value || undefined
+  calendarError.value = null
 
   try {
     if (editing.value) {
-      await tasks.updateTask(editing.value.id, {
-        title: trimmedTitle,
-        description: desc,
-        color: color.value,
-        due_date: dueDate,
-        steps: validSteps,
-      })
+      const { eventError } = await tasks.updateTaskWithEvent(
+        editing.value.id,
+        draft,
+        eventChoice.value
+      )
+      if (eventError) {
+        calendarError.value = eventError
+        return
+      }
+    } else if (savedTaskId.value) {
+      // Reintento tras un fallo al crear el evento: la tarea ya existe.
+      const { eventError } = await tasks.updateTaskWithEvent(
+        savedTaskId.value,
+        draft,
+        eventChoice.value
+      )
+      if (eventError) {
+        calendarError.value = eventError
+        return
+      }
     } else {
-      await tasks.createTask({
-        title: trimmedTitle,
-        description: desc,
-        color: color.value,
-        status: 'todo' as const,
-        due_date: dueDate,
-        steps: validSteps,
-      })
+      const { task, eventError } = await tasks.createTaskWithEvent(
+        { ...draft, status: 'todo' as const },
+        eventChoice.value
+      )
+      if (eventError) {
+        savedTaskId.value = task.id
+        calendarError.value = eventError
+        return
+      }
     }
     ui.closeTaskModal()
   } catch (err) {
@@ -116,16 +166,19 @@ async function handleSubmit(e: Event) {
 
 <template>
   <Modal :open="ui.createTaskOpen" size="md" @close="ui.closeTaskModal()">
-    <form @submit="handleSubmit">
+    <template #header>
       <div class="border-b border-hairline px-5 py-4">
         <Text variant="card-title" as="h2">
           {{ isEdit ? 'Editar tarea' : 'Nueva tarea' }}
         </Text>
       </div>
+    </template>
 
+    <form id="task-form" @submit="handleSubmit">
       <div class="flex flex-col gap-5 px-5 py-5">
         <Input
           v-model="title"
+          data-testid="task-title-input"
           label="Título"
           placeholder="Ej: Terminar informe"
           :error="error ?? undefined"
@@ -143,9 +196,44 @@ async function handleSubmit(e: Event) {
 
         <Input
           v-model="due_date"
+          data-testid="task-due-date-input"
           type="date"
           label="Fecha de vencimiento"
           :min="new Date().toISOString().split('T')[0]"
+        />
+
+        <div class="flex flex-col gap-1.5">
+          <label for="task-block-select" class="select-none text-body-sm text-ink-muted">
+            Bloque (materia)
+          </label>
+          <div class="flex items-center gap-2">
+            <select
+              id="task-block-select"
+              v-model="blockId"
+              data-testid="task-block-select"
+              class="h-10 min-w-0 flex-1 rounded-md border border-hairline bg-surface-1 px-3 text-body text-ink transition-colors duration-150 hover:border-hairline-strong focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">Sin bloque</option>
+              <option v-for="block in blocks" :key="block.id" :value="block.id">
+                {{ block.title }}
+              </option>
+            </select>
+            <span
+              data-testid="task-color-preview"
+              class="h-6 w-6 shrink-0 rounded-md border border-hairline"
+              :style="{ backgroundColor: previewColor }"
+            />
+          </div>
+        </div>
+
+        <EventChoiceField
+          :key="editing?.id ?? 'new'"
+          v-model="eventChoice"
+          :date="due_date"
+          :link="editing?.event_link ?? null"
+          test-id-prefix="task"
+          disabled-hint="Agregá una fecha de vencimiento para poder agendar un evento."
+          :error="calendarError"
         />
 
         <div class="flex flex-col gap-2">
@@ -205,7 +293,9 @@ async function handleSubmit(e: Event) {
           </div>
         </div>
       </div>
+    </form>
 
+    <template #footer>
       <div class="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
         <Button
           type="button"
@@ -216,10 +306,10 @@ async function handleSubmit(e: Event) {
         >
           Cancelar
         </Button>
-        <Button type="submit" variant="primary" size="md" :loading="saving">
+        <Button type="submit" form="task-form" variant="primary" size="md" :loading="saving">
           {{ isEdit ? 'Guardar' : 'Crear' }}
         </Button>
       </div>
-    </form>
+    </template>
   </Modal>
 </template>

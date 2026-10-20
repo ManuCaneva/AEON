@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import YearStrip from './YearStrip.vue'
+import { eventKey } from '@/lib/entityEventLink'
 import type { CalendarEvent } from '@/schemas/calendar'
 
 const MONTH_NAMES = [
@@ -83,6 +84,33 @@ describe('YearStrip', () => {
     const highlighted = dividers.filter((d) => d.attributes('data-highlight') === 'true')
     // Octubre (9) toca los divisores Sep|Oct (8) y Oct|Nov (9)
     expect(highlighted).toHaveLength(2)
+  })
+
+  it('pinta el overlay de exámenes como un punto extra idéntico al de un evento', () => {
+    const overlayByDate = new Map([
+      ['2026-06-04', [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-cyan))' }]],
+    ])
+    const wrapper = mount(YearStrip, {
+      props: {
+        year: 2026,
+        eventsByDate: new Map(),
+        overlayByDate,
+        monthNames: MONTH_NAMES,
+        cellSize: 10,
+      },
+    })
+    const cell = wrapper.find("[data-date='2026-06-04']")
+    expect(cell.exists()).toBe(true)
+    const dots = cell.findAll("[data-testid='event-dot']")
+    expect(dots).toHaveLength(1)
+    // Mismo markup que un evento: misma clase y mismo testid.
+    expect(dots[0].classes()).toContain('ys__dot')
+    expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-cyan))')
+  })
+
+  it('sin overlay la tira no agrega puntos', () => {
+    const wrapper = mountStrip()
+    expect(wrapper.findAll("[data-testid='event-dot']")).toHaveLength(0)
   })
 
   it('muestra dots de eventos igual que el modo meses', async () => {
@@ -213,6 +241,109 @@ describe('YearStrip', () => {
       expect(tooltip).not.toBeNull()
       expect(tooltip!.textContent).toContain('5 de junio de 2026')
       expect(tooltip!.textContent).toContain('Sin eventos')
+      wrapper.unmount()
+    })
+
+    it('el tooltip omite el evento ya representado por un examen (dedup)', async () => {
+      const events = new Map([['2026-06-04', dayEvents('2026-06-04', 2)]])
+      const overlayByDate = new Map([
+        [
+          '2026-06-04',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
+      const wrapper = mount(YearStrip, {
+        attachTo: document.body,
+        props: {
+          year: 2026,
+          eventsByDate: events,
+          monthNames: MONTH_NAMES,
+          cellSize: 10,
+          overlayByDate,
+          linkedEventKeys: new Set([eventKey('primary', '2026-06-04-0')]),
+        },
+      })
+      const cell = wrapper.find("[data-date='2026-06-04']")
+      expect(cell.findAll("[data-testid='event-dot']")).toHaveLength(2)
+      await cell.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      // El examen aparece una sola vez: el evento de Google no se lista.
+      expect(tooltip!.textContent).not.toContain('Evento 0')
+      expect(tooltip!.textContent).toContain('Evento 1')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.querySelectorAll("[data-testid='day-tooltip-item']")).toHaveLength(2)
+      wrapper.unmount()
+    })
+
+    it('pinta el evento vinculado con el título y el color de la entidad, no con los de Google', async () => {
+      const events = new Map([['2026-06-04', dayEvents('2026-06-04', 2)]])
+      const linkedEventItems = new Map([
+        [
+          eventKey('primary', '2026-06-04-0'),
+          { id: 'task_task-1', title: 'Estudiar U3', color: 'rgb(var(--color-block-lavender))' },
+        ],
+      ])
+      const wrapper = mount(YearStrip, {
+        attachTo: document.body,
+        props: {
+          year: 2026,
+          eventsByDate: events,
+          monthNames: MONTH_NAMES,
+          cellSize: 10,
+          linkedEventItems,
+        },
+      })
+      const cell = wrapper.find("[data-date='2026-06-04']")
+      // El punto del evento vinculado usa el color de la entidad, como en «Agenda del Día».
+      const dots = cell.findAll("[data-testid='event-dot']")
+      expect(dots).toHaveLength(2)
+      expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-lavender))')
+      expect(dots[0].attributes('style')).not.toContain('#ff0000')
+
+      await cell.trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip!.textContent).toContain('Estudiar U3')
+      expect(tooltip!.textContent).not.toContain('Evento 0')
+      const tooltipDots = tooltip!.querySelectorAll("[data-testid='day-tooltip-dot']")
+      expect(tooltipDots[0].getAttribute('style')).toContain('rgb(var(--color-block-lavender))')
+      wrapper.unmount()
+    })
+
+    it('el tooltip muestra el examen del día (overlay) aunque no tenga eventos', async () => {
+      const overlayByDate = new Map([
+        [
+          '2026-06-05',
+          [
+            {
+              id: 'exam_1',
+              title: 'Parcial 1 de Análisis',
+              color: 'rgb(var(--color-block-green))',
+            },
+          ],
+        ],
+      ])
+      const wrapper = mount(YearStrip, {
+        attachTo: document.body,
+        props: {
+          year: 2026,
+          eventsByDate: new Map(),
+          monthNames: MONTH_NAMES,
+          cellSize: 10,
+          overlayByDate,
+        },
+      })
+      await wrapper.find("[data-date='2026-06-05']").trigger('mouseenter')
+      const tooltip = document.body.querySelector("[data-testid='day-tooltip']")
+      expect(tooltip).not.toBeNull()
+      expect(tooltip!.textContent).toContain('5 de junio de 2026')
+      expect(tooltip!.textContent).toContain('Parcial 1 de Análisis')
+      expect(tooltip!.textContent).not.toContain('Sin eventos')
       wrapper.unmount()
     })
 

@@ -14,6 +14,7 @@ const dbMocks = vi.hoisted(() => ({
   archiveTask: vi.fn(),
   createNote: vi.fn(),
   listNotes: vi.fn(),
+  listExams: vi.fn(),
   createGoal: vi.fn(),
   listGoals: vi.fn(),
   upsertGoalLog: vi.fn(),
@@ -36,6 +37,7 @@ function resetDefaults(): void {
   dbMocks.listGoals.mockResolvedValue([])
   dbMocks.listGoalLogsInRange.mockResolvedValue([])
   dbMocks.listNotes.mockResolvedValue([])
+  dbMocks.listExams.mockResolvedValue([])
   dbMocks.listScheduleBlocks.mockResolvedValue([])
   dbMocks.listScheduleSlots.mockResolvedValue([])
   dbMocks.saveConfig.mockResolvedValue(undefined)

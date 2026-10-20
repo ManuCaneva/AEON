@@ -12,6 +12,8 @@ const tasksState = ref<
     color: string
     status: string
     due_date?: string | null
+    block_id?: string | null
+    event_link?: { calendarId: string; eventId: string } | null
     steps: any[]
     archived_at?: string | null
   }[]
@@ -23,6 +25,8 @@ const tasksMock = {
   get pendingTasks() {
     return tasksState.value.filter((t) => t.status !== 'done')
   },
+  colorFor: (t: { color: string }) => t.color,
+  blockFor: () => undefined,
 }
 const uiMock = {
   menuOpenForTaskId: null as string | null,
@@ -87,6 +91,8 @@ describe('TasksListView', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -104,6 +110,8 @@ describe('TasksListView', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -114,6 +122,8 @@ describe('TasksListView', () => {
         color: '#00ff00',
         status: 'doing',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -131,6 +141,8 @@ describe('TasksListView', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -141,6 +153,8 @@ describe('TasksListView', () => {
         color: '#00ff00',
         status: 'done',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -163,6 +177,8 @@ describe('TasksListView', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },
@@ -181,6 +197,8 @@ describe('TasksListView', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         archived_at: null,
       },

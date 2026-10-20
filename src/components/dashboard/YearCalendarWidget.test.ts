@@ -3,9 +3,11 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import YearCalendarWidget from './YearCalendarWidget.vue'
 import MonthMini from '@/components/calendar/MonthMini.vue'
+import YearStrip from '@/components/dashboard/YearStrip.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import { eventKey } from '@/lib/entityEventLink'
 
 function flushRaf() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
@@ -45,6 +47,20 @@ vi.mock('@/stores/calendar', () => ({
   useCalendarStore: () => mockStore,
 }))
 
+const mockExams: {
+  exams: unknown[]
+  overlayByDate: Map<string, { id: string; title: string; color: string }[]>
+  linkedEventKeys: Set<string>
+} = {
+  exams: [],
+  overlayByDate: new Map(),
+  linkedEventKeys: new Set(),
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => mockExams,
+}))
+
 describe('YearCalendarWidget', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -55,6 +71,9 @@ describe('YearCalendarWidget', () => {
     mockStore.eventsByDate = new Map()
     mockStore.syncError = null
     mockStore.configReady = Promise.resolve()
+    mockExams.overlayByDate = new Map()
+    mockExams.exams = []
+    mockExams.linkedEventKeys = new Set()
     // Los tests históricos cubren el modo meses: lo pinean explícito.
     // El comportamiento de auto/tira tiene sus propios tests abajo.
     const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
@@ -654,6 +673,102 @@ describe('YearCalendarWidget', () => {
       const wrapper = await mountWithSize(500, 900)
       expect(wrapper.find('.ycw__footer').exists()).toBe(true)
       expect(wrapper.find('.ycw__footer').text()).toContain('2026')
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('pasa el overlay de exámenes a los meses sin crear eventos espejo', async () => {
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-10-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' },
+      ])
+      // El examen se lee como overlay: no se agrega ningún evento al calendario.
+      expect(mockStore.events).toEqual([])
+      expect(mockStore.eventsByDate.size).toBe(0)
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira también pasa el overlay de exámenes', async () => {
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-10-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+
+      const strip = wrapper.findComponent(YearStrip)
+      expect(strip.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' },
+      ])
+      expect(mockStore.events).toEqual([])
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un examen vinculado a un evento del mismo día pinta un solo punto (dedup)', async () => {
+      const evt = {
+        id: 'evt-1',
+        title: 'Consulta de Análisis',
+        date: '2026-01-11',
+        color: '#6e56cf',
+        calendarId: 'local',
+        start: '2026-01-11T10:00:00',
+        end: '2026-01-11T11:00:00',
+      }
+      mockStore.eventsByDate = new Map([['2026-01-11', [evt]]])
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-01-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      mockExams.linkedEventKeys = new Set([eventKey('local', 'evt-1')])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      // El mapa de eventos se pasa completo (el tooltip lo necesita)…
+      expect(month.props('eventsByDate')?.get('2026-01-11')).toEqual([evt])
+      // …y el dedup se resuelve en el render por las claves vinculadas…
+      expect([...(month.props('linkedEventKeys') ?? [])]).toEqual([eventKey('local', 'evt-1')])
+      // …de modo que sólo queda el punto del examen.
+      const dots = month.findAll("[data-testid='event-dot']")
+      expect(dots).toHaveLength(1)
+      expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-green))')
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un vínculo huérfano no rompe el render del calendario', async () => {
+      mockStore.eventsByDate = new Map()
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-01-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      mockExams.linkedEventKeys = new Set()
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.findAll("[data-testid='event-dot']")).toHaveLength(1)
+
       vi.unstubAllGlobals()
       wrapper.unmount()
     })

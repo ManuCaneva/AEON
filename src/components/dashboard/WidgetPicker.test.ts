@@ -64,6 +64,14 @@ describe('WidgetPicker', () => {
     expect(mockAddWidget).toHaveBeenCalledWith('tasks')
   })
 
+  it('muestra la insignia «Nuevo!» en el widget de Exámenes', async () => {
+    const wrapper = mount(WidgetPicker)
+    await wrapper.find("[data-testid='widget-picker-toggle']").trigger('click')
+    const examsItem = wrapper.find("[data-widget-id='exams']")
+    expect(examsItem.exists()).toBe(true)
+    expect(examsItem.text()).toContain('Nuevo!')
+  })
+
   it('no usa colores de paleta cruda de Tailwind', async () => {
     const wrapper = mount(WidgetPicker)
     await wrapper.find("[data-testid='widget-picker-toggle']").trigger('click')

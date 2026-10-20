@@ -6,6 +6,7 @@ import YearCalendarWidget from '@/components/dashboard/YearCalendarWidget.vue'
 import WeeklyScheduleWidget from '@/components/dashboard/WeeklyScheduleWidget.vue'
 import NotesWidget from '@/components/dashboard/NotesWidget.vue'
 import PomodoroWidget from '@/components/dashboard/PomodoroWidget.vue'
+import ExamsWidget from '@/components/dashboard/ExamsWidget.vue'
 
 export interface DashboardWidget {
   id: string
@@ -19,6 +20,8 @@ export interface DashboardWidget {
   defaultW: number
   defaultH: number
   defaultEnabled?: boolean
+  /** Marca de novedad: el selector de widgets muestra la insignia «Nuevo!». */
+  isNew?: boolean
 }
 
 export const widgets: DashboardWidget[] = [
@@ -106,6 +109,20 @@ export const widgets: DashboardWidget[] = [
     defaultY: 5,
     defaultW: 6,
     defaultH: 5,
+  },
+  {
+    id: 'exams',
+    title: 'Exámenes',
+    icon: 'graduation-cap',
+    component: ExamsWidget,
+    minW: 1,
+    minH: 2,
+    defaultX: 0,
+    defaultY: 0,
+    defaultW: 2,
+    defaultH: 3,
+    defaultEnabled: false,
+    isNew: true,
   },
 ]
 

@@ -8,6 +8,7 @@ import {
   TaskRowSchema,
   rowToTask,
   taskToRow,
+  pruneEmptySteps,
 } from './tasks'
 
 const validUuid = '550e8400-e29b-41d4-a716-446655440000'
@@ -50,6 +51,33 @@ describe('TaskStepSchema', () => {
   })
 })
 
+describe('pruneEmptySteps', () => {
+  it('descarta los pasos sin título y conserva los que sí lo tienen', () => {
+    const steps = [
+      { id: validUuid, title: 'Paso 1', done: false },
+      { id: validUuid2, title: '   ', done: true },
+    ]
+    expect(pruneEmptySteps(steps)).toEqual([{ id: validUuid, title: 'Paso 1', done: false }])
+  })
+
+  it('descarta el paso con título estrictamente vacío', () => {
+    const steps = [{ id: validUuid, title: '', done: false }]
+    expect(pruneEmptySteps(steps)).toEqual([])
+  })
+
+  it('si todos los pasos están vacíos devuelve una lista vacía', () => {
+    const steps = [
+      { id: validUuid, title: '', done: false },
+      { id: validUuid2, title: '  ', done: false },
+    ]
+    expect(pruneEmptySteps(steps)).toEqual([])
+  })
+
+  it('sin pasos devuelve una lista vacía', () => {
+    expect(pruneEmptySteps([])).toEqual([])
+  })
+})
+
 describe('TaskSchema', () => {
   const validTask = {
     id: validUuid,
@@ -58,6 +86,8 @@ describe('TaskSchema', () => {
     color: '#ff5500',
     status: 'todo' as const,
     due_date: null,
+    block_id: null,
+    event_link: null,
     steps: [],
     sort_order: 0,
     created_at: validIso,
@@ -73,6 +103,8 @@ describe('TaskSchema', () => {
     const task = {
       ...validTask,
       due_date: validDate,
+      block_id: null,
+      event_link: null,
       steps: [{ id: validUuid2, title: 'Ir al super', done: false }],
     }
     expect(TaskSchema.parse(task)).toEqual(task)
@@ -126,6 +158,8 @@ describe('CreateTaskDraftSchema', () => {
       description: 'Desc',
       status: 'doing' as const,
       due_date: validDate,
+      block_id: null,
+      event_link: null,
       steps: [{ id: validUuid, title: 'S1', done: false }],
       sort_order: 5,
     }
@@ -171,6 +205,9 @@ describe('TaskRowSchema', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: '2026-06-27 10:00:00',
@@ -190,6 +227,9 @@ describe('TaskRowSchema', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: JSON.stringify([{ id: validUuid2, title: 'S1', done: false }]),
       sort_order: 0,
       created_at: validIso,
@@ -209,6 +249,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: JSON.stringify([{ id: validUuid2, title: 'Paso 1', done: false }]),
       sort_order: 0,
       created_at: '2026-06-27 10:00:00',
@@ -229,6 +272,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: validIso,
@@ -246,6 +292,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: 'not-json',
       sort_order: 0,
       created_at: validIso,
@@ -263,6 +312,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: JSON.stringify([{ id: 'bad', title: 'x', done: false }]),
       sort_order: 0,
       created_at: validIso,
@@ -280,6 +332,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: validIso,
@@ -297,6 +352,9 @@ describe('rowToTask', () => {
       color: '#ff5500',
       status: 'todo',
       due_date: validDate,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: validIso,
@@ -354,5 +412,140 @@ describe('taskToRow', () => {
     const draft = { title: 'Test', color: '#aabbcc' }
     const row = taskToRow(draft)
     expect(row.status).toBe('todo')
+  })
+})
+
+describe('TaskSchema - bloque y vínculo a evento', () => {
+  const base = {
+    id: validUuid,
+    title: 'Comprar leche',
+    description: null,
+    color: '#ff5500',
+    status: 'todo' as const,
+    due_date: null,
+    steps: [],
+    sort_order: 0,
+    created_at: validIso,
+    updated_at: validIso,
+    archived_at: null,
+  }
+
+  it('sin bloque ni vínculo quedan en null por defecto', () => {
+    const parsed = TaskSchema.parse(base)
+    expect(parsed.block_id).toBeNull()
+    expect(parsed.event_link).toBeNull()
+  })
+
+  it('acepta un bloque y un vínculo (par calendario + evento)', () => {
+    const parsed = TaskSchema.parse({
+      ...base,
+      block_id: validUuid2,
+      event_link: { calendarId: 'local', eventId: 'evt-1' },
+    })
+    expect(parsed.block_id).toBe(validUuid2)
+    expect(parsed.event_link).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+  })
+
+  it('rechaza un vínculo incompleto', () => {
+    expect(() =>
+      TaskSchema.parse({ ...base, event_link: { calendarId: 'local', eventId: '' } })
+    ).toThrow()
+    expect(() => TaskSchema.parse({ ...base, event_link: { calendarId: '' } })).toThrow()
+  })
+})
+
+describe('CreateTaskDraftSchema - bloque y vínculo', () => {
+  it('por defecto sin bloque ni vínculo', () => {
+    const parsed = CreateTaskDraftSchema.parse({ title: 'x', color: '#aabbcc' })
+    expect(parsed.block_id).toBeNull()
+    expect(parsed.event_link).toBeNull()
+  })
+
+  it('acepta bloque y vínculo explícitos', () => {
+    const parsed = CreateTaskDraftSchema.parse({
+      title: 'x',
+      color: '#aabbcc',
+      block_id: validUuid2,
+      event_link: { calendarId: 'local', eventId: 'evt-1' },
+    })
+    expect(parsed.block_id).toBe(validUuid2)
+    expect(parsed.event_link).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+  })
+})
+
+describe('rowToTask - bloque y vínculo', () => {
+  function makeRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: validUuid,
+      title: 'Test',
+      description: null,
+      color: '#ff5500',
+      status: 'todo',
+      due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
+      steps: '[]',
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+      archived_at: null,
+      ...overrides,
+    }
+  }
+
+  it('reconstruye el vínculo sólo cuando existen ambas columnas', () => {
+    expect(rowToTask(makeRow({ calendar_id: 'local', event_id: 'evt-1' })).event_link).toEqual({
+      calendarId: 'local',
+      eventId: 'evt-1',
+    })
+    expect(rowToTask(makeRow({ calendar_id: 'local' })).event_link).toBeNull()
+    expect(rowToTask(makeRow({ event_id: 'evt-1' })).event_link).toBeNull()
+    expect(rowToTask(makeRow()).event_link).toBeNull()
+  })
+
+  it('mapea block_id (presente o ausente)', () => {
+    expect(rowToTask(makeRow({ block_id: validUuid2 })).block_id).toBe(validUuid2)
+    expect(rowToTask(makeRow()).block_id).toBeNull()
+  })
+})
+
+describe('taskToRow - bloque y vínculo', () => {
+  it('emite block_id cuando está presente o null (para limpiarlo)', () => {
+    expect(taskToRow({ title: 'x', color: '#aabbcc', block_id: validUuid2 }).block_id).toBe(
+      validUuid2
+    )
+    expect(taskToRow({ title: 'x', color: '#aabbcc', block_id: null }).block_id).toBeNull()
+  })
+
+  it('sin block_id no incluye la clave (no toca la columna)', () => {
+    expect(taskToRow({ title: 'x', color: '#aabbcc' })).not.toHaveProperty('block_id')
+  })
+
+  it('event_link undefined no toca las columnas del vínculo', () => {
+    const row = taskToRow({ title: 'x', color: '#aabbcc' })
+    expect(row).not.toHaveProperty('calendar_id')
+    expect(row).not.toHaveProperty('event_id')
+  })
+
+  it('event_link null limpia ambas columnas', () => {
+    const row = taskToRow({ title: 'x', color: '#aabbcc', event_link: null })
+    expect(row.calendar_id).toBeNull()
+    expect(row.event_id).toBeNull()
+  })
+
+  it('event_link objeto fija ambas columnas', () => {
+    const row = taskToRow({
+      title: 'x',
+      color: '#aabbcc',
+      event_link: { calendarId: 'local', eventId: 'evt-1' },
+    })
+    expect(row.calendar_id).toBe('local')
+    expect(row.event_id).toBe('evt-1')
+  })
+
+  it('mantiene description/status/due_date/sort_order siempre presentes', () => {
+    const row = taskToRow({ title: 'x', color: '#aabbcc' })
+    expect(row).toMatchObject({ description: null, status: 'todo', due_date: null, sort_order: 0 })
   })
 })

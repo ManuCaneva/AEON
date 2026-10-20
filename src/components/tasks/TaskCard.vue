@@ -79,7 +79,7 @@ function handleComplete() {
       <div
         data-testid="task-color-indicator"
         class="mt-0.5 h-10 w-1 shrink-0 rounded-full"
-        :style="{ backgroundColor: task.color }"
+        :style="{ backgroundColor: store.colorFor(task) }"
       />
 
       <div class="min-w-0 flex-1 cursor-pointer" data-testid="task-card-body" @click="toggleExpand">

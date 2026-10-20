@@ -6,6 +6,7 @@ import {
   createScheduleBlock,
   createScheduleSlot,
   createTask,
+  listExams,
   listGoalLogsInRange,
   listGoals,
   listHabits,
@@ -39,6 +40,7 @@ const TABLE_CHECKERS: Record<(typeof DATA_TABLES)[number], () => Promise<unknown
   goal_logs: () => listGoalLogsInRange(WIDE_FROM, WIDE_TO),
   tasks: () => listTasks(true),
   notes: () => listNotes(),
+  exams: () => listExams(),
   schedule_blocks: () => listScheduleBlocks(),
   schedule_block_slots: () => listScheduleSlots(),
 }

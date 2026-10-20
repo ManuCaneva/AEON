@@ -137,6 +137,7 @@ export const useUiStore = defineStore('ui', () => {
   const tasks = createEntityUi()
   const goals = createEntityUi()
   const notes = createEntityUi()
+  const exams = createEntityUi()
 
   function applyViewMode(mode: ViewMode) {
     viewMode.value = mode
@@ -144,6 +145,7 @@ export const useUiStore = defineStore('ui', () => {
     tasks.closeMenu()
     goals.closeMenu()
     notes.closeMenu()
+    exams.closeMenu()
   }
 
   function setViewMode(mode: ViewMode) {
@@ -314,6 +316,10 @@ export const useUiStore = defineStore('ui', () => {
     createNoteOpen: notes.createOpen,
     editingNoteId: notes.editingId,
     menuOpenForNoteId: notes.menuOpenForId,
+    isEditingExam: exams.isEditing,
+    createExamOpen: exams.createOpen,
+    editingExamId: exams.editingId,
+    menuOpenForExamId: exams.menuOpenForId,
     setViewMode,
     toggleSidebar,
     toggleEditMode,
@@ -351,5 +357,10 @@ export const useUiStore = defineStore('ui', () => {
     closeNoteModal: notes.closeModal,
     toggleNoteMenu: notes.toggleMenu,
     closeNoteMenu: notes.closeMenu,
+    openCreateExam: exams.openCreate,
+    openEditExam: exams.openEdit,
+    closeExamModal: exams.closeModal,
+    toggleExamMenu: exams.toggleMenu,
+    closeExamMenu: exams.closeMenu,
   }
 })

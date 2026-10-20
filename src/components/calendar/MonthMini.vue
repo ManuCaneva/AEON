@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { monthGrid, DAY_LABELS, formatYyyyMmDd } from '@/lib/calendarDates'
+import { eventKey, type LinkedEventItem } from '@/lib/entityEventLink'
 import { useDayTooltip } from '@/composables/useDayTooltip'
-import type { CalendarEvent } from '@/schemas/calendar'
+import type { DayTooltipItem } from '@/composables/useDayTooltip'
+import type { CalendarEvent, DayOverlayByDate, DayOverlayDot } from '@/schemas/calendar'
 import DayTooltip from './DayTooltip.vue'
 
 const props = withDefaults(
@@ -10,11 +12,24 @@ const props = withDefaults(
     year: number
     month: number
     eventsByDate: Map<string, CalendarEvent[]>
+    // Capa derivada (ej. exámenes): puntos extra idénticos a los de un evento,
+    // sin entrar en el CRUD del calendario.
+    overlayByDate?: DayOverlayByDate
+    // Eventos ya representados por un examen vinculado del mismo día: no se
+    // pintan como punto ni se listan en el tooltip (dedup). El examen los
+    // representa una sola vez.
+    linkedEventKeys?: ReadonlySet<string>
+    // Cómo se pinta un evento que ya representa a una entidad (ej. una tarea):
+    // con el título y el color de la entidad, igual que en «Agenda del Día».
+    linkedEventItems?: ReadonlyMap<string, LinkedEventItem>
     monthName?: string
     showHeader?: boolean
     today?: string
   }>(),
   {
+    overlayByDate: () => new Map(),
+    linkedEventKeys: () => new Set<string>(),
+    linkedEventItems: () => new Map(),
     monthName: '',
     showHeader: false,
   }
@@ -41,15 +56,47 @@ function getEvents(date: string | null): CalendarEvent[] {
   return props.eventsByDate.get(date) ?? []
 }
 
-function visibleDots(date: string | null): CalendarEvent[] {
-  return getEvents(date).slice(0, MAX_DOTS)
+/** Eventos que se pintan como punto: excluye los ya representados por un examen. */
+function dotEvents(date: string | null): CalendarEvent[] {
+  return getEvents(date).filter((e) => !props.linkedEventKeys.has(eventKey(e.calendarId, e.id)))
+}
+
+function visibleDots(date: string | null): LinkedEventItem[] {
+  return dotEvents(date).slice(0, MAX_DOTS).map(calendarItem)
 }
 
 function overflowCount(date: string | null): number {
-  return Math.max(0, getEvents(date).length - MAX_DOTS)
+  return Math.max(0, dotEvents(date).length - MAX_DOTS)
 }
 
-const { hovered, hideTooltip, onDayEnter } = useDayTooltip(getEvents)
+/** Cómo se pinta un evento: con los datos de su entidad si la representa. */
+function calendarItem(evt: CalendarEvent): LinkedEventItem {
+  return props.linkedEventItems.get(eventKey(evt.calendarId, evt.id)) ?? evt
+}
+
+/** Puntos derivados (exámenes) del día: se pintan como un evento más. */
+function getOverlay(date: string | null): DayOverlayDot[] {
+  if (!date) return []
+  return props.overlayByDate.get(date) ?? []
+}
+
+/**
+ * Lo que dice el tooltip de un día: eventos + exámenes (overlay). Usa los
+ * mismos eventos y colores que los puntos: un evento ya representado por un
+ * examen no se lista, y uno que representa a una tarea se pinta con el título
+ * y el color de la tarea.
+ */
+function tooltipItems(date: string | null): DayTooltipItem[] {
+  if (!date) return []
+  const overlay = getOverlay(date).map((dot) => ({
+    id: dot.id,
+    title: dot.title,
+    color: dot.color,
+  }))
+  return [...dotEvents(date).map(calendarItem), ...overlay]
+}
+
+const { hovered, hideTooltip, onDayEnter } = useDayTooltip(tooltipItems)
 
 function onDaySelect(date: string | null) {
   if (!date) return
@@ -106,6 +153,13 @@ function onDaySelect(date: string | null) {
             <span v-if="overflowCount(cell.date) > 0" class="overflow"
               >+{{ overflowCount(cell.date) }}</span
             >
+            <span
+              v-for="dot in getOverlay(cell.date)"
+              :key="dot.id"
+              class="event-dot"
+              :style="{ backgroundColor: dot.color }"
+              data-testid="event-dot"
+            />
           </template>
         </div>
       </template>

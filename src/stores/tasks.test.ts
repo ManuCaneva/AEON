@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTasksStore, daysUntilDue, urgencyLevel, deadlineProgress } from './tasks'
+import { useWeeklyScheduleStore } from './weeklySchedule'
+import type { CalendarEvent } from '@/schemas/calendar'
+import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
 import * as db from '@/lib/db'
 
 vi.mock('@/lib/db', () => ({
@@ -12,6 +15,20 @@ vi.mock('@/lib/db', () => ({
   restoreTask: vi.fn().mockResolvedValue(undefined),
 }))
 
+// El store de tareas orquesta el calendario: se mockea entero para no tocar
+// Tauri y poder observar create/update/deleteEvent.
+const calendarMock = {
+  events: [] as CalendarEvent[],
+  connected: true,
+  calendars: [{ id: 'primary', summary: 'Principal', primary: true }],
+  createEvent: vi.fn(),
+  updateEvent: vi.fn(),
+  deleteEvent: vi.fn(),
+}
+vi.mock('@/stores/calendar', () => ({
+  useCalendarStore: () => calendarMock,
+}))
+
 function makeTask(overrides: Partial<ReturnType<typeof useTasksStore>['tasks'][0]> = {}) {
   const now = new Date().toISOString()
   return {
@@ -21,6 +38,8 @@ function makeTask(overrides: Partial<ReturnType<typeof useTasksStore>['tasks'][0
     color: '#5e6ad2',
     status: 'todo' as const,
     due_date: null,
+    block_id: null,
+    event_link: null,
     steps: [],
     sort_order: 0,
     created_at: now,
@@ -57,6 +76,9 @@ describe('tasks store - createTask', () => {
       color: '#5e6ad2',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: new Date().toISOString(),
@@ -89,6 +111,9 @@ describe('tasks store - createTask', () => {
       color: '#5e6ad2',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: new Date().toISOString(),
@@ -121,6 +146,9 @@ describe('tasks store - loadTasks', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        calendar_id: null,
+        event_id: null,
         steps: '[]',
         sort_order: 0,
         created_at: now,
@@ -134,6 +162,9 @@ describe('tasks store - loadTasks', () => {
         color: '#ff0000',
         status: 'doing',
         due_date: null,
+        block_id: null,
+        calendar_id: null,
+        event_id: null,
         steps: '[{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","title":"Step 1","done":true}]',
         sort_order: 1,
         created_at: now,
@@ -172,6 +203,8 @@ describe('tasks store - updateTask', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -187,6 +220,9 @@ describe('tasks store - updateTask', () => {
       color: '#5e6ad2',
       status: 'doing',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: now,
@@ -228,6 +264,8 @@ describe('tasks store - deleteTask', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -263,6 +301,8 @@ describe('tasks store - toggleStep', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [{ id: stepId, title: 'Step 1', done: false }],
         sort_order: 0,
         created_at: now,
@@ -278,6 +318,9 @@ describe('tasks store - toggleStep', () => {
       color: '#5e6ad2',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","title":"Step 1","done":true}]',
       sort_order: 0,
       created_at: now,
@@ -319,6 +362,8 @@ describe('tasks store - pendingTasks', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -332,6 +377,8 @@ describe('tasks store - pendingTasks', () => {
         color: '#ff0000',
         status: 'done',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 1,
         created_at: now,
@@ -345,6 +392,8 @@ describe('tasks store - pendingTasks', () => {
         color: '#00ff00',
         status: 'doing',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 2,
         created_at: now,
@@ -356,6 +405,140 @@ describe('tasks store - pendingTasks', () => {
     expect(store.pendingTasks).toHaveLength(2)
     expect(store.pendingTasks[0].status).toBe('todo')
     expect(store.pendingTasks[1].status).toBe('doing')
+  })
+})
+
+describe('tasks store - filas vacías al guardar', () => {
+  const stepA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  const stepB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('al crear una tarea descarta los pasos sin título y persiste solo los válidos', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.createTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
+      steps: JSON.stringify([{ id: stepA, title: 'Ir al super', done: false }]),
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.createTask({
+      title: 'Comprar',
+      color: '#5e6ad2',
+      status: 'todo' as const,
+      steps: [
+        { id: stepA, title: 'Ir al super', done: false },
+        { id: stepB, title: '   ', done: false },
+      ],
+    })
+
+    const draft = vi.mocked(db.createTask).mock.calls[0][0] as { steps: unknown[] }
+    expect(draft.steps).toEqual([{ id: stepA, title: 'Ir al super', done: false }])
+  })
+
+  it('al crear una tarea sin ningún paso válido persiste una lista vacía', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.createTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
+      steps: '[]',
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.createTask({
+      title: 'Comprar',
+      color: '#5e6ad2',
+      status: 'todo' as const,
+      steps: [
+        { id: stepA, title: '', done: false },
+        { id: stepB, title: '  ', done: true },
+      ],
+    })
+
+    const draft = vi.mocked(db.createTask).mock.calls[0][0] as { steps: unknown[] }
+    expect(draft.steps).toEqual([])
+  })
+
+  it('al editar descarta los pasos sin título igual que al crear', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.updateTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Comprar',
+      description: null,
+      color: '#5e6ad2',
+      status: 'todo',
+      due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
+      steps: JSON.stringify([{ id: stepA, title: 'Ir al super', done: false }]),
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.updateTask('11111111-1111-1111-1111-111111111111', {
+      steps: [
+        { id: stepA, title: 'Ir al super', done: false },
+        { id: stepB, title: '', done: false },
+      ],
+    })
+
+    const patch = vi.mocked(db.updateTask).mock.calls[0][1] as { steps: unknown[] }
+    expect(patch.steps).toEqual([{ id: stepA, title: 'Ir al super', done: false }])
+  })
+
+  it('un patch sin pasos no toca la lista de pasos', async () => {
+    const store = useTasksStore()
+    vi.mocked(db.updateTask).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      title: 'Nuevo',
+      description: null,
+      color: '#5e6ad2',
+      status: 'doing',
+      due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
+      steps: '[]',
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      archived_at: null,
+    })
+
+    await store.updateTask('11111111-1111-1111-1111-111111111111', {
+      title: 'Nuevo',
+      status: 'doing',
+    })
+
+    const patch = vi.mocked(db.updateTask).mock.calls[0][1] as Record<string, unknown>
+    expect(patch).toEqual({ title: 'Nuevo', status: 'doing' })
   })
 })
 
@@ -460,6 +643,8 @@ describe('tasks store - archiveTask', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -488,6 +673,8 @@ describe('tasks store - archiveTask', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -501,6 +688,8 @@ describe('tasks store - archiveTask', () => {
         color: '#ff0000',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 1,
         created_at: now,
@@ -535,6 +724,8 @@ describe('tasks store - restoreTask', () => {
         color: '#5e6ad2',
         status: 'todo',
         due_date: null,
+        block_id: null,
+        event_link: null,
         steps: [],
         sort_order: 0,
         created_at: now,
@@ -569,6 +760,9 @@ describe('tasks store - completeTask / uncompleteTask', () => {
       color: '#5e6ad2',
       status: 'done',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: new Date().toISOString(),
@@ -597,6 +791,9 @@ describe('tasks store - completeTask / uncompleteTask', () => {
       color: '#5e6ad2',
       status: 'doing',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: '[]',
       sort_order: 0,
       created_at: archivedAt,
@@ -644,6 +841,9 @@ describe('tasks store - toggleStep (no auto-complete)', () => {
       color: '#5e6ad2',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: patch.steps ? JSON.stringify(patch.steps) : '[]',
       sort_order: 0,
       created_at: new Date().toISOString(),
@@ -689,6 +889,9 @@ describe('tasks store - toggleStep (no auto-complete)', () => {
       color: '#5e6ad2',
       status: 'todo',
       due_date: null,
+      block_id: null,
+      calendar_id: null,
+      event_id: null,
       steps: patch.steps ? JSON.stringify(patch.steps) : '[]',
       sort_order: 0,
       created_at: new Date().toISOString(),
@@ -701,5 +904,606 @@ describe('tasks store - toggleStep (no auto-complete)', () => {
     expect(store.tasks[0].status).toBe('todo')
     expect(store.tasks[0].archived_at).toBeNull()
     expect(db.restoreTask).not.toHaveBeenCalled()
+  })
+})
+
+const blockUuid = '11111111-1111-4111-8111-111111111111'
+const linkedTaskId = '22222222-2222-4222-8222-222222222222'
+
+function makeTaskRow(overrides: Record<string, unknown> = {}) {
+  const now = new Date().toISOString()
+  return {
+    id: linkedTaskId,
+    title: 'Test task',
+    description: null,
+    color: '#5e6ad2',
+    status: 'todo',
+    due_date: null,
+    block_id: null,
+    calendar_id: null,
+    event_id: null,
+    steps: '[]',
+    sort_order: 0,
+    created_at: now,
+    updated_at: now,
+    archived_at: null,
+    ...overrides,
+  }
+}
+
+function makeBlock(overrides: Partial<ScheduleBlockWithSlots> = {}): ScheduleBlockWithSlots {
+  return {
+    id: blockUuid,
+    title: 'Física',
+    color: 'green',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    slots: [],
+    ...overrides,
+  }
+}
+
+function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
+  return {
+    id: 'evt-1',
+    date: '2026-07-01',
+    title: 'Entregar informe',
+    color: '#6e56cf',
+    calendarId: 'local',
+    start: '2026-07-01',
+    end: '2026-07-02',
+    ...overrides,
+  }
+}
+
+function resetCalendarMock(): void {
+  calendarMock.events = []
+  calendarMock.connected = true
+  calendarMock.createEvent.mockReset()
+  calendarMock.updateEvent.mockReset()
+  calendarMock.deleteEvent.mockReset()
+  calendarMock.createEvent.mockImplementation(
+    async (calendarId: string, data: { title: string; start: string }) => {
+      const id = calendarId === 'local' ? 'local_1' : 'google_1'
+      const created = makeEvent({
+        id,
+        calendarId,
+        date: data.start,
+        title: data.title,
+        start: data.start,
+        end: data.start,
+      })
+      calendarMock.events = [...calendarMock.events, created]
+      return created
+    }
+  )
+  calendarMock.updateEvent.mockResolvedValue(undefined)
+  calendarMock.deleteEvent.mockResolvedValue(undefined)
+}
+
+describe('tasks store - color vivo del bloque', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('sin bloque asociado usa el color manual de la tarea', async () => {
+    useWeeklyScheduleStore().blocksWithSlots = []
+    const store = useTasksStore()
+    vi.mocked(db.listTasks).mockResolvedValue([makeTaskRow({ color: '#ff0000' })])
+    await store.loadTasks()
+
+    expect(store.colorFor(store.tasks[0])).toBe('#ff0000')
+    expect(store.blockFor(store.tasks[0])).toBeUndefined()
+  })
+
+  it('con bloque existente el color del bloque gana sobre el manual', async () => {
+    useWeeklyScheduleStore().blocksWithSlots = [makeBlock()]
+    const store = useTasksStore()
+    vi.mocked(db.listTasks).mockResolvedValue([
+      makeTaskRow({ color: '#ff0000', block_id: blockUuid }),
+    ])
+    await store.loadTasks()
+
+    expect(store.colorFor(store.tasks[0])).toBe('rgb(var(--color-block-green))')
+    expect(store.blockFor(store.tasks[0])?.title).toBe('Física')
+    // El color manual persistido no se pisa.
+    expect(store.tasks[0].color).toBe('#ff0000')
+  })
+
+  it('si el bloque se borró, la tarea queda sin bloque y conserva su color manual', async () => {
+    useWeeklyScheduleStore().blocksWithSlots = []
+    const store = useTasksStore()
+    vi.mocked(db.listTasks).mockResolvedValue([
+      makeTaskRow({ color: '#00ff00', block_id: blockUuid }),
+    ])
+    await store.loadTasks()
+
+    expect(store.blockFor(store.tasks[0])).toBeUndefined()
+    expect(store.colorFor(store.tasks[0])).toBe('#00ff00')
+  })
+})
+
+describe('tasks store - crear con evento', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    resetCalendarMock()
+  })
+
+  it('"none" persiste la tarea sin vínculo y no toca el calendario', async () => {
+    vi.mocked(db.createTask).mockResolvedValue(makeTaskRow())
+    const store = useTasksStore()
+
+    const { task, eventError } = await store.createTaskWithEvent(
+      { title: 'Entregar', color: '#5e6ad2', due_date: '2026-07-01' },
+      { mode: 'none' }
+    )
+
+    expect(calendarMock.createEvent).not.toHaveBeenCalled()
+    expect(vi.mocked(db.createTask).mock.calls[0][0]).toMatchObject({ event_link: null })
+    expect(task.event_link).toBeNull()
+    expect(eventError).toBeNull()
+  })
+
+  it('"existing" persiste el vínculo elegido sin crear ni actualizar el evento', async () => {
+    vi.mocked(db.createTask).mockResolvedValue(
+      makeTaskRow({ calendar_id: 'local', event_id: 'evt-1' })
+    )
+    const store = useTasksStore()
+
+    const { task, eventError } = await store.createTaskWithEvent(
+      { title: 'Entregar', color: '#5e6ad2', due_date: '2026-07-01' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-1' } }
+    )
+
+    expect(calendarMock.createEvent).not.toHaveBeenCalled()
+    expect(calendarMock.updateEvent).not.toHaveBeenCalled()
+    expect(vi.mocked(db.createTask).mock.calls[0][0]).toMatchObject({
+      event_link: { calendarId: 'local', eventId: 'evt-1' },
+    })
+    expect(task.event_link).toEqual({ calendarId: 'local', eventId: 'evt-1' })
+    expect(eventError).toBeNull()
+  })
+
+  it('"local" crea un evento de todo el día en el calendario local y lo vincula', async () => {
+    vi.mocked(db.createTask).mockResolvedValue(
+      makeTaskRow({ due_date: '2026-07-01', title: 'Entregar' })
+    )
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({ due_date: '2026-07-01', calendar_id: 'local', event_id: 'local_1' })
+    )
+    const store = useTasksStore()
+
+    const { task, eventError } = await store.createTaskWithEvent(
+      { title: 'Entregar', color: '#5e6ad2', due_date: '2026-07-01' },
+      { mode: 'local' }
+    )
+
+    expect(calendarMock.createEvent).toHaveBeenCalledWith(
+      'local',
+      expect.objectContaining({ title: 'Entregar', allDay: true, start: '2026-07-01' })
+    )
+    expect(vi.mocked(db.updateTask).mock.calls[0][1]).toEqual({
+      event_link: { calendarId: 'local', eventId: 'local_1' },
+    })
+    expect(task.event_link).toEqual({ calendarId: 'local', eventId: 'local_1' })
+    expect(eventError).toBeNull()
+  })
+
+  it('"new" crea el evento en el calendario elegido', async () => {
+    vi.mocked(db.createTask).mockResolvedValue(
+      makeTaskRow({ due_date: '2026-07-01', title: 'Entregar' })
+    )
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({ due_date: '2026-07-01', calendar_id: 'primary', event_id: 'google_1' })
+    )
+    const store = useTasksStore()
+
+    const { task } = await store.createTaskWithEvent(
+      { title: 'Entregar', color: '#5e6ad2', due_date: '2026-07-01' },
+      { mode: 'new', calendarId: 'primary' }
+    )
+
+    expect(calendarMock.createEvent).toHaveBeenCalledWith(
+      'primary',
+      expect.objectContaining({ allDay: true, start: '2026-07-01' })
+    )
+    expect(task.event_link).toEqual({ calendarId: 'primary', eventId: 'google_1' })
+  })
+
+  it('si crear el evento falla, la tarea queda sin vínculo y devuelve el error', async () => {
+    vi.mocked(db.createTask).mockResolvedValue(
+      makeTaskRow({ due_date: '2026-07-01', title: 'Entregar' })
+    )
+    calendarMock.createEvent.mockRejectedValue(new Error('boom'))
+    const store = useTasksStore()
+
+    const { task, eventError } = await store.createTaskWithEvent(
+      { title: 'Entregar', color: '#5e6ad2', due_date: '2026-07-01' },
+      { mode: 'local' }
+    )
+
+    expect(eventError).toBe('boom')
+    expect(task.event_link).toBeNull()
+    expect(db.updateTask).not.toHaveBeenCalled()
+    expect(store.tasks[0].event_link).toBeNull()
+  })
+})
+
+describe('tasks store - editar con evento', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    resetCalendarMock()
+  })
+
+  it('"none" limpia el vínculo y deja el evento intacto', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1' })]
+    vi.mocked(db.updateTask).mockResolvedValue(makeTaskRow({ calendar_id: null, event_id: null }))
+
+    await store.updateTaskWithEvent(linkedTaskId, { title: 'Nuevo' }, { mode: 'none' })
+
+    expect(calendarMock.updateEvent).not.toHaveBeenCalled()
+    expect(calendarMock.deleteEvent).not.toHaveBeenCalled()
+    expect(vi.mocked(db.updateTask).mock.calls[0][1]).toMatchObject({ event_link: null })
+    expect(store.tasks[0].event_link).toBeNull()
+  })
+
+  it('con vínculo vigente y "existing", un cambio de título actualiza el evento', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        title: 'Viejo',
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-01' })]
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({
+        id: linkedTaskId,
+        title: 'Nuevo',
+        due_date: '2026-07-01',
+        calendar_id: 'local',
+        event_id: 'evt-1',
+      })
+    )
+
+    const { eventError } = await store.updateTaskWithEvent(
+      linkedTaskId,
+      { title: 'Nuevo' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-1' } }
+    )
+
+    expect(calendarMock.updateEvent).toHaveBeenCalledWith(
+      'local',
+      'evt-1',
+      expect.objectContaining({ title: 'Nuevo', allDay: true, start: '2026-07-01' })
+    )
+    expect(eventError).toBeNull()
+  })
+
+  it('con vínculo vigente y "existing", un cambio de fecha mueve el evento', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        title: 'Entregar',
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-01' })]
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({
+        id: linkedTaskId,
+        title: 'Entregar',
+        due_date: '2026-07-10',
+        calendar_id: 'local',
+        event_id: 'evt-1',
+      })
+    )
+
+    await store.updateTaskWithEvent(
+      linkedTaskId,
+      { due_date: '2026-07-10' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-1' } }
+    )
+
+    expect(calendarMock.updateEvent).toHaveBeenCalledWith(
+      'local',
+      'evt-1',
+      expect.objectContaining({ title: 'Entregar', allDay: true, start: '2026-07-10' })
+    )
+  })
+
+  it('un vínculo de otro día degrada en silencio: no actualiza el evento', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        title: 'Viejo',
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-05' })]
+    vi.mocked(db.updateTask).mockResolvedValue(makeTaskRow({ title: 'Nuevo' }))
+
+    await store.updateTaskWithEvent(
+      linkedTaskId,
+      { title: 'Nuevo' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-1' } }
+    )
+
+    expect(calendarMock.updateEvent).not.toHaveBeenCalled()
+  })
+
+  it('un vínculo huérfano degrada en silencio: no actualiza el evento', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        title: 'Viejo',
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+      }),
+    ]
+    calendarMock.events = []
+    vi.mocked(db.updateTask).mockResolvedValue(makeTaskRow({ title: 'Nuevo' }))
+
+    await store.updateTaskWithEvent(
+      linkedTaskId,
+      { title: 'Nuevo' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-ausente' } }
+    )
+
+    expect(calendarMock.updateEvent).not.toHaveBeenCalled()
+  })
+
+  it('sin cambios de título ni fecha no actualiza el evento', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        title: 'Entregar',
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-01' })]
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({ title: 'Entregar', due_date: '2026-07-01' })
+    )
+
+    await store.updateTaskWithEvent(
+      linkedTaskId,
+      { status: 'doing' },
+      { mode: 'existing', link: { calendarId: 'local', eventId: 'evt-1' } }
+    )
+
+    expect(calendarMock.updateEvent).not.toHaveBeenCalled()
+  })
+
+  it('"local" crea el evento y lo vincula', async () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask({ id: linkedTaskId, title: 'Entregar', due_date: '2026-07-01' })]
+    vi.mocked(db.updateTask)
+      .mockResolvedValueOnce(
+        makeTaskRow({ id: linkedTaskId, title: 'Entregar', due_date: '2026-07-01' })
+      )
+      .mockResolvedValueOnce(
+        makeTaskRow({ id: linkedTaskId, calendar_id: 'local', event_id: 'local_1' })
+      )
+
+    const { task, eventError } = await store.updateTaskWithEvent(
+      linkedTaskId,
+      { title: 'Entregar' },
+      { mode: 'local' }
+    )
+
+    expect(calendarMock.createEvent).toHaveBeenCalledWith(
+      'local',
+      expect.objectContaining({ allDay: true, start: '2026-07-01' })
+    )
+    expect(task.event_link).toEqual({ calendarId: 'local', eventId: 'local_1' })
+    expect(eventError).toBeNull()
+  })
+
+  it('si crear el evento falla al editar, devuelve el error sin romper', async () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask({ id: linkedTaskId, title: 'Entregar', due_date: '2026-07-01' })]
+    calendarMock.createEvent.mockRejectedValue(new Error('boom'))
+    vi.mocked(db.updateTask).mockResolvedValue(
+      makeTaskRow({ id: linkedTaskId, title: 'Entregar', due_date: '2026-07-01' })
+    )
+
+    const { eventError } = await store.updateTaskWithEvent(
+      linkedTaskId,
+      { title: 'Entregar' },
+      { mode: 'local' }
+    )
+
+    expect(eventError).toBe('boom')
+  })
+})
+
+describe('tasks store - borrar tarea y su evento', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    resetCalendarMock()
+  })
+
+  it('sin vínculo sólo borra la tarea', async () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask({ id: linkedTaskId })]
+
+    await store.deleteTaskWithEvent(linkedTaskId, true)
+
+    expect(calendarMock.deleteEvent).not.toHaveBeenCalled()
+    expect(db.deleteTask).toHaveBeenCalledWith(linkedTaskId)
+    expect(store.tasks).toHaveLength(0)
+  })
+
+  it('con deleteEvent borra el evento en su calendario y luego la tarea', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-01' })]
+
+    await store.deleteTaskWithEvent(linkedTaskId, true)
+
+    expect(calendarMock.deleteEvent).toHaveBeenCalledWith('local', 'evt-1')
+    expect(db.deleteTask).toHaveBeenCalledWith(linkedTaskId)
+    expect(store.tasks).toHaveLength(0)
+  })
+
+  it('con deleteEvent pero vínculo huérfano sólo borra la tarea', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-ausente' },
+      }),
+    ]
+    calendarMock.events = []
+
+    await store.deleteTaskWithEvent(linkedTaskId, true)
+
+    expect(calendarMock.deleteEvent).not.toHaveBeenCalled()
+    expect(db.deleteTask).toHaveBeenCalledWith(linkedTaskId)
+  })
+
+  it('sin deleteEvent no toca el evento aunque el vínculo sea vigente', async () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: linkedTaskId,
+        due_date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+    calendarMock.events = [makeEvent({ id: 'evt-1', date: '2026-07-01' })]
+
+    await store.deleteTaskWithEvent(linkedTaskId, false)
+
+    expect(calendarMock.deleteEvent).not.toHaveBeenCalled()
+    expect(db.deleteTask).toHaveBeenCalledWith(linkedTaskId)
+  })
+})
+
+describe('tasks store - eventos representados en la agenda', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('incluye la clave del evento de una tarea activa', () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask({ event_link: { calendarId: 'local', eventId: 'evt-1' } })]
+
+    expect([...store.representedEventKeys]).toEqual(['local\u0000evt-1'])
+  })
+
+  it('incluye la clave de una tarea hecha aunque esté archivada', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'done',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect([...store.representedEventKeys]).toEqual(['local\u0000evt-1'])
+  })
+
+  it('excluye el vínculo de una tarea archivada sin completar (su evento debe verse)', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'todo',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect([...store.representedEventKeys]).toEqual([])
+  })
+
+  it('una tarea sin vínculo no aporta claves', () => {
+    const store = useTasksStore()
+    store.tasks = [makeTask()]
+
+    expect([...store.representedEventKeys]).toEqual([])
+  })
+})
+
+describe('tasks store - ítems de eventos vinculados en el calendario', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    useWeeklyScheduleStore().blocksWithSlots = []
+  })
+
+  it('expone el título y el color de la tarea, no los del evento de Google', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        id: 'task-1',
+        title: 'Estudiar U3',
+        color: '#123456',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect(store.linkedEventItems.get('local\u0000evt-1')).toEqual({
+      id: 'task_task-1',
+      title: 'Estudiar U3',
+      color: '#123456',
+    })
+  })
+
+  it('usa el color del bloque cuando la tarea lo tiene', () => {
+    useWeeklyScheduleStore().blocksWithSlots = [makeBlock()]
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({ block_id: blockUuid, event_link: { calendarId: 'local', eventId: 'evt-1' } }),
+    ]
+
+    expect(store.linkedEventItems.get('local\u0000evt-1')?.color).toBe(
+      'rgb(var(--color-block-green))'
+    )
+  })
+
+  it('una tarea archivada sin completar no aporta ítem (su evento debe verse)', () => {
+    const store = useTasksStore()
+    store.tasks = [
+      makeTask({
+        status: 'todo',
+        archived_at: '2026-01-02T00:00:00.000Z',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      }),
+    ]
+
+    expect(store.linkedEventItems.size).toBe(0)
   })
 })

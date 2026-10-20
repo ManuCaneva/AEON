@@ -109,4 +109,66 @@ describe('Modal', () => {
     const mounted = factory()
     expect(mounted.findComponent({ name: 'Transition' }).exists()).toBe(false)
   })
+
+  it('el panel nunca excede el viewport: altura máxima con flex en columna', () => {
+    factory()
+    const panel = dialogEl()!
+    expect(panel.className).toContain('flex-col')
+    // max-h respecto al viewport menos el padding del backdrop: un popup más
+    // alto que la pantalla queda prohibido acá, en el primitivo.
+    expect(panel.className).toMatch(/max-h-\[calc\(100dvh-2rem\)\]/)
+  })
+
+  describe('con header / cuerpo / footer', () => {
+    function mountChrome() {
+      const mounted = mount(Modal, {
+        props: { open: true },
+        slots: {
+          header: '<h2 data-testid="m-header">Título</h2>',
+          default: '<p data-testid="m-body">Contenido</p>',
+          footer: '<button data-testid="m-footer">OK</button>',
+        },
+        attachTo: document.body,
+      })
+      const panel = document.body.querySelector('[role=dialog]') as HTMLElement
+      return { mounted, panel }
+    }
+
+    it('header y footer quedan fijos (shrink-0) y el cuerpo es el que scrollea', () => {
+      const { mounted, panel } = mountChrome()
+      const header = panel.querySelector('[data-testid=m-header]')!.parentElement!
+      const body = panel.querySelector('[data-testid=m-body]')!.parentElement!
+      const footer = panel.querySelector('[data-testid=m-footer]')!.parentElement!
+
+      expect(header.className).toContain('shrink-0')
+      expect(footer.className).toContain('shrink-0')
+      expect(body.className).toContain('overflow-y-auto')
+      expect(body.className).toContain('flex-1')
+      expect(body.className).toContain('min-h-0')
+      mounted.unmount()
+    })
+
+    it('ordena header, cuerpo y footer', () => {
+      const { mounted, panel } = mountChrome()
+      const kids = Array.from(panel.children)
+      const find = (tid: string) =>
+        kids.findIndex((k) => k.querySelector(`[data-testid=${tid}]`) !== null)
+      expect(find('m-header')).toBeLessThan(find('m-body'))
+      expect(find('m-body')).toBeLessThan(find('m-footer'))
+      mounted.unmount()
+    })
+
+    it('omite las secciones sin slot asignado', () => {
+      const mounted = mount(Modal, {
+        props: { open: true },
+        slots: { default: '<p data-testid="m-body">Contenido</p>' },
+        attachTo: document.body,
+      })
+      const panel = document.body.querySelector('[role=dialog]') as HTMLElement
+      expect(panel.querySelectorAll('[data-testid=m-header]')).toHaveLength(0)
+      expect(panel.querySelectorAll('[data-testid=m-footer]')).toHaveLength(0)
+      expect(panel.querySelectorAll('[data-testid=m-body]')).toHaveLength(1)
+      mounted.unmount()
+    })
+  })
 })

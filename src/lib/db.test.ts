@@ -19,6 +19,10 @@ import {
   listNotes,
   updateNote,
   deleteNote,
+  createExam,
+  listExams,
+  updateExam,
+  deleteExam,
   clearAllData,
 } from './db'
 import { DATA_TABLES, DATA_CONFIG_KEYS, PRESERVED_CONFIG_KEYS } from './dataScope'
@@ -52,6 +56,9 @@ const mockTaskRow = {
   color: '#ff5500',
   status: 'todo',
   due_date: null,
+  block_id: null,
+  calendar_id: null,
+  event_id: null,
   steps: '[]',
   sort_order: 0,
   created_at: '2026-01-01T00:00:00.000Z',
@@ -149,6 +156,39 @@ describe('db.createTask - shape hacia Rust', () => {
     ).rejects.toThrow()
     expect(invoke).not.toHaveBeenCalled()
   })
+
+  it('envía bloque y vínculo al crear (null cuando no hay)', async () => {
+    await createTask(
+      { title: 'Test', color: '#ff5500', status: 'todo', steps: [] },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('envía bloque y vínculo explícitos al crear', async () => {
+    await createTask(
+      {
+        title: 'Test',
+        color: '#ff5500',
+        status: 'todo',
+        steps: [],
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
 })
 
 describe('db.listTasks', () => {
@@ -207,6 +247,44 @@ describe('db.updateTask - shape hacia Rust', () => {
     expect(payload.input.steps).toBe(
       JSON.stringify([{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Paso', done: true }])
     )
+  })
+
+  it('omite bloque y vínculo cuando el patch no los incluye (no toca las columnas)', async () => {
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeUndefined()
+    expect(payload.input.calendar_id).toBeUndefined()
+    expect(payload.input.event_id).toBeUndefined()
+  })
+
+  it('envía null para limpiar bloque y vínculo, y el par para fijarlo', async () => {
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: null, event_link: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const cleared = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(cleared.input.block_id).toBeNull()
+    expect(cleared.input.calendar_id).toBeNull()
+    expect(cleared.input.event_id).toBeNull()
+
+    vi.mocked(invoke).mockClear()
+    await updateTask(
+      '123e4567-e89b-12d3-a456-426614174000',
+      {
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+        event_link: { calendarId: 'primary', eventId: 'evt-2' },
+      },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const linked = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(linked.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+    expect(linked.input.calendar_id).toBe('primary')
+    expect(linked.input.event_id).toBe('evt-2')
   })
 })
 
@@ -674,6 +752,418 @@ describe('db.deleteNote', () => {
     vi.mocked(invoke).mockResolvedValue(undefined)
     await deleteNote('123e4567-e89b-12d3-a456-426614174000')
     expect(invoke).toHaveBeenCalledWith('delete_note', {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+    })
+  })
+})
+
+describe('db.createExam - shape hacia Rust', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(mockExamRow)
+  })
+
+  it('envía input con estado y color de respaldo por defecto', async () => {
+    await createExam(
+      { title: 'Parcial 1 de Análisis', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Parcial 1 de Análisis',
+        date: '2026-07-01',
+        status: 'pendiente',
+        fallback_color: 'lavender',
+        sort_order: 0,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      }),
+    })
+  })
+
+  it('envía la nota cuando el draft la incluye', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01', status: 'rendido', grade: 8.5 },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({ status: 'rendido', grade: 8.5 }),
+    })
+  })
+
+  it('envía topics serializado como JSON string (vacío por defecto)', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('create_exam', {
+      input: expect.objectContaining({ topics: '[]' }),
+    })
+  })
+
+  it('sin bloque asociado envía block_id null', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+  })
+
+  it('envía el bloque asociado cuando el draft lo incluye', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        block_id: '660e8400-e29b-41d4-a716-446655440000',
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+  })
+
+  it('envía los temas del draft serializados', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        topics: [{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true }],
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe(
+      JSON.stringify([
+        {
+          id: '660e8400-e29b-41d4-a716-446655440000',
+          title: 'Límites',
+          completed: true,
+          subtopics: [],
+        },
+      ])
+    )
+  })
+
+  it('sin vínculo envía calendar_id y event_id null', async () => {
+    await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('envía el vínculo (calendarId, eventId) cuando el draft lo incluye', async () => {
+    await createExam(
+      {
+        title: 'Parcial',
+        date: '2026-07-01',
+        event_link: { calendarId: 'local', eventId: 'evt-1' },
+      },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
+
+  it('rechaza draft inválido sin invocar', async () => {
+    await expect(
+      createExam(
+        { title: '', date: '2026-07-01' } as any,
+        '123e4567-e89b-12d3-a456-426614174000',
+        '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z'
+      )
+    ).rejects.toThrow()
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('valida la fila devuelta con ExamRowSchema', async () => {
+    const result = await createExam(
+      { title: 'Parcial', date: '2026-07-01' },
+      '123e4567-e89b-12d3-a456-426614174000',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z'
+    )
+    expect(result.title).toBe('Parcial 1 de Análisis')
+    expect(result.topics).toBe('[]')
+  })
+})
+
+describe('db.listExams', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue([mockExamRow])
+  })
+
+  it('invoca list_exams sin args y parsea cada row', async () => {
+    const result = await listExams()
+    expect(invoke).toHaveBeenCalledWith('list_exams')
+    expect(result).toHaveLength(1)
+    expect(result[0].date).toBe('2026-07-01')
+  })
+
+  it('tolera respuesta no-array devolviendo vacío', async () => {
+    vi.mocked(invoke).mockResolvedValue(null)
+    expect(await listExams()).toEqual([])
+  })
+})
+
+describe('db.updateExam - shape hacia Rust', () => {
+  const mockExamRow = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Parcial 1 de Análisis',
+    date: '2026-07-01',
+    status: 'pendiente',
+    grade: null,
+    block_id: null,
+    fallback_color: 'lavender',
+    calendar_id: null,
+    event_id: null,
+    topics: '[]',
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(mockExamRow)
+  })
+
+  it('aplana el patch al shape que espera Rust', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo', date: '2026-08-01' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    expect(invoke).toHaveBeenCalledWith('update_exam', {
+      input: expect.objectContaining({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Nuevo',
+        date: '2026-08-01',
+        updated_at: '2026-07-05T00:00:00.000Z',
+      }),
+    })
+  })
+
+  it('omite status cuando el patch no lo incluye (no pisa el estado persistido)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.status).toBeUndefined()
+    expect(payload.input.fallback_color).toBeUndefined()
+  })
+
+  it('envía status cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { status: 'rendido' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.status).toBe('rendido')
+  })
+
+  it('envía la nota cuando el patch la incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { status: 'rendido', grade: 7.5 },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBe(7.5)
+  })
+
+  it('envía null para limpiar la nota', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { grade: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBeNull()
+  })
+
+  it('envía el bloque cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: '660e8400-e29b-41d4-a716-446655440000' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBe('660e8400-e29b-41d4-a716-446655440000')
+  })
+
+  it('envía null para desasociar el bloque', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { block_id: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeNull()
+  })
+
+  it('omite el bloque cuando el patch no lo trae (no pisa la asociación)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.block_id).toBeUndefined()
+  })
+
+  it('envía el vínculo cuando el patch lo incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { event_link: { calendarId: 'local', eventId: 'evt-1' } },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBe('local')
+    expect(payload.input.event_id).toBe('evt-1')
+  })
+
+  it('envía null en ambas columnas para desvincular', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { event_link: null },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeNull()
+    expect(payload.input.event_id).toBeNull()
+  })
+
+  it('omite el vínculo cuando el patch no lo trae (no pisa el vínculo persistido)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.calendar_id).toBeUndefined()
+    expect(payload.input.event_id).toBeUndefined()
+  })
+
+  it('omite la nota cuando el patch no la trae (no pisa la persistida)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.grade).toBeUndefined()
+  })
+
+  it('omite topics cuando el patch no los incluye (preserva los temas persistidos)', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { title: 'Nuevo' },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBeUndefined()
+  })
+
+  it('envía topics cuando el patch los incluye', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      {
+        topics: [{ id: '660e8400-e29b-41d4-a716-446655440000', title: 'Límites', completed: true }],
+      },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe(
+      JSON.stringify([
+        {
+          id: '660e8400-e29b-41d4-a716-446655440000',
+          title: 'Límites',
+          completed: true,
+          subtopics: [],
+        },
+      ])
+    )
+  })
+
+  it('envía topics vacío cuando el patch quita todos los temas', async () => {
+    await updateExam(
+      '123e4567-e89b-12d3-a456-426614174000',
+      { topics: [] },
+      '2026-07-05T00:00:00.000Z'
+    )
+    const payload = vi.mocked(invoke).mock.calls[0][1] as { input: Record<string, unknown> }
+    expect(payload.input.topics).toBe('[]')
+  })
+})
+
+describe('db.deleteExam', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+  })
+
+  it('invoca delete_exam con el id', async () => {
+    await deleteExam('123e4567-e89b-12d3-a456-426614174000')
+    expect(invoke).toHaveBeenCalledWith('delete_exam', {
       id: '123e4567-e89b-12d3-a456-426614174000',
     })
   })

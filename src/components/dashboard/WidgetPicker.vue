@@ -5,6 +5,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { widgets } from '@/lib/dashboardWidgets'
 import Text from '@/components/ui/Text.vue'
+import Badge from '@/components/ui/Badge.vue'
 
 const dashboard = useDashboardStore()
 const ui = useUiStore()
@@ -44,6 +45,7 @@ function selectWidget(id: string) {
           @click="selectWidget(widget.id)"
         >
           <span>{{ widget.title }}</span>
+          <Badge v-if="widget.isNew" variant="primary">Nuevo!</Badge>
         </button>
         <div v-if="availableWidgets.length === 0" class="px-2 py-1.5 text-caption text-ink-muted">
           Todos los widgets ya están agregados

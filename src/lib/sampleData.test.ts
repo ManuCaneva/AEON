@@ -167,10 +167,10 @@ describe('buildSampleData — tareas', () => {
   })
 
   it('al menos una tarea tiene pasos, con uno hecho y otro pendiente', () => {
-    const withSteps = data.tasks.filter((t) => t.draft.steps.length > 0)
+    const withSteps = data.tasks.filter((t) => (t.draft.steps ?? []).length > 0)
     expect(withSteps.length).toBeGreaterThan(0)
     const hasMixed = withSteps.some(
-      (t) => t.draft.steps.some((s) => s.done) && t.draft.steps.some((s) => !s.done)
+      (t) => (t.draft.steps ?? []).some((s) => s.done) && (t.draft.steps ?? []).some((s) => !s.done)
     )
     expect(hasMixed).toBe(true)
   })
