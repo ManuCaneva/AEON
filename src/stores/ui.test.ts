@@ -494,6 +494,65 @@ describe('ui store: diálogo de salida', () => {
   })
 })
 
+describe('ui store: modo edición del cronograma', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(db.loadConfig).mockResolvedValue(null)
+    vi.mocked(db.saveConfig).mockResolvedValue(undefined)
+  })
+
+  it('el toggle del cronograma alterna el modo', () => {
+    const ui = useUiStore()
+    expect(ui.scheduleEditMode).toBe(false)
+    ui.toggleScheduleEditMode()
+    expect(ui.scheduleEditMode).toBe(true)
+    ui.toggleScheduleEditMode()
+    expect(ui.scheduleEditMode).toBe(false)
+  })
+
+  it('salir del modo del cronograma lo apaga', () => {
+    const ui = useUiStore()
+    ui.toggleScheduleEditMode()
+    ui.exitScheduleEditMode()
+    expect(ui.scheduleEditMode).toBe(false)
+  })
+
+  it('entrar al modo edición general apaga el modo del cronograma', () => {
+    const ui = useUiStore()
+    ui.toggleScheduleEditMode()
+    ui.toggleEditMode()
+    expect(ui.editMode).toBe(true)
+    expect(ui.scheduleEditMode).toBe(false)
+  })
+
+  it('con el modo edición general activo el del cronograma no se activa', () => {
+    const ui = useUiStore()
+    ui.toggleEditMode()
+    ui.toggleScheduleEditMode()
+    expect(ui.editMode).toBe(true)
+    expect(ui.scheduleEditMode).toBe(false)
+  })
+
+  it('navegar a otra vista apaga el modo del cronograma', () => {
+    const ui = useUiStore()
+    for (const mode of ['archived', 'pomodoro', 'settings'] as const) {
+      ui.setViewMode('dashboard')
+      ui.toggleScheduleEditMode()
+      expect(ui.scheduleEditMode).toBe(true)
+      ui.setViewMode(mode)
+      expect(ui.scheduleEditMode).toBe(false)
+    }
+  })
+
+  it('navegar dentro del dashboard no apaga el modo del cronograma', () => {
+    const ui = useUiStore()
+    ui.toggleScheduleEditMode()
+    ui.setViewMode('dashboard')
+    expect(ui.scheduleEditMode).toBe(true)
+  })
+})
+
 describe('ui store: vista inicial', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
