@@ -108,6 +108,23 @@ describe('WeeklyScheduleBlock', () => {
     expect(wrapper.emitted('click')).toBeTruthy()
   })
 
+  it('solo anuncia aria-pressed cuando la ocurrencia es seleccionable', () => {
+    const selectable = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', selected: false, selectable: true },
+    })
+    expect(selectable.find('button').attributes('aria-pressed')).toBe('false')
+
+    const selected = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', selected: true, selectable: true },
+    })
+    expect(selected.find('button').attributes('aria-pressed')).toBe('true')
+
+    const notSelectable = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender' },
+    })
+    expect(notSelectable.find('button').attributes('aria-pressed')).toBeUndefined()
+  })
+
   it('no usa colores de paleta cruda de Tailwind', () => {
     const wrapper = mount(WeeklyScheduleBlock, {
       props: { title: 'Gimnasio', color: 'lavender' },

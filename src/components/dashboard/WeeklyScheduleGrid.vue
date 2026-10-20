@@ -399,7 +399,7 @@ interface GestureCandidate {
 const daysGridRef = ref<HTMLElement | null>(null)
 const gestureCandidate = ref<GestureCandidate | null>(null)
 const gestureState = ref<GestureState | null>(null)
-const gestureToast = ref<string | null>(null)
+const scheduleToast = ref<string | null>(null)
 
 const gestureEnabled = computed(() => ui.scheduleEditMode)
 
@@ -545,7 +545,7 @@ async function finishGesture() {
       state.slot.id
     )
     if (!validation.ok) {
-      gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
+      scheduleToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
       return
     }
 
@@ -557,7 +557,7 @@ async function finishGesture() {
           : { start_minutes: state.start, end_minutes: state.end }
       )
     } catch {
-      gestureToast.value = 'No se pudo actualizar el bloque'
+      scheduleToast.value = 'No se pudo actualizar el bloque'
     }
   } finally {
     // Al soltar, la ventana visible vuelve a derivarse del rango de los
@@ -640,7 +640,9 @@ const pasteRange = computed(() => {
   const clip = props.clipboard
   const point = pastePoint.value
   if (!pasteActive.value || !clip || !point) return null
-  const start = clampMinutes(point.minutes, 0, MINUTES_PER_DAY - clip.durationMinutes)
+  // Sin reubicar en silencio: el fantasma muestra dónde caería la copia tal
+  // cual, aunque el destino se pase del fin del día (ahí el click rechaza).
+  const start = clampMinutes(point.minutes)
   return { start, end: start + clip.durationMinutes }
 })
 
@@ -690,20 +692,26 @@ function placePaste(event: MouseEvent) {
   const day = Number(column.dataset.day)
   if (!enabledDays.value.includes(day)) return
   const rect = column.getBoundingClientRect()
-  const minutes = pointerToScheduleMinutes(event.clientY, rect, {
-    windowStart: windowStart.value,
-    minuteHeightPx: minuteHeightPx.value,
-  })
-  const start = clampMinutes(minutes, 0, MINUTES_PER_DAY - clip.durationMinutes)
+  const start = clampMinutes(
+    pointerToScheduleMinutes(event.clientY, rect, {
+      windowStart: windowStart.value,
+      minuteHeightPx: minuteHeightPx.value,
+    })
+  )
   const end = start + clip.durationMinutes
-  if (end <= start) return
+  // Si el destino se pasa del fin del día, se rechaza: nunca se reubica la
+  // copia en silencio lejos de donde el usuario hizo click.
+  if (end > MINUTES_PER_DAY) {
+    scheduleToast.value = 'La copia no entra en el día a esa hora'
+    return
+  }
   const validation = store.validateSlot({
     day_of_week: day,
     start_minutes: start,
     end_minutes: end,
   })
   if (!validation.ok) {
-    gestureToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
+    scheduleToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
     return
   }
   emit('paste', day, start)
@@ -800,6 +808,7 @@ watch(
                 :color="vs.block.color"
                 :today="dayIndex === todayIndex"
                 :selected="props.selectedSlotId === vs.slot.id"
+                :selectable="ui.scheduleEditMode"
                 :data-slot-id="vs.slot.id"
                 class="absolute z-10 shadow-sm"
                 :class="gestureState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
@@ -999,9 +1008,9 @@ watch(
     </Teleport>
 
     <Toast
-      :open="gestureToast !== null"
-      :message="gestureToast ?? ''"
-      @update:open="gestureToast = null"
+      :open="scheduleToast !== null"
+      :message="scheduleToast ?? ''"
+      @update:open="scheduleToast = null"
     />
   </div>
 </template>

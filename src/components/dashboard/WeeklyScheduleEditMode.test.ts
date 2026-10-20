@@ -137,6 +137,15 @@ describe('cronograma: selección y borrado en el modo edición', () => {
     wrapper.unmount()
   })
 
+  it('fuera del modo edición los bloques no anuncian aria-pressed', async () => {
+    const { wrapper } = await mountWidget()
+    const block = dayColumn(wrapper, 1).get('.schedule-block')
+
+    expect(block.attributes('aria-pressed')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+
   it('la × borra solo la ocurrencia del día apuntado y persiste al instante', async () => {
     const { wrapper, store, ui } = await mountWidget()
     await enterEditMode(wrapper, ui)
