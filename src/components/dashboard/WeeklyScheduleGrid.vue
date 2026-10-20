@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
@@ -11,6 +11,7 @@ import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import { useScheduleDrag } from '@/composables/useScheduleDrag'
 import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
+import { blockColorTint } from '@/lib/scheduleColors'
 import type { ScheduleDragPoint } from '@/lib/scheduleDragGeometry'
 import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
 
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   edit: [block: ScheduleBlockWithSlots]
   select: [slotId: string | null]
   remove: [slotId: string]
+  'name-edit-state': [active: boolean]
 }>()
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -244,6 +246,99 @@ function onGridClick(event: MouseEvent) {
   emit('select', null)
 }
 
+// ── Crear y renombrar inline (solo en el modo edición del cronograma) ──
+const renamingSlotId = ref<string | null>(null)
+const creatingBlockId = ref<string | null>(null)
+const nameDraft = ref('')
+const nameInputRef = ref<HTMLInputElement | null>(null)
+
+const isEditingName = computed(() => renamingSlotId.value !== null)
+
+// El widget escucha este estado para no cerrar el modo con el Esc que
+// cancela el nombre.
+watch(isEditingName, (active) => emit('name-edit-state', active), { flush: 'sync' })
+
+function blockForSlot(slotId: string): ScheduleBlockWithSlots | null {
+  return store.blocksWithSlots.find((bw) => bw.slots.some((s) => s.id === slotId)) ?? null
+}
+
+function setNameInput(el: unknown) {
+  nameInputRef.value = el instanceof HTMLInputElement ? el : null
+}
+
+function focusNameInput() {
+  nameInputRef.value?.focus()
+  nameInputRef.value?.select()
+}
+
+function beginNameEdit(slotId: string, title: string, creatingId: string | null) {
+  renamingSlotId.value = slotId
+  creatingBlockId.value = creatingId
+  nameDraft.value = title
+  nextTick(focusNameInput)
+}
+
+async function onBlockDoubleClick(vs: VisibleSlot) {
+  if (!ui.scheduleEditMode) return
+  await confirmName()
+  beginNameEdit(vs.slot.id, vs.block.title, null)
+}
+
+async function onDayDoubleClick(day: number, event: MouseEvent) {
+  if (!ui.scheduleEditMode) return
+  const rowHeight = rowHeightPx.value
+  if (rowHeight <= 0) return
+
+  const column = event.currentTarget as HTMLElement | null
+  if (!column) return
+  const offsetY = event.clientY - column.getBoundingClientRect().top
+  const rowIndex = Math.max(0, Math.min(visibleRows.value - 1, Math.floor(offsetY / rowHeight)))
+  const granularity = store.settings.granularity_minutes
+  const start = windowStart.value + rowIndex * granularity
+  const end = Math.min(1440, start + granularity)
+  if (end <= start) return
+  if (store.wouldOverlapOnDay(day, start, end)) return
+
+  await confirmName()
+  try {
+    const block = await store.createBlock(
+      { title: 'Sin título', color: 'lavender', sort_order: 0 },
+      [{ day_of_week: day, start_minutes: start, end_minutes: end }]
+    )
+    const slot = block.slots[0]
+    if (slot) beginNameEdit(slot.id, block.title, block.id)
+  } catch (e) {
+    console.error('No se pudo crear el bloque en la grilla:', e)
+  }
+}
+
+async function confirmName() {
+  const slotId = renamingSlotId.value
+  if (slotId === null) return
+  const block = blockForSlot(slotId)
+  const title = nameDraft.value.trim() || 'Sin título'
+  renamingSlotId.value = null
+  creatingBlockId.value = null
+  if (!block || block.title === title) return
+  try {
+    await store.updateBlock(block.id, { title })
+  } catch (e) {
+    console.error('No se pudo renombrar el bloque:', e)
+  }
+}
+
+async function cancelName() {
+  const creatingId = creatingBlockId.value
+  renamingSlotId.value = null
+  creatingBlockId.value = null
+  if (creatingId === null) return
+  try {
+    await store.deleteBlock(creatingId)
+  } catch (e) {
+    console.error('No se pudo deshacer el bloque recién creado:', e)
+  }
+}
+
 interface GestureState {
   kind: GestureKind
   slot: ScheduleSlot
@@ -425,12 +520,15 @@ const gestureRangeLabel = computed(() => {
   return `${minutesToHHMM(state.start)} → ${minutesToHHMM(state.end)}`
 })
 
+// Si el modo se apaga mientras se edita el nombre, se confirma lo escrito
+// para no dejar el editor colgado; un arrastre en curso se cancela.
 watch(
   () => ui.scheduleEditMode,
   (active) => {
     if (active) return
     hoveredSlotId.value = null
     cancelGesture()
+    void confirmName()
   }
 )
 </script>
@@ -485,6 +583,7 @@ watch(
             :class="dayIndex === todayIndex ? 'bg-accent-purple-tint/40' : undefined"
             :data-day="dayIndex"
             :data-testid="dayIndex === todayIndex ? 'schedule-today-column' : undefined"
+            @dblclick="onDayDoubleClick(dayIndex, $event)"
           >
             <div
               v-for="hl in hourLabels"
@@ -508,6 +607,7 @@ watch(
                   width: '96%',
                 }"
                 @click="onSlotClick(vs)"
+                @dblclick.stop="onBlockDoubleClick(vs)"
                 @pointerdown="onBlockPointerDown(vs, $event)"
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
@@ -562,6 +662,29 @@ watch(
               >
                 <X :size="10" />
               </button>
+
+              <input
+                v-if="renamingSlotId === vs.slot.id"
+                :ref="setNameInput"
+                v-model="nameDraft"
+                type="text"
+                maxlength="80"
+                aria-label="Nombre del bloque"
+                data-testid="schedule-name-input"
+                class="schedule-name-input absolute z-30 min-w-0 rounded-sm border-2 bg-surface-1 px-1 text-center text-xs font-medium text-ink shadow-sm outline-none focus:ring-2 focus:ring-accent-purple/40"
+                :style="{
+                  top: slotTopPx(vs) + 'px',
+                  height: slotHeightPx(vs) + 'px',
+                  left: '2%',
+                  width: '96%',
+                  borderColor: blockColorTint(vs.block.color, 1),
+                }"
+                @click.stop
+                @dblclick.stop
+                @keydown.enter.prevent.stop="confirmName"
+                @keydown.esc.prevent.stop="cancelName"
+                @blur="confirmName"
+              />
             </template>
           </div>
 
