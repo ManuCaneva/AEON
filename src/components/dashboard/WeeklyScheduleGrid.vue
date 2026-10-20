@@ -5,9 +5,12 @@ import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { minutesToHHMM } from '@/stores/weeklySchedule'
 import { useUiStore } from '@/stores/ui'
 import WeeklyScheduleBlock from './WeeklyScheduleBlock.vue'
+import Toast from '@/components/ui/Toast.vue'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import { useScheduleDrag } from '@/composables/useScheduleDrag'
 import { dayIndexOfWeek } from '@/lib/calendarDates'
 import { minutesSinceMidnight, nowLineTopPx } from '@/lib/nowLine'
+import type { ScheduleDragPoint } from '@/lib/scheduleDragGeometry'
 import type { ScheduleBlockWithSlots, ScheduleSlot } from '@/schemas/weeklySchedule'
 
 const props = defineProps<{
@@ -204,13 +207,6 @@ function slotsForDay(day: number): VisibleSlot[] {
 // botones): si el mouse sale del bloque hacia su propia ×, se mantiene visible.
 const hoveredSlotId = ref<string | null>(null)
 
-watch(
-  () => ui.scheduleEditMode,
-  (active) => {
-    if (!active) hoveredSlotId.value = null
-  }
-)
-
 function onSlotEnter(slotId: string) {
   if (ui.scheduleEditMode) hoveredSlotId.value = slotId
 }
@@ -241,6 +237,150 @@ function onGridClick(event: MouseEvent) {
   if (target?.closest?.('[data-testid="schedule-slot-delete"]')) return
   emit('select', null)
 }
+
+interface DragState {
+  slot: ScheduleSlot
+  block: ScheduleBlockWithSlots
+  day: number
+  start: number
+  duration: number
+  pointerX: number | null
+  pointerY: number | null
+}
+
+const daysGridRef = ref<HTMLElement | null>(null)
+const dragCandidate = ref<VisibleSlot | null>(null)
+const dragState = ref<DragState | null>(null)
+const dragToast = ref<string | null>(null)
+
+const dragEnabled = computed(() => ui.scheduleEditMode)
+
+const { begin: beginDrag } = useScheduleDrag(
+  daysGridRef,
+  dragEnabled,
+  () => ({
+    enabledDays: enabledDays.value,
+    windowStart: windowStart.value,
+    minuteHeightPx: minuteHeightPx.value,
+  }),
+  {
+    onStart() {
+      const candidate = dragCandidate.value
+      if (!candidate) return
+      dragState.value = {
+        slot: candidate.slot,
+        block: candidate.block,
+        day: candidate.slot.day_of_week,
+        start: candidate.slot.start_minutes,
+        duration: candidate.slot.end_minutes - candidate.slot.start_minutes,
+        pointerX: null,
+        pointerY: null,
+      }
+    },
+    onMove(point) {
+      moveDrag(point)
+    },
+    onEnd() {
+      void finishDrag()
+    },
+    onCancel() {
+      cancelDrag()
+    },
+  }
+)
+
+function onBlockPointerDown(vs: VisibleSlot, event: PointerEvent) {
+  if (!ui.scheduleEditMode) return
+  dragCandidate.value = vs
+  beginDrag(event)
+}
+
+function moveDrag(point: ScheduleDragPoint) {
+  const state = dragState.value
+  if (!state) return
+  // Los días deshabilitados no son destino de arrastre.
+  if (!enabledDays.value.includes(point.day)) return
+  const start = Math.max(0, Math.min(point.minutes, 1440 - state.duration))
+  dragState.value = {
+    ...state,
+    day: point.day,
+    start,
+    pointerX: point.clientX,
+    pointerY: point.clientY,
+  }
+}
+
+function cancelDrag() {
+  dragState.value = null
+  dragCandidate.value = null
+}
+
+async function finishDrag() {
+  const state = dragState.value
+  dragState.value = null
+  dragCandidate.value = null
+  if (!state) return
+  if (!enabledDays.value.includes(state.day)) return
+  if (state.day === state.slot.day_of_week && state.start === state.slot.start_minutes) return
+
+  const end = state.start + state.duration
+  const validation = store.validateSlot(
+    { day_of_week: state.day, start_minutes: state.start, end_minutes: end },
+    state.slot.id
+  )
+  if (!validation.ok) {
+    const blockTitle = validation.reason === 'overlapBlock' ? validation.blockTitle : 'otro bloque'
+    dragToast.value = `Los horarios se superponen con «${blockTitle}»`
+    return
+  }
+
+  try {
+    await store.updateSlot(state.slot.id, {
+      day_of_week: state.day,
+      start_minutes: state.start,
+      end_minutes: end,
+    })
+  } catch {
+    dragToast.value = 'No se pudo mover el bloque'
+  }
+}
+
+const dragGhostStyle = computed(() => {
+  const state = dragState.value
+  if (!state) return null
+  const count = Math.max(1, enabledDays.value.length)
+  const column = Math.max(0, enabledDays.value.indexOf(state.day))
+  return {
+    left: `${(column * 100) / count}%`,
+    width: `${100 / count}%`,
+    top: `${(state.start - windowStart.value) * minuteHeightPx.value}px`,
+    height: `${state.duration * minuteHeightPx.value}px`,
+  }
+})
+
+const dragBadgeStyle = computed(() => {
+  const state = dragState.value
+  if (!state || state.pointerX === null || state.pointerY === null) return null
+  return {
+    left: `${state.pointerX + 12}px`,
+    top: `${state.pointerY + 16}px`,
+  }
+})
+
+const dragRangeLabel = computed(() => {
+  const state = dragState.value
+  if (!state) return ''
+  return `${minutesToHHMM(state.start)} → ${minutesToHHMM(state.start + state.duration)}`
+})
+
+watch(
+  () => ui.scheduleEditMode,
+  (active) => {
+    if (active) return
+    hoveredSlotId.value = null
+    cancelDrag()
+  }
+)
 </script>
 
 <template>
@@ -281,6 +421,7 @@ function onGridClick(event: MouseEvent) {
         </div>
 
         <div
+          ref="daysGridRef"
           class="relative grid flex-1 select-none border-l border-hairline"
           :style="dayGridStyle"
           @click="onGridClick"
@@ -307,6 +448,7 @@ function onGridClick(event: MouseEvent) {
                 :today="dayIndex === todayIndex"
                 :selected="props.selectedSlotId === vs.slot.id"
                 class="absolute z-10 shadow-sm"
+                :class="dragState?.slot.id === vs.slot.id ? 'opacity-30' : undefined"
                 :style="{
                   top: slotTopPx(vs) + 'px',
                   height: slotHeightPx(vs) + 'px',
@@ -314,6 +456,7 @@ function onGridClick(event: MouseEvent) {
                   width: '96%',
                 }"
                 @click="onSlotClick(vs)"
+                @pointerdown="onBlockPointerDown(vs, $event)"
                 @mouseenter="onSlotEnter(vs.slot.id)"
                 @mouseleave="onSlotLeave(vs.slot.id, $event)"
               />
@@ -333,6 +476,26 @@ function onGridClick(event: MouseEvent) {
             </template>
           </div>
 
+          <!-- El bloque arrastrado sigue al puntero por posición, no por acumulación de píxeles -->
+          <div
+            v-if="dragState"
+            class="pointer-events-none absolute z-30"
+            :style="dragGhostStyle"
+            data-testid="schedule-drag-ghost"
+          >
+            <WeeklyScheduleBlock
+              :title="dragState.block.title"
+              :color="dragState.block.color"
+              :style="{
+                top: '0px',
+                left: '2%',
+                width: '96%',
+                height: '100%',
+                transition: 'none',
+              }"
+            />
+          </div>
+
           <!-- Línea fina de la hora actual: cruza toda la grilla de días -->
           <div
             v-if="nowLineTop !== null"
@@ -343,5 +506,20 @@ function onGridClick(event: MouseEvent) {
         </div>
       </div>
     </div>
+
+    <!-- Cartelito flotante con el rango exacto mientras se arrastra -->
+    <Teleport to="body">
+      <div
+        v-if="dragState && dragBadgeStyle"
+        data-testid="schedule-drag-badge"
+        role="status"
+        class="glass-overlay pointer-events-none fixed z-50 rounded-md px-2 py-1 text-caption text-ink shadow-lg"
+        :style="dragBadgeStyle"
+      >
+        {{ dragRangeLabel }}
+      </div>
+    </Teleport>
+
+    <Toast :open="dragToast !== null" :message="dragToast ?? ''" @update:open="dragToast = null" />
   </div>
 </template>
