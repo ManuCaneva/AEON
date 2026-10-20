@@ -260,12 +260,22 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   }
 
+  /**
+   * Borra una ocurrencia. Si era el último horario de su bloque, el bloque
+   * desaparece con ella: un bloque sin horarios no tiene nada que mostrar.
+   */
   async function deleteSlot(slotId: string): Promise<void> {
+    const block = blocksWithSlots.value.find((bw) => bw.slots.some((s) => s.id === slotId))
     await db.deleteScheduleSlot(slotId)
+    if (!block) return
+    const remaining = block.slots.filter((s) => s.id !== slotId)
+    if (remaining.length === 0) {
+      await db.deleteScheduleBlock(block.id)
+      blocksWithSlots.value = blocksWithSlots.value.filter((bw) => bw.id !== block.id)
+      return
+    }
     blocksWithSlots.value = blocksWithSlots.value.map((bw) =>
-      bw.id === bw.slots.find((s) => s.id === slotId)?.block_id
-        ? { ...bw, slots: bw.slots.filter((s) => s.id !== slotId) }
-        : bw
+      bw.id === block.id ? { ...bw, slots: remaining } : bw
     )
   }
 

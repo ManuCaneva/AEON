@@ -389,7 +389,40 @@ describe('weeklySchedule store', () => {
       expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
     })
 
-    it('elimina un slot individual', async () => {
+    it('elimina un slot individual y conserva el bloque con sus otros horarios', async () => {
+      const store = useWeeklyScheduleStore()
+      const tuesdaySlotId = '550e8400-e29b-41d4-a716-446655440001'
+      const thursdaySlotId = '550e8400-e29b-41d4-a716-446655440002'
+      const slot = (id: string, day: number) => ({
+        id,
+        block_id: validUuid,
+        day_of_week: day,
+        start_minutes: 480,
+        end_minutes: 540,
+        created_at: validIso,
+        updated_at: validIso,
+      })
+      store.blocksWithSlots = [
+        {
+          id: validUuid,
+          title: 'Gimnasio',
+          color: 'lavender',
+          sort_order: 0,
+          created_at: validIso,
+          updated_at: validIso,
+          slots: [slot(tuesdaySlotId, 1), slot(thursdaySlotId, 3)],
+        },
+      ]
+
+      await store.deleteSlot(tuesdaySlotId)
+
+      expect(store.blocksWithSlots).toHaveLength(1)
+      expect(store.blocksWithSlots[0].slots.map((s) => s.id)).toEqual([thursdaySlotId])
+      expect(db.deleteScheduleSlot).toHaveBeenCalledWith(tuesdaySlotId)
+      expect(db.deleteScheduleBlock).not.toHaveBeenCalled()
+    })
+
+    it('borra el bloque en cascada cuando se elimina su último horario', async () => {
       const store = useWeeklyScheduleStore()
       const slotId = '550e8400-e29b-41d4-a716-446655440001'
       store.blocksWithSlots = [
@@ -416,8 +449,9 @@ describe('weeklySchedule store', () => {
 
       await store.deleteSlot(slotId)
 
-      expect(store.blocksWithSlots[0].slots).toHaveLength(0)
+      expect(store.blocksWithSlots).toHaveLength(0)
       expect(db.deleteScheduleSlot).toHaveBeenCalledWith(slotId)
+      expect(db.deleteScheduleBlock).toHaveBeenCalledWith(validUuid)
     })
 
     it('elimina un bloque completo con todos sus slots', async () => {
