@@ -4,9 +4,11 @@ import { Pause, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
 import Container from '@/components/ui/Container.vue'
 import Text from '@/components/ui/Text.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
+import { useUiStore } from '@/stores/ui'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
 const pomodoro = usePomodoroStore()
+const ui = useUiStore()
 
 const durationMs = computed(() => getPhaseDurationMs(pomodoro.session.phase, pomodoro.settings))
 const progressPercent = computed(() =>
@@ -25,6 +27,17 @@ function toggle() {
   void pomodoro.prepareAudio().catch(() => {})
   void pomodoro.start()
 }
+
+function goToPomodoroView() {
+  ui.setViewMode('pomodoro')
+}
+
+function onHeaderKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    goToPomodoroView()
+  }
+}
 </script>
 
 <template>
@@ -38,9 +51,19 @@ function toggle() {
   >
     <header
       data-testid="pomodoro-widget-header"
-      class="flex shrink-0 items-center justify-start border-b border-hairline bg-surface-2 px-2 py-1"
+      role="button"
+      tabindex="0"
+      aria-label="Ir a la página Pomodoro"
+      class="group flex shrink-0 cursor-pointer items-center justify-start border-b border-hairline bg-surface-2 px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+      @click="goToPomodoroView"
+      @keydown="onHeaderKeydown"
     >
-      <Text variant="card-title" weight="600" class="text-left">Pomodoro</Text>
+      <Text
+        variant="card-title"
+        weight="600"
+        class="text-left text-ink-muted transition-colors group-hover:text-ink"
+        >Pomodoro</Text
+      >
     </header>
 
     <div

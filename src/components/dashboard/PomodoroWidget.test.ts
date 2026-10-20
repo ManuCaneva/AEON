@@ -11,6 +11,7 @@ const mockStart = vi.fn().mockResolvedValue(undefined)
 const mockPause = vi.fn().mockResolvedValue(undefined)
 const mockReset = vi.fn().mockResolvedValue(undefined)
 const mockSkip = vi.fn().mockResolvedValue(undefined)
+const mockSetViewMode = vi.fn()
 
 function createPomodoroState() {
   return reactive({
@@ -51,9 +52,8 @@ vi.mock('@/stores/pomodoro', () => ({
   }),
 }))
 
-// ui store no longer used by widget — keep mock for safety but not asserted
 vi.mock('@/stores/ui', () => ({
-  useUiStore: () => ({ setViewMode: vi.fn() }),
+  useUiStore: () => ({ setViewMode: mockSetViewMode }),
 }))
 
 describe('PomodoroWidget', () => {
@@ -64,6 +64,7 @@ describe('PomodoroWidget', () => {
     mockPause.mockClear()
     mockReset.mockClear()
     mockSkip.mockClear()
+    mockSetViewMode.mockClear()
     pomodoroState = createPomodoroState()
   })
 
@@ -97,7 +98,7 @@ describe('PomodoroWidget', () => {
     expect(children[2].getAttribute('data-testid')).toBe('pomodoro-widget-skip')
   })
 
-  it('fuera del círculo no queda ningún botón y el círculo no es cliqueable', () => {
+  it('el área del círculo solo contiene el anillo y no es cliqueable', () => {
     const wrapper = mount(PomodoroWidget)
 
     const circleArea = wrapper.get('[data-testid="pomodoro-widget-circle-area"]')
@@ -152,17 +153,75 @@ describe('PomodoroWidget', () => {
     expect(mockPrepareAudio).not.toHaveBeenCalled()
   })
 
-  it('ningún click en el widget navega a la vista Pomodoro', async () => {
+  it('el click en cualquier punto del header navega a la página Pomodoro', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    await header.trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+
+    await header.get('.text-card-title').trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+    expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
+  })
+
+  it('el disco, el círculo y los controles no navegan y siguen funcionando', async () => {
     const wrapper = mount(PomodoroWidget)
 
     await wrapper.get('[data-testid="pomodoro-widget"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-circle-area"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-progress"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-disc"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-countdown"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-reset"]').trigger('click')
     await wrapper.get('[data-testid="pomodoro-widget-toggle"]').trigger('click')
-    // no navigation — no assertion on setViewMode; the absence of navigation is that
-    // the widget does not expose role=button/tabindex/cursor-pointer on root
+    await wrapper.get('[data-testid="pomodoro-widget-skip"]').trigger('click')
+
+    expect(mockSetViewMode).not.toHaveBeenCalled()
+    expect(mockReset).toHaveBeenCalledOnce()
+    expect(mockStart).toHaveBeenCalledOnce()
+    expect(mockSkip).toHaveBeenCalledOnce()
+
     const container = wrapper.get('[data-testid="pomodoro-widget"]')
     expect(container.attributes('role')).not.toBe('button')
     expect(container.attributes('tabindex')).toBeUndefined()
-    expect(container.classes().join(' ')).not.toContain('cursor-pointer')
+    expect(container.classes()).not.toContain('cursor-pointer')
+  })
+
+  it('el header es accesible por teclado con Enter y Espacio', async () => {
+    const wrapper = mount(PomodoroWidget)
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+
+    await header.trigger('keydown', { key: 'Enter' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(1)
+    expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
+
+    await header.trigger('keydown', { key: ' ' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+
+    await header.trigger('keydown', { key: 'Escape' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+  })
+
+  it('el header anuncia que navega a la página Pomodoro', () => {
+    const wrapper = mount(PomodoroWidget)
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+
+    expect(header.attributes('role')).toBe('button')
+    expect(header.attributes('tabindex')).toBe('0')
+    expect(header.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+  })
+
+  it('el header muestra cursor pointer y el título se ilumina en hover', () => {
+    const wrapper = mount(PomodoroWidget)
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = header.get('.text-card-title')
+
+    expect(header.classes()).toContain('cursor-pointer')
+    expect(header.classes()).toContain('group')
+    expect(title.classes()).toContain('text-ink-muted')
+    expect(title.classes()).toContain('transition-colors')
+    expect(title.classes()).toContain('group-hover:text-ink')
   })
 
   it('tiene el header Pomodoro y el contrato de widget compartido (ESTRUCTURA)', () => {
