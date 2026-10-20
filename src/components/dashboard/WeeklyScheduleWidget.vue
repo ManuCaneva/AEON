@@ -18,6 +18,9 @@ const showCreate = ref(false)
 const showSettings = ref(false)
 // Ocurrencia elegida en la grilla: sobre ella actúan la × y `Supr`.
 const selectedSlotId = ref<string | null>(null)
+// La grilla avisa cuando hay un nombre editándose inline: ese Esc cancela el
+// nombre, no cierra el modo edición.
+const inlineNameEditing = ref(false)
 
 // Salir del modo no deja una selección colgada para la próxima entrada.
 watch(
@@ -44,6 +47,8 @@ function onKeydown(event: KeyboardEvent) {
   // Un modal abierto consume sus propias teclas: el modo no actúa por detrás.
   if (showCreate.value || showSettings.value || editingBlock.value) return
   if (event.key === 'Escape') {
+    // Un nombre en edición inline consume su propio Esc: cancela el nombre.
+    if (inlineNameEditing.value) return
     ui.exitScheduleEditMode()
     return
   }
@@ -124,6 +129,7 @@ function openEdit(b: ScheduleBlockWithSlots) {
           @select="selectedSlotId = $event"
           @remove="removeOccurrence"
           @edit="openEdit"
+          @name-edit-state="inlineNameEditing = $event"
         />
       </div>
     </div>
