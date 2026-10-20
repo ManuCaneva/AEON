@@ -146,6 +146,7 @@ describe('ventana mini del pomodoro', () => {
         resizable: false,
         alwaysOnTop: true,
         decorations: true,
+        focus: true,
       }),
     })
   })
@@ -270,6 +271,30 @@ describe('persistencia de la ventana mini entre sesiones', () => {
 
     expect(windows).toHaveLength(0)
     expect(getByLabel).not.toHaveBeenCalled()
+  })
+
+  it('la restauración no roba el foco: con la mini ya abierta no la muestra ni la enfoca', async () => {
+    persistMini({ isOpen: true, x: 500, y: 400 })
+    const show = vi.fn().mockResolvedValue(undefined)
+    const setFocus = vi.fn().mockResolvedValue(undefined)
+    getByLabel.mockResolvedValue({ show, setFocus })
+
+    await restorePomodoroMiniWindow()
+
+    // Al recrear la ventana principal el foco no rebota a la mini.
+    expect(show).not.toHaveBeenCalled()
+    expect(setFocus).not.toHaveBeenCalled()
+    expect(constructions).toHaveLength(0)
+  })
+
+  it('la restauración la reabre sin foco: el arranque de la app no roba la atención', async () => {
+    persistMini({ isOpen: true, x: 500, y: 400 })
+    getByLabel.mockResolvedValue(null)
+
+    await restorePomodoroMiniWindow()
+
+    expect(windows).toHaveLength(1)
+    expect(windows[0].options).toMatchObject({ focus: false })
   })
 
   it.each([

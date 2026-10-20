@@ -44,28 +44,40 @@ export function isPomodoroMiniWindow(): boolean {
 /**
  * Abre la ventana mini como singleton: si ya existe la enfoca; si no, la crea
  * fija, siempre arriba y en la posición donde quedó (o en la esquina inferior
- * derecha del monitor de la principal si nunca se movió). Deja el flag de
- * apertura persistido para que el próximo arranque la reabra.
+ * derecha del monitor de la principal si nunca se movió). Es la acción
+ * explícita del usuario (botón pop-out): la única que enfoca la mini. Deja el
+ * flag de apertura persistido para que el próximo arranque la reabra.
  */
 export async function openPomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
   await savePomodoroMiniWindowState({ isOpen: true, x: state.x, y: state.y })
-  await presentPomodoroMiniWindow(state)
+  await showPomodoroMiniWindow(state, { focus: true })
 }
 
 /**
  * Arranque de la app: reabre la ventana mini solo si el usuario la dejó abierta,
  * en la posición donde quedó. No mira el temporizador: la disposición de pantalla
- * es independiente del estado del pomodoro.
+ * es independiente del estado del pomodoro. Nunca enfoca: la restauración no
+ * roba la atención y el foco no rebota a la mini cuando se recrea la ventana
+ * principal desde su título.
  */
 export async function restorePomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
-  if (state.isOpen) await presentPomodoroMiniWindow(state)
+  if (state.isOpen) await showPomodoroMiniWindow(state, { focus: false })
 }
 
-async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promise<void> {
+/**
+ * Deja la mini visible en la posición dada. `focus` distingue los dos caminos:
+ * la acción del usuario la trae al frente y la enfoca; la restauración solo la
+ * crea si falta, sin tocar el foco de nadie.
+ */
+async function showPomodoroMiniWindow(
+  state: PomodoroMiniWindowState,
+  { focus }: { focus: boolean }
+): Promise<void> {
   const existing = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL)
   if (existing) {
+    if (!focus) return
     await existing.show()
     await existing.setFocus()
     return
@@ -85,6 +97,7 @@ async function presentPomodoroMiniWindow(state: PomodoroMiniWindowState): Promis
     resizable: false,
     alwaysOnTop: true,
     decorations: true,
+    focus,
     ...placement,
   })
 }
