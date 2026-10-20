@@ -88,10 +88,18 @@ describe('weeklySchedule store', () => {
       slots,
     })
 
-    it('sin slots muestra el default 06:00–23:00', () => {
+    it('sin slots muestra el default 08:00–18:00', () => {
       const store = useWeeklyScheduleStore()
       store.blocksWithSlots = []
-      expect(store.visibleWindow).toEqual({ start_minutes: 360, end_minutes: 1380 })
+      expect(store.visibleWindow).toEqual({ start_minutes: 480, end_minutes: 1080 })
+    })
+
+    it('el default 08:00–18:00 no es un piso: con slots manda el rango real', () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [
+        blockWith([slot({ day_of_week: 2, start_minutes: 600, end_minutes: 660 })]),
+      ]
+      expect(store.visibleWindow).toEqual({ start_minutes: 600, end_minutes: 660 })
     })
 
     it('slot 15:50–18:05 → 15:00–19:00', () => {
