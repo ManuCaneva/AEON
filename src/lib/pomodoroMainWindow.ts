@@ -10,7 +10,10 @@ export const SHOW_POMODORO_IN_MAIN_EVENT = 'pomodoro-show-in-main'
 
 /**
  * Geometría de la ventana principal, espejo de `src-tauri/tauri.conf.json`:
- * la ventana recreada debe abrir igual que la del arranque.
+ * la ventana recreada debe abrir igual que la del arranque. El config de Tauri
+ * no llega al bundle del frontend, así que el espejo queda acá y un test lo
+ * compara contra `src-tauri/tauri.conf.json`: si el config cambia y esto no,
+ * rompe CI en vez de quedar despegado.
  */
 const MAIN_WINDOW_OPTIONS = {
   title: 'AEON',
