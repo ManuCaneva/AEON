@@ -9,7 +9,7 @@ import WeeklyScheduleModal from './WeeklyScheduleModal.vue'
 import WeeklyScheduleSettingsModal from './WeeklyScheduleSettingsModal.vue'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useUiStore } from '@/stores/ui'
-import type { ScheduleBlockWithSlots } from '@/schemas/weeklySchedule'
+import type { ScheduleBlockWithSlots, ScheduleClipboardPayload } from '@/schemas/weeklySchedule'
 
 const store = useWeeklyScheduleStore()
 const ui = useUiStore()
@@ -21,18 +21,59 @@ const selectedSlotId = ref<string | null>(null)
 // La grilla avisa cuando hay un nombre editándose inline: ese Esc cancela el
 // nombre, no cierra el modo edición.
 const inlineNameEditing = ref(false)
+// Copia de una ocurrencia: título, color y duración para pegar como bloque
+// nuevo independiente. El pegado sigue al puntero hasta que se coloca o se
+// termina con Esc.
+const clipboard = ref<ScheduleClipboardPayload | null>(null)
+const pasting = ref(false)
 
-// Salir del modo no deja una selección colgada para la próxima entrada.
+// Salir del modo no deja una selección colgada para la próxima entrada, ni un
+// pegado activo ni una copia vieja.
 watch(
   () => ui.scheduleEditMode,
   (active) => {
-    if (!active) selectedSlotId.value = null
+    if (active) return
+    selectedSlotId.value = null
+    pasting.value = false
+    clipboard.value = null
   }
 )
 
 async function removeOccurrence(slotId: string) {
   await store.deleteSlot(slotId)
   if (selectedSlotId.value === slotId) selectedSlotId.value = null
+}
+
+function copyOccurrence(slotId: string) {
+  const block = store.blocksWithSlots.find((bw) => bw.slots.some((s) => s.id === slotId))
+  if (!block) return
+  const slot = block.slots.find((s) => s.id === slotId)
+  if (!slot) return
+  clipboard.value = {
+    title: block.title,
+    color: block.color,
+    durationMinutes: slot.end_minutes - slot.start_minutes,
+  }
+}
+
+function startPaste() {
+  if (!clipboard.value) return
+  pasting.value = true
+}
+
+async function pasteOccurrence(day: number, startMinutes: number) {
+  const clip = clipboard.value
+  if (!clip || !store.enabledDays.includes(day)) return
+  const start = Math.max(0, Math.min(startMinutes, 1440 - clip.durationMinutes))
+  const end = start + clip.durationMinutes
+  if (end <= start) return
+  try {
+    await store.createBlock({ title: clip.title, color: clip.color, sort_order: 0 }, [
+      { day_of_week: day, start_minutes: start, end_minutes: end },
+    ])
+  } catch (e) {
+    console.error('No se pudo pegar el bloque en la grilla:', e)
+  }
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -49,10 +90,29 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     // Un nombre en edición inline consume su propio Esc: cancela el nombre.
     if (inlineNameEditing.value) return
+    // Con el pegado activo, Esc termina el pegado antes que salir del modo.
+    if (pasting.value) {
+      pasting.value = false
+      return
+    }
     ui.exitScheduleEditMode()
     return
   }
-  if (event.key !== 'Delete' || isEditableTarget(event.target)) return
+  if (isEditableTarget(event.target)) return
+  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    const key = event.key.toLowerCase()
+    if (key === 'c' && selectedSlotId.value !== null) {
+      event.preventDefault()
+      copyOccurrence(selectedSlotId.value)
+      return
+    }
+    if (key === 'v' && clipboard.value !== null) {
+      event.preventDefault()
+      startPaste()
+      return
+    }
+  }
+  if (event.key !== 'Delete') return
   if (selectedSlotId.value === null) return
   event.preventDefault()
   void removeOccurrence(selectedSlotId.value)
@@ -126,8 +186,13 @@ function openEdit(b: ScheduleBlockWithSlots) {
         <WeeklyScheduleGrid
           class="h-full"
           :selected-slot-id="selectedSlotId"
+          :clipboard="clipboard"
+          :pasting="pasting"
           @select="selectedSlotId = $event"
           @remove="removeOccurrence"
+          @copy="copyOccurrence"
+          @paste-start="startPaste"
+          @paste="pasteOccurrence"
           @edit="openEdit"
           @name-edit-state="inlineNameEditing = $event"
         />
