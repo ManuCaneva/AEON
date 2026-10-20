@@ -45,18 +45,18 @@ vi.mock('@tauri-apps/api/event', () => ({
 const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
   type Handler = (event: unknown) => unknown
   function crearVentanaMini() {
-    const handlers = new Map<string, Handler>()
+    const handlers = new Map<string, Handler[]>()
+    function registrar(event: string, handler: Handler): Promise<() => void> {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler])
+      return Promise.resolve(() => {})
+    }
     return {
-      handlers,
+      async emitir(event: string, payload?: unknown): Promise<void> {
+        await Promise.all((handlers.get(event) ?? []).map((handler) => handler({ payload })))
+      },
       scaleFactor: () => Promise.resolve(1),
-      onMoved: (handler: Handler) => {
-        handlers.set('tauri://move', handler)
-        return Promise.resolve(() => {})
-      },
-      onCloseRequested: (handler: Handler) => {
-        handlers.set('tauri://close-requested', handler)
-        return Promise.resolve(() => {})
-      },
+      onMoved: (handler: Handler) => registrar('tauri://move', handler),
+      onCloseRequested: (handler: Handler) => registrar('tauri://close-requested', handler),
     }
   }
   return { crearVentanaMini, getCurrentWebviewWindow: vi.fn() }
@@ -177,15 +177,11 @@ describe('arranque de la ventana mini', () => {
   it('la mini persiste su propio cierre y su posición, aunque la ventana que la creó ya no exista', async () => {
     await bootPomodoroMini()
 
-    ventanaMini.handlers.get('tauri://move')?.({
-      payload: { toLogical: () => ({ x: 120, y: 340 }) },
-    })
+    await ventanaMini.emitir('tauri://move', { toLogical: () => ({ x: 120, y: 340 }) })
     await vi.advanceTimersByTimeAsync(250)
     expect(estadoDeVentanaPersistido()).toEqual({ isOpen: true, x: 120, y: 340 })
 
-    await ventanaMini.handlers.get('tauri://close-requested')?.({
-      payload: { preventDefault: () => {} },
-    })
+    await ventanaMini.emitir('tauri://close-requested', { preventDefault: () => {} })
     expect(estadoDeVentanaPersistido()).toEqual({ isOpen: false, x: 120, y: 340 })
   })
 })

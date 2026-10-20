@@ -27,6 +27,9 @@ const ventanas = vi.hoisted(() => {
     cerrar(label: string): void {
       delete estado.presencia[label]
     },
+    existe(label: string): boolean {
+      return estado.presencia[label] !== undefined
+    },
     reiniciar(): void {
       estado.etiquetaActual = 'main'
       estado.presencia = {}
@@ -52,14 +55,17 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   },
 }))
 
-/** Consulta la dueña desde las dos ventanas y devuelve la etiqueta de la única dueña. */
+/** Consulta la dueña desde cada ventana que existe y devuelve la etiqueta de la única dueña. */
 async function duena(): Promise<string | null> {
-  ventanas.estado.etiquetaActual = POMODORO_MAIN_LABEL
-  const esMain = await isPomodoroOwnerWindow()
-  ventanas.estado.etiquetaActual = POMODORO_MINI_LABEL
-  const esMini = await isPomodoroOwnerWindow()
-  if (esMain === esMini) return null
-  return esMain ? POMODORO_MAIN_LABEL : POMODORO_MINI_LABEL
+  const etiquetas = [POMODORO_MAIN_LABEL, POMODORO_MINI_LABEL].filter((etiqueta) =>
+    ventanas.existe(etiqueta)
+  )
+  const duenas: string[] = []
+  for (const etiqueta of etiquetas) {
+    ventanas.estado.etiquetaActual = etiqueta
+    if (await isPomodoroOwnerWindow()) duenas.push(etiqueta)
+  }
+  return duenas.length === 1 ? duenas[0] : null
 }
 
 describe('dueño del pomodoro según qué ventanas están presentes', () => {
@@ -104,7 +110,7 @@ describe('dueño del pomodoro según qué ventanas están presentes', () => {
     expect(await duena()).toBe(POMODORO_MAIN_LABEL)
   })
 
-  it('si la API de ventanas no responde, cada ventana se comporta como única', async () => {
+  it('si la API de ventanas no responde, la dueña es la principal: nunca suenan las dos', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     ventanas.abrir(POMODORO_MAIN_LABEL)
     ventanas.abrir(POMODORO_MINI_LABEL)
@@ -113,7 +119,49 @@ describe('dueño del pomodoro según qué ventanas están presentes', () => {
     ventanas.estado.etiquetaActual = POMODORO_MAIN_LABEL
     await expect(isPomodoroOwnerWindow()).resolves.toBe(true)
     ventanas.estado.etiquetaActual = POMODORO_MINI_LABEL
-    await expect(isPomodoroOwnerWindow()).resolves.toBe(true)
+    await expect(isPomodoroOwnerWindow()).resolves.toBe(false)
     expect(console.warn).toHaveBeenCalled()
+  })
+
+  it('en todo escenario hay exactamente una dueña: el aviso nunca suena dos veces', async () => {
+    const escenarios: Array<[string, () => void]> = [
+      [
+        'principal y mini',
+        () => {
+          ventanas.abrir(POMODORO_MAIN_LABEL)
+          ventanas.abrir(POMODORO_MINI_LABEL)
+        },
+      ],
+      ['solo la mini', () => ventanas.abrir(POMODORO_MINI_LABEL)],
+      ['solo la principal', () => ventanas.abrir(POMODORO_MAIN_LABEL)],
+      [
+        'principal oculta',
+        () => {
+          ventanas.ocultar(POMODORO_MAIN_LABEL)
+          ventanas.abrir(POMODORO_MINI_LABEL)
+        },
+      ],
+      [
+        'ambas ocultas',
+        () => {
+          ventanas.ocultar(POMODORO_MAIN_LABEL)
+          ventanas.ocultar(POMODORO_MINI_LABEL)
+        },
+      ],
+      [
+        'API de ventanas caída',
+        () => {
+          ventanas.abrir(POMODORO_MAIN_LABEL)
+          ventanas.abrir(POMODORO_MINI_LABEL)
+          ventanas.estado.falla = true
+        },
+      ],
+    ]
+
+    for (const [nombre, abrir] of escenarios) {
+      ventanas.reiniciar()
+      abrir()
+      expect(await duena(), `escenario: ${nombre}`).not.toBeNull()
+    }
   })
 })

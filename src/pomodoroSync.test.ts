@@ -26,6 +26,14 @@ vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getCurrentWebviewWindow: vi.fn(() => ({
+    label: 'main',
+    onCloseRequested: vi.fn().mockResolvedValue(() => {}),
+  })),
+  WebviewWindow: { getByLabel: vi.fn().mockResolvedValue(null) },
+}))
+
 const start = '2026-09-01T12:00:00.000Z'
 
 describe('pomodoro: una sola fuente de verdad para el tiempo', () => {

@@ -73,12 +73,15 @@ vi.mock('@/lib/pomodoroSounds', () => ({
  */
 const ventanas = vi.hoisted(() => {
   type Presencia = 'abierta' | 'oculta'
+  type Handler = (event: unknown) => unknown
   const estado = {
     etiquetaActual: 'main',
     presencia: { main: 'abierta' } as Record<string, Presencia>,
     consultaEnEspera: false,
   }
   const pendientes: Array<() => void> = []
+  /** Handlers de cierre registrados por ventana: la X del usuario los dispara. */
+  const cierres = new Map<string, Handler[]>()
   return {
     estado,
     pendientes,
@@ -88,11 +91,20 @@ const ventanas = vi.hoisted(() => {
     cerrar(label: string): void {
       delete estado.presencia[label]
     },
+    /** La X del usuario: la ventana se está cerrando pero todavía existe. */
+    recibirLaX(label: string): void {
+      for (const handler of cierres.get(label) ?? []) handler({ preventDefault: () => {} })
+    },
+    registrarCierre(handler: Handler): void {
+      const etiqueta = estado.etiquetaActual
+      cierres.set(etiqueta, [...(cierres.get(etiqueta) ?? []), handler])
+    },
     reiniciar(): void {
       estado.etiquetaActual = 'main'
       estado.presencia = { main: 'abierta' }
       estado.consultaEnEspera = false
       pendientes.length = 0
+      cierres.clear()
     },
     continuarConsultas(): void {
       estado.consultaEnEspera = false
@@ -102,7 +114,13 @@ const ventanas = vi.hoisted(() => {
 })
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
-  getCurrentWebviewWindow: () => ({ label: ventanas.estado.etiquetaActual }),
+  getCurrentWebviewWindow: () => ({
+    label: ventanas.estado.etiquetaActual,
+    onCloseRequested: (handler: (event: unknown) => unknown) => {
+      ventanas.registrarCierre(handler)
+      return Promise.resolve(() => {})
+    },
+  }),
   WebviewWindow: {
     getByLabel: (label: string) =>
       new Promise((resolve) => {
@@ -730,13 +748,15 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
   })
 
   it('si el snapshot ajeno resolvió la expiración mientras se decidía la dueña, no se avanza de más', async () => {
-    ventanas.estado.etiquetaActual = 'main'
-    const escritorio = await abrirVentana()
-    await expirarFase(escritorio)
+    ventanas.cerrar('main')
+    ventanas.abrir('pomodoro-mini')
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    const mini = await abrirVentana()
+    await expirarFase(mini)
 
-    // La consulta de qué ventana es dueña queda en el aire...
+    // La consulta de si la principal existe queda en el aire...
     ventanas.estado.consultaEnEspera = true
-    const resolucion = escritorio.advanceIfExpired()
+    const resolucion = mini.advanceIfExpired()
 
     // ...y mientras tanto otra ventana ya resolvió el fin de fase.
     const yaResuelta: ActivePomodoroSession = {
@@ -757,6 +777,43 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
 
     expect(playFocusEndChime).not.toHaveBeenCalled()
     expect(db.saveConfig).not.toHaveBeenCalled()
-    expect(escritorio.session).toEqual(yaResuelta)
+    expect(mini.session).toEqual(yaResuelta)
+  })
+
+  it('la principal que se cierra en la expiración no suena: el fin de fase lo retoma la mini', async () => {
+    ventanas.abrir('pomodoro-mini')
+    ventanas.estado.etiquetaActual = 'main'
+    const escritorio = await abrirVentana()
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    const mini = await abrirVentana()
+    await expirarFase(escritorio)
+
+    // La X de la principal llega justo en la expiración: se está cerrando.
+    ventanas.recibirLaX('main')
+
+    ventanas.estado.etiquetaActual = 'main'
+    await escritorio.advanceIfExpired()
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+    expect(db.saveConfig).not.toHaveBeenCalled()
+
+    // La principal se destruye y la mini retoma el fin de fase: un solo aviso.
+    ventanas.cerrar('main')
+    ventanas.estado.etiquetaActual = 'pomodoro-mini'
+    await mini.advanceIfExpired()
+    expect(playFocusEndChime).toHaveBeenCalledTimes(1)
+    expect(db.saveConfig).toHaveBeenCalledTimes(1)
+    expect(mini.session).toMatchObject({ phase: 'shortBreak', completedFocusSessions: 1 })
+  })
+
+  it('el fin de fase se publica antes de sonar, para que la otra ventana ceda sin doble aviso', async () => {
+    ventanas.estado.etiquetaActual = 'main'
+    const escritorio = await abrirVentana()
+    await expirarFase(escritorio)
+
+    await escritorio.advanceIfExpired()
+
+    const ordenPublicacion = vi.mocked(busEventos.emit).mock.invocationCallOrder[0]
+    const ordenAviso = playFocusEndChime.mock.invocationCallOrder[0]
+    expect(ordenPublicacion).toBeLessThan(ordenAviso)
   })
 })

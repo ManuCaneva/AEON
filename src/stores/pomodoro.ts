@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { emit, listen } from '@tauri-apps/api/event'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import * as db from '@/lib/db'
 import {
   ActivePomodoroSessionSchema,
@@ -123,6 +124,12 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
 
   let syncRegistered = false
 
+  /**
+   * true cuando esta ventana se está cerrando: deja de resolver fines de fase y
+   * de sonar, para que el aviso no se juegue contra el cierre de la ventana.
+   */
+  let windowClosing = false
+
   function setPhase(
     phase: Exclude<PomodoroPhase, 'idle'>,
     isRunning: boolean,
@@ -151,12 +158,8 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     startsAt = Date.now()
   ): Promise<void> {
     const current = session.value.phase
-    if (completedNaturally && current === 'focus') {
-      session.value.completedFocusSessions += 1
-      player().playFocusEndChime(settings.value)
-    } else if (completedNaturally) {
-      player().playBreakEndChime(settings.value)
-    }
+    const focusCompletado = completedNaturally && current === 'focus'
+    if (focusCompletado) session.value.completedFocusSessions += 1
 
     const phase = nextPhase(
       current,
@@ -166,12 +169,20 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     const isRunning =
       phase === 'focus' ? settings.value.autoStartFocus : settings.value.autoStartBreak
     setPhase(phase, isRunning, startsAt)
+    // La transición se publica antes de sonar: la otra ventana la aplica y cede
+    // antes de que suene nada. Si esta ventana muere en el medio, se pierde el
+    // aviso en vez de sonar dos veces.
     await persistSession()
     publish()
+
+    if (!completedNaturally || windowClosing) return
+    if (focusCompletado) player().playFocusEndChime(settings.value)
+    else player().playBreakEndChime(settings.value)
   }
 
   async function advanceIfExpired(): Promise<void> {
     while (
+      !windowClosing &&
       session.value.isRunning &&
       session.value.endsAt &&
       new Date(session.value.endsAt).getTime() <= Date.now()
@@ -180,7 +191,9 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       // Solo la ventana dueña resuelve el fin de fase: suena y persiste una
       // sola vez; la otra se queda quieta y aplica el snapshot que llegue.
       if (!(await isPomodoroOwnerWindow())) return
-      // Un snapshot ajeno pudo resolver la expiración mientras se decidía.
+      // La ventana pudo cerrarse o un snapshot ajeno pudo resolver la
+      // expiración mientras se decidía la dueña.
+      if (windowClosing) return
       if (session.value.endsAt !== expirada) continue
       await advanceToNextPhase(true, new Date(expirada).getTime())
       if (!session.value.isRunning) return
@@ -199,6 +212,12 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     if (!syncRegistered) {
       syncRegistered = true
       await listen(POMODORO_SYNC_EVENT, (event) => applyRemote(event.payload))
+      // Al cerrarse, esta ventana entrega el fin de fase a la otra: con la
+      // principal cerrándose en la expiración, el aviso suena una sola vez.
+      await getCurrentWebviewWindow().onCloseRequested(() => {
+        windowClosing = true
+        stopTicker()
+      })
     }
     const [rawSettings, rawSession] = await Promise.all([
       db.loadConfig(POMODORO_SETTINGS_KEY),
