@@ -60,7 +60,9 @@ En ese primer arranque la app se registra sola: se mueve a `~/Applications/aeon.
 
 No hace falta moverlo a mano. Si borrás el acceso o movés el archivo, al próximo arranque se vuelve a armar. Dejalo dentro de tu carpeta personal y no en `/usr/bin`: en una ruta del sistema no tiene permisos para reescribirse, y si queda en otro sistema de archivos no puede moverse solo a `~/Applications`.
 
-> **Nota de rendimiento en Linux.** La app usa composición por GPU por defecto. Si en tu equipo ves bordes fantasma al mover widgets (caso conocido: NVIDIA + Wayland), podés forzar el render por software con `WEBKIT_DISABLE_DMABUF_RENDERER=1 ~/Applications/aeon.AppImage`. Hacelo solo en ese caso: el modo software desactiva la aceleración y toda la app se vuelve más lenta.
+> **Arranque y gráficos en Linux.** Para evitar el cierre con `Error 71` de WebKitGTK, AEON configura `__NV_DISABLE_EXPLICIT_SYNC=1` antes de crear la ventana cuando hay un display Wayland y una GPU NVIDIA detectada en `/sys/class/drm` (también en equipos híbridos). No lo aplica si forzás `GDK_BACKEND=x11`, y respeta cualquier valor de `__NV_DISABLE_EXPLICIT_SYNC` que ya hayas definido. Conserva DMABUF y la composición acelerada: no fuerza renderizado por software. Esto no garantiza el mismo rendimiento en todos los equipos.
+>
+> Si una versión anterior no abre, probá `__NV_DISABLE_EXPLICIT_SYNC=1 ~/Applications/aeon.AppImage`. Si persisten los problemas gráficos, `WEBKIT_DISABLE_DMABUF_RENDERER=1 ~/Applications/aeon.AppImage` sigue disponible como alternativa manual, pero desactiva un camino rápido de renderizado y puede empeorar el rendimiento. Ver [recomendaciones oficiales de Tauri](https://tauri.app/develop/debug/linux-graphics/).
 
 ### Actualizaciones
 
