@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
+import Switch from '@/components/ui/Switch.vue'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 
 const props = defineProps<{ open: boolean }>()
@@ -11,6 +12,7 @@ const store = useWeeklyScheduleStore()
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const granularity = ref(30)
 const enabledDays = ref<number[]>([0, 1, 2, 3, 4, 5, 6])
+const showBlockTimes = ref(true)
 const error = ref<string | null>(null)
 
 watch(
@@ -20,6 +22,7 @@ watch(
     error.value = null
     granularity.value = store.settings.granularity_minutes
     enabledDays.value = [...store.settings.enabled_days]
+    showBlockTimes.value = store.settings.show_block_times
   }
 )
 
@@ -46,6 +49,7 @@ async function save() {
     await store.saveSettings({
       granularity_minutes: granularity.value as 15 | 30 | 60,
       enabled_days: enabledDays.value,
+      show_block_times: showBlockTimes.value,
     })
     emit('close')
   } catch (err) {
@@ -80,6 +84,14 @@ async function save() {
         >
           {{ g }} min
         </button>
+      </div>
+      <div class="mb-4 rounded-lg border border-hairline bg-surface-2 px-3 py-2.5">
+        <Switch
+          v-model="showBlockTimes"
+          label="Mostrar horarios en los bloques"
+          size="sm"
+          data-testid="show-block-times"
+        />
       </div>
       <label class="mb-1.5 block text-caption font-medium text-ink-muted">Días activos</label>
       <div class="mb-4 grid grid-cols-7 gap-1.5">
