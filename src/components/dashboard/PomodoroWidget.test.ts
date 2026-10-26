@@ -2,38 +2,19 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { reactive } from 'vue'
 import PomodoroWidget from './PomodoroWidget.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { computedTextColors, themeRgb } from '@/test/computedColors'
+import { createPomodoroState } from '@/test/pomodoroState'
+import { DEFAULT_THEME } from '@/lib/themes'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
 const mockStart = vi.fn().mockResolvedValue(undefined)
 const mockPause = vi.fn().mockResolvedValue(undefined)
 const mockReset = vi.fn().mockResolvedValue(undefined)
 const mockSkip = vi.fn().mockResolvedValue(undefined)
-
-function createPomodoroState() {
-  return reactive({
-    settings: {
-      focusMinutes: 25,
-      shortBreakMinutes: 5,
-      longBreakMinutes: 15,
-      longBreakInterval: 4,
-      autoStartBreak: true,
-      autoStartFocus: false,
-      volume: 0.7,
-      muted: false,
-    },
-    session: {
-      phase: 'focus' as const,
-      isRunning: false,
-      endsAt: null,
-      remainingMs: 25 * 60 * 1000,
-      completedFocusSessions: 0,
-    },
-    remainingMs: 25 * 60 * 1000,
-  })
-}
+const mockSetViewMode = vi.fn()
+const mockOpenMini = vi.fn().mockResolvedValue(undefined)
 
 let pomodoroState = createPomodoroState()
 
@@ -51,9 +32,12 @@ vi.mock('@/stores/pomodoro', () => ({
   }),
 }))
 
-// ui store no longer used by widget — keep mock for safety but not asserted
 vi.mock('@/stores/ui', () => ({
-  useUiStore: () => ({ setViewMode: vi.fn() }),
+  useUiStore: () => ({ setViewMode: mockSetViewMode }),
+}))
+
+vi.mock('@/lib/pomodoroMiniWindow', () => ({
+  openPomodoroMiniWindow: (...args: unknown[]) => mockOpenMini(...args),
 }))
 
 describe('PomodoroWidget', () => {
@@ -64,6 +48,8 @@ describe('PomodoroWidget', () => {
     mockPause.mockClear()
     mockReset.mockClear()
     mockSkip.mockClear()
+    mockSetViewMode.mockClear()
+    mockOpenMini.mockClear()
     pomodoroState = createPomodoroState()
   })
 
@@ -97,7 +83,7 @@ describe('PomodoroWidget', () => {
     expect(children[2].getAttribute('data-testid')).toBe('pomodoro-widget-skip')
   })
 
-  it('fuera del círculo no queda ningún botón y el círculo no es cliqueable', () => {
+  it('el área del círculo solo contiene el anillo y no es cliqueable', () => {
     const wrapper = mount(PomodoroWidget)
 
     const circleArea = wrapper.get('[data-testid="pomodoro-widget-circle-area"]')
@@ -152,17 +138,100 @@ describe('PomodoroWidget', () => {
     expect(mockPrepareAudio).not.toHaveBeenCalled()
   })
 
-  it('ningún click en el widget navega a la vista Pomodoro', async () => {
+  it('el click en cualquier punto del header navega a la página Pomodoro', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    await header.trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+
+    await header.get('.text-card-title').trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+    expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
+  })
+
+  it('el disco, el círculo y los controles no navegan y siguen funcionando', async () => {
     const wrapper = mount(PomodoroWidget)
 
     await wrapper.get('[data-testid="pomodoro-widget"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-circle-area"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-progress"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-disc"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-countdown"]').trigger('click')
+    await wrapper.get('[data-testid="pomodoro-widget-reset"]').trigger('click')
     await wrapper.get('[data-testid="pomodoro-widget-toggle"]').trigger('click')
-    // no navigation — no assertion on setViewMode; the absence of navigation is that
-    // the widget does not expose role=button/tabindex/cursor-pointer on root
+    await wrapper.get('[data-testid="pomodoro-widget-skip"]').trigger('click')
+
+    expect(mockSetViewMode).not.toHaveBeenCalled()
+    expect(mockReset).toHaveBeenCalledOnce()
+    expect(mockStart).toHaveBeenCalledOnce()
+    expect(mockSkip).toHaveBeenCalledOnce()
+
     const container = wrapper.get('[data-testid="pomodoro-widget"]')
     expect(container.attributes('role')).not.toBe('button')
     expect(container.attributes('tabindex')).toBeUndefined()
-    expect(container.classes().join(' ')).not.toContain('cursor-pointer')
+    expect(container.classes()).not.toContain('cursor-pointer')
+  })
+
+  it('el botón pop-out del header abre la ventana mini sin navegar', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    const popout = wrapper.get('[data-testid="pomodoro-widget-popout"]')
+    expect(popout.attributes('aria-label')).toBe('Abrir ventana mini')
+    expect(popout.find('svg.lucide-picture-in-picture2-icon').exists()).toBe(true)
+
+    await popout.trigger('click')
+    expect(mockOpenMini).toHaveBeenCalledOnce()
+    expect(mockSetViewMode).not.toHaveBeenCalled()
+  })
+
+  it('el click en el header navega aunque el botón pop-out esté presente', async () => {
+    const wrapper = mount(PomodoroWidget)
+
+    await wrapper.get('[data-testid="pomodoro-widget-header"]').trigger('click')
+    expect(mockSetViewMode).toHaveBeenCalledWith('pomodoro')
+    expect(mockOpenMini).not.toHaveBeenCalled()
+  })
+
+  it('el título del header es accesible por teclado con Enter y Espacio', async () => {
+    const wrapper = mount(PomodoroWidget)
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
+
+    await title.trigger('keydown', { key: 'Enter' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(1)
+    expect(mockSetViewMode).toHaveBeenLastCalledWith('pomodoro')
+
+    await title.trigger('keydown', { key: ' ' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+
+    await title.trigger('keydown', { key: 'Escape' })
+    expect(mockSetViewMode).toHaveBeenCalledTimes(2)
+  })
+
+  it('el título anuncia el destino y el header no anida controles', () => {
+    const wrapper = mount(PomodoroWidget)
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = wrapper.get('[data-testid="pomodoro-widget-header-title"]')
+
+    expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
+    expect(header.attributes('role')).toBeUndefined()
+    expect(header.attributes('tabindex')).toBeUndefined()
+    expect(
+      title.element.contains(header.get('[data-testid="pomodoro-widget-popout"]').element)
+    ).toBe(false)
+  })
+
+  it('el header muestra cursor pointer y el título se ilumina en hover', async () => {
+    const wrapper = mount(PomodoroWidget, { attachTo: document.body })
+    const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
+    const title = header.get('.text-card-title').element
+
+    expect(header.classes()).toContain('cursor-pointer')
+    expect(header.classes()).toContain('group')
+
+    const { rest, hover } = await computedTextColors(title)
+    expect(rest).toBe(themeRgb(DEFAULT_THEME, 'ink'))
+    expect(hover).toBe(themeRgb(DEFAULT_THEME, 'primary'))
   })
 
   it('tiene el header Pomodoro y el contrato de widget compartido (ESTRUCTURA)', () => {
@@ -174,16 +243,18 @@ describe('PomodoroWidget', () => {
     expect(wrapper.find('[data-testid="pomodoro-widget-progress"]').exists()).toBe(true)
   })
 
-  it('tiene el título alineado a la izquierda, como el estándar de listing (ALINEACIÓN)', () => {
+  it('tiene el título a la izquierda y las acciones en el extremo derecho (ALINEACIÓN)', () => {
     const wrapper = mount(PomodoroWidget)
     const header = wrapper.get('[data-testid="pomodoro-widget-header"]')
     const title = header.get('.text-card-title')
+    const popout = header.get('[data-testid="pomodoro-widget-popout"]')
 
     expect(header.classes()).not.toContain('justify-center')
-    expect(header.classes()).toContain('justify-start')
+    expect(header.classes()).toContain('justify-between')
     expect(title.classes()).not.toContain('text-center')
     expect(title.classes()).toContain('text-left')
     expect(header.element.firstElementChild?.textContent).toContain('Pomodoro')
+    expect(header.element.lastElementChild).toBe(popout.element)
   })
 
   it('el anillo usa token primario en enfoque y success en descansos', async () => {
@@ -284,6 +355,10 @@ describe('PomodoroWidget', () => {
     // La cuenta regresiva escala con el widget (piso según Configuración).
     expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*cqmin/)
     expect(css).toMatch(/\.container-widget \.pomodoro-countdown\s*\{[^}]*var\(--text-scale\)/)
+    // En contenedores chicos (la ventana mini) el piso baja junto con el disco.
+    expect(css).toMatch(
+      /@container \(max-width: 240px\)[\s\S]*?\.container-widget \.pomodoro-countdown\s*\{[^}]*calc\(1rem \* var\(--text-scale\)\)/
+    )
     // Los controles escalan con el widget.
     expect(css).toMatch(/\.container-widget \.pomodoro-btn\s*\{[^}]*cqmin/)
   })

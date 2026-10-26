@@ -1,0 +1,171 @@
+import { currentMonitor, type Monitor } from '@tauri-apps/api/window'
+import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import type { PhysicalPosition } from '@tauri-apps/api/dpi'
+import {
+  loadPomodoroMiniWindowState,
+  savePomodoroMiniWindowState,
+} from '@/lib/pomodoroMiniWindowState'
+import { focusWindow, windowExists } from '@/lib/appWindows'
+import type { PomodoroMiniWindowState } from '@/schemas/pomodoroMiniWindow'
+
+/** Label único de la ventana mini: la identifica como singleton entre webviews. */
+export const POMODORO_MINI_LABEL = 'pomodoro-mini'
+
+/** Título a nivel de sistema de la ventana mini. */
+export const POMODORO_MINI_TITLE = 'AEON — Pomodoro'
+
+/** Geometría fija de la ventana mini, en píxeles lógicos. */
+export const POMODORO_MINI_WIDTH = 210
+export const POMODORO_MINI_HEIGHT = 224
+
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Esquina inferior derecha del área dada, para una ventana del tamaño dado. */
+function bottomRightPlacement(area: Rect, width: number, height: number): { x: number; y: number } {
+  return { x: area.x + area.width - width, y: area.y + area.height - height }
+}
+
+/** Rectángulo del monitor en píxeles lógicos (los que espera la API de ventanas). */
+function monitorRect(monitor: Monitor): Rect {
+  const size = monitor.size.toLogical(monitor.scaleFactor)
+  const position = monitor.position.toLogical(monitor.scaleFactor)
+  return { x: position.x, y: position.y, width: size.width, height: size.height }
+}
+
+/** true cuando esta webview es la ventana mini: decide el arranque del frontend. */
+export function isPomodoroMiniWindow(): boolean {
+  return getCurrentWebviewWindow().label === POMODORO_MINI_LABEL
+}
+
+/**
+ * Abre la ventana mini como singleton: si ya existe la enfoca; si no, la crea
+ * fija, siempre arriba y en la posición donde quedó (o en la esquina inferior
+ * derecha del monitor de la principal si nunca se movió). Es la acción
+ * explícita del usuario (botón pop-out): la única que enfoca la mini. Deja el
+ * flag de apertura persistido para que el próximo arranque la reabra.
+ */
+export async function openPomodoroMiniWindow(): Promise<void> {
+  const state = await loadPomodoroMiniWindowState()
+  await savePomodoroMiniWindowState({ isOpen: true, x: state.x, y: state.y })
+  await showPomodoroMiniWindow(state, { focus: true })
+}
+
+/**
+ * Arranque de la app: reabre la ventana mini solo si el usuario la dejó abierta,
+ * en la posición donde quedó. No mira el temporizador: la disposición de pantalla
+ * es independiente del estado del pomodoro. Nunca enfoca: la restauración no
+ * roba la atención y el foco no rebota a la mini cuando se recrea la ventana
+ * principal desde su título.
+ */
+export async function restorePomodoroMiniWindow(): Promise<void> {
+  const state = await loadPomodoroMiniWindowState()
+  if (state.isOpen) await showPomodoroMiniWindow(state, { focus: false })
+}
+
+/**
+ * Deja la mini visible en la posición dada. `focus` distingue los dos caminos:
+ * la acción del usuario la trae al frente y la enfoca; la restauración solo la
+ * crea si falta, sin tocar el foco de nadie.
+ */
+async function showPomodoroMiniWindow(
+  state: PomodoroMiniWindowState,
+  { focus }: { focus: boolean }
+): Promise<void> {
+  if (await windowExists(POMODORO_MINI_LABEL)) {
+    if (focus) await focusWindow(POMODORO_MINI_LABEL)
+    return
+  }
+
+  const placement =
+    state.x !== null && state.y !== null
+      ? { x: state.x, y: state.y }
+      : await bottomRightOnMainMonitor()
+
+  // La creación es fire-and-forget: Tauri avisa con `tauri://created`/`tauri://error`.
+  new WebviewWindow(POMODORO_MINI_LABEL, {
+    url: 'index.html',
+    title: POMODORO_MINI_TITLE,
+    width: POMODORO_MINI_WIDTH,
+    height: POMODORO_MINI_HEIGHT,
+    resizable: false,
+    alwaysOnTop: true,
+    decorations: true,
+    focus,
+    ...placement,
+  })
+}
+
+/** Espera tras el último movimiento: una sola escritura por arrastre. */
+const POSITION_SAVE_DELAY_MS = 250
+
+/** Ventanas ya seguidas: cada instancia se registra una sola vez. */
+const trackedWindows = new WeakSet<WebviewWindow>()
+
+let pendingPosition: PhysicalPosition | null = null
+let positionTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * La ventana mini persiste su propia disposición de pantalla. Se registra sobre
+ * su propia webview y no sobre el handle de quien la creó: con la ventana
+ * principal cerrada nadie más la seguiría y la X no se escribiría. El flag de
+ * apertura solo se escribe en las acciones del usuario (abrir, cerrar con la
+ * X): la destrucción de la ventana por el cierre de la app no pasa por acá y
+ * deja el flag como estaba, así la próxima sesión la reabre. El cierre lo
+ * coordina el store (marca `windowClosing` y espera el guardado antes de
+ * destruir), así la X no compite contra la escritura del estado.
+ */
+export function trackPomodoroMiniWindow(): void {
+  const win = getCurrentWebviewWindow()
+  if (trackedWindows.has(win)) return
+  trackedWindows.add(win)
+
+  void win.onMoved((event) => {
+    pendingPosition = event.payload
+    if (positionTimer !== undefined) clearTimeout(positionTimer)
+    positionTimer = setTimeout(() => {
+      positionTimer = undefined
+      // La ventana existe: mientras se mueve está abierta.
+      return flushMiniWindowState(win, true)
+    }, POSITION_SAVE_DELAY_MS)
+  })
+}
+
+/**
+ * Persiste el cierre de la mini por la X: deja el flag de apertura en false y
+ * guarda la última posición pendiente. La espera el handler de cierre del store
+ * antes de que Tauri destruya la ventana: si el destroy gana la carrera, el
+ * cierre no se guarda y la mini reaparece en el próximo arranque.
+ */
+export async function flushPomodoroMiniWindowClosed(): Promise<void> {
+  if (positionTimer !== undefined) {
+    clearTimeout(positionTimer)
+    positionTimer = undefined
+  }
+  await flushMiniWindowState(getCurrentWebviewWindow(), false)
+}
+
+/** Persiste el flag indicado junto a la última posición pendiente (si hay). */
+async function flushMiniWindowState(win: WebviewWindow, isOpen: boolean): Promise<void> {
+  const state = await loadPomodoroMiniWindowState()
+  let { x, y } = state
+  if (pendingPosition) {
+    const logical = pendingPosition.toLogical(await win.scaleFactor())
+    x = logical.x
+    y = logical.y
+    pendingPosition = null
+  }
+  await savePomodoroMiniWindowState({ isOpen, x, y })
+}
+
+/** Esquina inferior derecha del monitor donde está la ventana principal. */
+async function bottomRightOnMainMonitor(): Promise<{ x?: number; y?: number }> {
+  const monitor = await currentMonitor()
+  return monitor
+    ? bottomRightPlacement(monitorRect(monitor), POMODORO_MINI_WIDTH, POMODORO_MINI_HEIGHT)
+    : {}
+}
