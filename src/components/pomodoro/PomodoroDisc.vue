@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Pause, Play, RotateCcw, SkipForward } from 'lucide-vue-next'
+import PomodoroRing from '@/components/pomodoro/PomodoroRing.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
@@ -9,10 +10,7 @@ const props = defineProps<{ testIdPrefix: string }>()
 const pomodoro = usePomodoroStore()
 
 const durationMs = computed(() => getPhaseDurationMs(pomodoro.session.phase, pomodoro.settings))
-const progressPercent = computed(() =>
-  Math.round(getProgressFraction(pomodoro.remainingMs, durationMs.value) * 100)
-)
-const ringToken = computed(() => (pomodoro.session.phase === 'focus' ? 'primary' : 'success'))
+const progress = computed(() => getProgressFraction(pomodoro.remainingMs, durationMs.value))
 const toggleLabel = computed(() =>
   pomodoro.session.isRunning ? 'Pausar Pomodoro' : 'Iniciar Pomodoro'
 )
@@ -32,24 +30,20 @@ function testId(suffix: string): string {
 </script>
 
 <template>
-  <div
+  <PomodoroRing
     :data-testid="testId('progress')"
-    class="pomodoro-circle relative flex aspect-square items-center justify-center rounded-full p-0"
-    role="progressbar"
-    aria-valuemin="0"
-    aria-valuemax="100"
-    :aria-valuenow="progressPercent"
-    :style="{
-      background: `conic-gradient(rgb(var(--color-${ringToken})) ${progressPercent}%, rgb(var(--color-surface-3)) 0)`,
-    }"
+    class="pomodoro-circle aspect-square p-0"
+    :phase="pomodoro.session.phase"
+    :progress="progress"
   >
     <div
       :data-testid="testId('disc')"
       class="pomodoro-disc flex flex-col items-center justify-center gap-1.5 rounded-full bg-surface-1"
     >
       <span
+        :key="pomodoro.session.phase"
         :data-testid="testId('countdown')"
-        class="pomodoro-countdown font-mono font-semibold tracking-tight"
+        class="pomodoro-countdown pomodoro-fade-in font-mono font-semibold tracking-tight"
       >
         {{ formatRemainingTime(pomodoro.remainingMs) }}
       </span>
@@ -87,5 +81,5 @@ function testId(suffix: string): string {
         </button>
       </div>
     </div>
-  </div>
+  </PomodoroRing>
 </template>

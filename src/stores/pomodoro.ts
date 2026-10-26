@@ -24,8 +24,12 @@ export const POMODORO_SESSION_KEY = 'pomodoro-session'
 /** Canal de sincronización del pomodoro entre webviews (broadcast de Tauri). */
 const POMODORO_SYNC_EVENT = 'pomodoro-state-changed'
 
-/** Cadencia del chequeo de expiración de fase. */
-const TICK_INTERVAL_MS = 250
+/**
+ * Cadencia de la red de seguridad del fin de fase: si el deadline se atrasa
+ * (throttling de timers en segundo plano) o la ventana dueña del aviso cede,
+ * este polling termina resolviendo la expiración, como antes.
+ */
+const SAFETY_POLL_MS = 250
 
 export const usePomodoroStore = defineStore('pomodoro', () => {
   /** Identifica a esta instancia entre las demás webviews para descartar su eco. */
@@ -60,27 +64,75 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   })
 
   let ticker: ReturnType<typeof setInterval> | undefined
+  let tickDeReloj: ReturnType<typeof setTimeout> | undefined
+  let deadlineDeFase: ReturnType<typeof setTimeout> | undefined
 
   /**
-   * Un solo tick para toda la app: chequea la expiración cada 250 ms y muta el
-   * reloj solo cuando cambia el segundo entero, para repintar una vez por segundo.
+   * true cuando la fase que corre ya venció y falta resolverla.
    */
-  function tick(): void {
-    void advanceIfExpired()
-    const now = Date.now()
-    if (Math.floor(now / 1000) !== Math.floor(clock.value / 1000)) {
-      clock.value = now
-    }
+  function faseExpirada(): boolean {
+    return (
+      session.value.isRunning &&
+      session.value.endsAt !== null &&
+      new Date(session.value.endsAt).getTime() <= Date.now()
+    )
   }
 
+  /**
+   * Programa dos timers sobre la fase que corre, y solo mientras corre:
+   *
+   * - `deadlineDeFase` vence en `endsAt` exacto: el fin de fase se resuelve en
+   *   el instante justo, sin la latencia del polling.
+   * - `tickDeReloj` cae en el borde del segundo del fin de fase (no del reloj
+   *   de pared): cada segundo del countdown dura exactamente 1000 ms y el
+   *   display salta en el instante correspondiente, sin jitter.
+   *
+   * Sin fase corriendo no hay timers: el reloj se congela con la pausa.
+   */
+  function programarTimersDeFase(): void {
+    if (tickDeReloj !== undefined) clearTimeout(tickDeReloj)
+    if (deadlineDeFase !== undefined) clearTimeout(deadlineDeFase)
+    tickDeReloj = undefined
+    deadlineDeFase = undefined
+
+    if (!session.value.isRunning || session.value.endsAt === null) return
+
+    const finMs = new Date(session.value.endsAt).getTime()
+    const hastaElFin = finMs - Date.now()
+    if (hastaElFin <= 0) {
+      void advanceIfExpired()
+      return
+    }
+
+    deadlineDeFase = setTimeout(() => {
+      deadlineDeFase = undefined
+      void advanceIfExpired()
+    }, hastaElFin)
+
+    const hastaElBorde = hastaElFin % 1000 === 0 ? 1000 : hastaElFin % 1000
+    tickDeReloj = setTimeout(() => {
+      tickDeReloj = undefined
+      clock.value = Date.now()
+      programarTimersDeFase()
+    }, hastaElBorde)
+  }
+
+  /**
+   * Un solo ticker para toda la app: el polling queda solo como red de
+   * seguridad del fin de fase; el reloj y el deadline llevan el ritmo.
+   */
   function startTicker(): void {
     if (ticker) return
-    ticker = setInterval(tick, TICK_INTERVAL_MS)
+    ticker = setInterval(() => {
+      void advanceIfExpired()
+    }, SAFETY_POLL_MS)
+    programarTimersDeFase()
   }
 
   function stopTicker(): void {
     if (ticker !== undefined) clearInterval(ticker)
     ticker = undefined
+    programarTimersDeFase()
   }
 
   let soundPlayer: PomodoroSoundPlayer | undefined
@@ -130,6 +182,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     settings.value = snapshot.data.settings
     session.value = snapshot.data.session
     clock.value = Date.now()
+    programarTimersDeFase()
   }
 
   let syncRegistered = false
@@ -161,6 +214,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
           endsAt: null,
           remainingMs: getPhaseDurationMs(phase, settings.value),
         }
+    programarTimersDeFase()
   }
 
   async function advanceToNextPhase(
@@ -261,11 +315,17 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     }
     loaded.value = true
     clock.value = Date.now()
+    // El contexto de audio se crea acá, fuera de cualquier click: el primer
+    // play no paga la creación (el gesto solo lo despierta).
+    player().prewarm()
+    programarTimersDeFase()
     await advanceIfExpired()
   }
 
   async function start(): Promise<void> {
-    await advanceIfExpired()
+    // Solo se resuelve una expiración pendiente; sin expiración no hay await:
+    // el click muta la sesión en el mismo frame que la vista lo pidió.
+    if (faseExpirada()) await advanceIfExpired()
     if (session.value.isRunning) return
     const remaining =
       session.value.remainingMs ?? getPhaseDurationMs(session.value.phase, settings.value)
@@ -277,6 +337,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: new Date(now + remaining).toISOString(),
       remainingMs: null,
     }
+    programarTimersDeFase()
     await persistAndPublish()
   }
 
@@ -288,6 +349,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: null,
       remainingMs: getRemainingMs(session.value.endsAt),
     }
+    programarTimersDeFase()
     await persistAndPublish()
   }
 
@@ -304,6 +366,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
 
   async function reset(): Promise<void> {
     session.value = freshSession()
+    programarTimersDeFase()
     await persistAndPublish()
   }
 
@@ -313,6 +376,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    */
   function resetSession(): void {
     session.value = freshSession()
+    programarTimersDeFase()
     publish()
   }
 

@@ -157,6 +157,46 @@ describe('pomodoro sound player', () => {
     expect(AudioContextMock).not.toHaveBeenCalled()
   })
 
+  it('prewarm crea el AudioContext sin gesto de usuario y solo lo despierta el gesto', async () => {
+    const audio = createAudioContextMock('suspended')
+    const AudioContextMock = vi.fn(function () {
+      return audio.context
+    })
+    vi.stubGlobal('AudioContext', AudioContextMock)
+    const player = createPomodoroSoundPlayer()
+
+    // sin gesto: el contexto se crea de una (fuera del click) pero sigue dormido
+    player.prewarm()
+    expect(AudioContextMock).toHaveBeenCalledOnce()
+    expect(audio.context.resume).not.toHaveBeenCalled()
+
+    // prewarm es idempotente: no abre un segundo contexto
+    player.prewarm()
+    expect(AudioContextMock).toHaveBeenCalledOnce()
+
+    // el gesto solo despierta el contexto ya creado
+    await player.prepareFromUserGesture()
+    expect(AudioContextMock).toHaveBeenCalledOnce()
+    expect(audio.context.resume).toHaveBeenCalledOnce()
+    expect(audio.context.state).toBe('running')
+  })
+
+  it('prewarm degrada en silencio si el AudioContext no existe en el backend', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal(
+      'AudioContext',
+      vi.fn(function () {
+        throw new Error('WebKitGTK audio unavailable')
+      })
+    )
+    const player = createPomodoroSoundPlayer()
+
+    expect(() => player.prewarm()).not.toThrow()
+    expect(() => player.playFocusEndChime(defaultPomodoroSettings)).not.toThrow()
+
+    warn.mockRestore()
+  })
+
   it('resolves safely when AudioContext construction throws (WebKitGTK backend unavailable)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const AudioContextMock = vi.fn(function () {

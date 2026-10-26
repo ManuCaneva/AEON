@@ -337,6 +337,49 @@
   max-width: 100cqw;
   max-height: 100cqh;
 }
+
+/* Anillo SVG del pomodoro (compartido por widget, mini y página). El avance
+   es `stroke-dashoffset` continuo sobre un anillo de pathLength 100: el reloj
+   avanza por pasos de un segundo y la transición interpola ese segundo, así
+   el anillo se mueve sin saltos y sin rAF (ADR 0006/0007). El stroke también
+   transiciona de color al cambiar de fase (enfoque ↔ descanso). */
+.pomodoro-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  /* Capa decorativa que cubre todo el círculo: sin esto tapa los clicks de
+     los controles que viven dentro del disco. */
+  pointer-events: none;
+}
+.pomodoro-ring-track {
+  fill: none;
+  stroke-width: 2.5;
+}
+.pomodoro-ring-progress {
+  fill: none;
+  stroke: var(--pomodoro-ring);
+  stroke-width: 2.5;
+  stroke-dasharray: 100;
+  transition:
+    stroke-dashoffset 1s linear,
+    stroke 0.35s ease;
+}
+
+/* Entrada del countdown al cambiar de fase */
+.pomodoro-fade-in {
+  animation: pomodoro-fade 280ms ease-out;
+}
+@keyframes pomodoro-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .container-widget .pomodoro-disc {
   width: calc(100% - max(8px, 4cqmin));
   height: calc(100% - max(8px, 4cqmin));
@@ -346,10 +389,30 @@
   font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
 }
 /* Ventana mini (contenedor chico): el piso del contador baja junto con el
-   disco, sin dejar de respetar la escala de Configuración. */
+   disco y los controles se compactan, sin dejar de respetar la escala de
+   Configuración. La mini ahora se puede achicar hasta 140 px de ancho y en
+   ese rango el disco deja de ser un cuadrado lleno de controles. */
 @container (max-width: 240px) {
   .container-widget .pomodoro-countdown {
     font-size: max(calc(1rem * var(--text-scale)), 12cqmin);
+  }
+  .container-widget .pomodoro-controls {
+    gap: max(0.125rem, 2cqmin);
+  }
+  .container-widget .pomodoro-btn {
+    width: max(1.5rem, 8cqmin);
+    height: max(1.5rem, 8cqmin);
+  }
+}
+/* Mínimo de la mini (140×150): otro escalón para que el countdown y los
+   controles sigan entrando en el disco. */
+@container (max-width: 170px) {
+  .container-widget .pomodoro-countdown {
+    font-size: max(calc(0.875rem * var(--text-scale)), 12cqmin);
+  }
+  .container-widget .pomodoro-btn {
+    width: max(1.25rem, 8cqmin);
+    height: max(1.25rem, 8cqmin);
   }
 }
 .container-widget .pomodoro-controls {

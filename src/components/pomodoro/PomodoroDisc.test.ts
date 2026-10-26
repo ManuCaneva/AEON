@@ -150,6 +150,38 @@ describe('PomodoroDisc', () => {
     expect((progress.attributes('style') ?? '') as string).not.toContain('rgb(var(--color-primary)')
   })
 
+  it('el avance del anillo es continuo: un segundo de fase ya mueve el stroke-dashoffset', async () => {
+    const wrapper = mount(PomodoroDisc, { props: { testIdPrefix: 'x' } })
+    const anillo = () => wrapper.get('.pomodoro-ring-progress')
+    const offset = () => (anillo().attributes('style') ?? '') as string
+
+    const inicial = offset()
+    // Un segundo en un enfoque de 25 minutos es 0,067%: antes no movía el anillo.
+    pomodoroState.remainingMs = 25 * 60_000 - 1_000
+    await wrapper.vm.$nextTick()
+    expect(offset()).not.toBe(inicial)
+
+    // Congelado: el anillo solo sigue el tiempo del store, sin reloj propio.
+    const congelado = offset()
+    await wrapper.vm.$nextTick()
+    expect(offset()).toBe(congelado)
+  })
+
+  it('el cambio de fase funde el countdown y transiciona el color del anillo', async () => {
+    const wrapper = mount(PomodoroDisc, { props: { testIdPrefix: 'x' } })
+    const countdownAntes = wrapper.get('[data-testid="x-countdown"]').element
+
+    ;(pomodoroState.session as { phase: string }).phase = 'shortBreak'
+    await wrapper.vm.$nextTick()
+
+    const countdown = wrapper.get('[data-testid="x-countdown"]')
+    expect(countdown.element).not.toBe(countdownAntes)
+    expect(countdown.classes()).toContain('pomodoro-fade-in')
+    expect(
+      (wrapper.get('[data-testid="x-progress"]').attributes('style') ?? '') as string
+    ).toContain('rgb(var(--color-success)')
+  })
+
   it('la cuenta regresiva sigue al store compartido, sin reloj propio', async () => {
     const wrapper = mount(PomodoroDisc, { props: { testIdPrefix: 'x' } })
     expect(wrapper.get('[data-testid="x-countdown"]').text()).toBe('25:00')
