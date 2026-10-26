@@ -304,7 +304,7 @@ Todos los componentes consumen tokens y acentos; ninguno hardcodea color. Los pr
 - **Filas** con hover `surface-2` y hairlines cálidas; listas con `gap-1`/`gap-2`.
 - **Vistas centradas** (Settings, Archivados) usan `max-w-2xl px-6 py-12` y secciones con eyebrow.
 - **Settings**: dropdown de tema con panel `rounded-lg border-hairline-strong bg-surface-2 shadow-xl`; swatches `rounded-full` con el primary del tema.
-- **Pomodoro**: timer con anillo `conic-gradient` sobre `surface-3` y acentos semánticos en el panel de settings.
+- **Pomodoro**: timer con anillo SVG (`stroke-dashoffset` con transición de CSS sobre `surface-3`) y acentos semánticos en el panel de settings.
 - **Empty states**: ícono en círculo `rounded-full border-hairline bg-surface-1 text-ink-subtle` + copy `text-subhead text-ink-muted`.
 
 ## Do's and Don'ts

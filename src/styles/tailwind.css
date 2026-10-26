@@ -337,6 +337,46 @@
   max-width: 100cqw;
   max-height: 100cqh;
 }
+
+/* Anillo SVG del pomodoro (compartido por widget, mini y página). El avance
+   es `stroke-dashoffset` continuo sobre un anillo de pathLength 100: el reloj
+   avanza por pasos de un segundo y la transición interpola ese segundo, así
+   el anillo se mueve sin saltos y sin rAF (ADR 0006/0007). El stroke también
+   transiciona de color al cambiar de fase (enfoque ↔ descanso). */
+.pomodoro-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.pomodoro-ring-track {
+  fill: none;
+  stroke-width: 2.5;
+}
+.pomodoro-ring-progress {
+  fill: none;
+  stroke: var(--pomodoro-ring);
+  stroke-width: 2.5;
+  stroke-dasharray: 100;
+  transition:
+    stroke-dashoffset 1s linear,
+    stroke 0.35s ease;
+}
+
+/* Entrada del countdown al cambiar de fase */
+.pomodoro-fade-in {
+  animation: pomodoro-fade 280ms ease-out;
+}
+@keyframes pomodoro-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .container-widget .pomodoro-disc {
   width: calc(100% - max(8px, 4cqmin));
   height: calc(100% - max(8px, 4cqmin));

@@ -122,13 +122,32 @@ describe('PomodoroView', () => {
     wrapper.unmount()
   })
 
-  it('el anillo principal usa rgb(var(--color-*)) válido para ambos tramos', () => {
+  it('el anillo principal dibuja el progreso con el token de la fase y el track en surface-3', () => {
     store = createStore()
     const wrapper = mount(PomodoroView)
     const ring = wrapper.get('[data-testid="pomodoro-progress"]')
     const style = (ring.attributes('style') ?? '') as string
     expect(style).toContain('rgb(var(--color-primary)')
-    expect(style).toContain('rgb(var(--color-surface-3)')
+    expect(wrapper.get('.pomodoro-ring-track').attributes('style') ?? '').toContain(
+      'rgb(var(--color-surface-3)'
+    )
+    expect(wrapper.get('.pomodoro-ring-progress').attributes('style') ?? '').toContain(
+      'stroke-dashoffset'
+    )
+    wrapper.unmount()
+  })
+
+  it('el countdown de la card funde su entrada al cambiar de fase', async () => {
+    store = createStore()
+    const wrapper = mount(PomodoroView)
+    const antes = wrapper.get('[data-testid="pomodoro-countdown"]').element
+
+    ;(store.session as { phase: string }).phase = 'shortBreak'
+    await wrapper.vm.$nextTick()
+
+    const countdown = wrapper.get('[data-testid="pomodoro-countdown"]')
+    expect(countdown.element).not.toBe(antes)
+    expect(countdown.classes()).toContain('pomodoro-fade-in')
     wrapper.unmount()
   })
 
