@@ -585,6 +585,185 @@ describe('weeklySchedule store', () => {
     })
   })
 
+  describe('renameOccurrence (renombrar una sola ocurrencia)', () => {
+    const blockId = '333e8400-e29b-41d4-a716-446655440000'
+    const tuesdaySlotId = '550e8400-e29b-41d4-a716-446655440001'
+    const thursdaySlotId = '550e8400-e29b-41d4-a716-446655440002'
+    const slot = (id: string, day: number) => ({
+      id,
+      block_id: blockId,
+      day_of_week: day,
+      start_minutes: 540,
+      end_minutes: 570,
+      created_at: validIso,
+      updated_at: validIso,
+    })
+    const makeBlock = (slots = [slot(tuesdaySlotId, 1), slot(thursdaySlotId, 3)]) => ({
+      id: blockId,
+      title: 'Gimnasio',
+      color: 'lavender' as const,
+      sort_order: 2,
+      created_at: validIso,
+      updated_at: validIso,
+      slots,
+    })
+
+    it('no hace nada si el nombre no cambió', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock()]
+
+      await store.renameOccurrence(tuesdaySlotId, '  Gimnasio  ')
+
+      expect(db.updateScheduleBlock).not.toHaveBeenCalled()
+      expect(db.createScheduleBlock).not.toHaveBeenCalled()
+      expect(db.deleteScheduleSlot).not.toHaveBeenCalled()
+      expect(store.blocksWithSlots).toHaveLength(1)
+    })
+
+    it('renombra el bloque entero cuando la ocurrencia es la única', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock([slot(tuesdaySlotId, 1)])]
+      vi.mocked(db.updateScheduleBlock).mockResolvedValue({
+        id: blockId,
+        title: 'Pesas',
+        color: 'lavender',
+        sort_order: 2,
+        created_at: validIso,
+        updated_at: validIso,
+      })
+
+      await store.renameOccurrence(tuesdaySlotId, 'Pesas')
+
+      expect(db.updateScheduleBlock).toHaveBeenCalledWith(
+        blockId,
+        { title: 'Pesas' },
+        expect.any(String)
+      )
+      expect(db.createScheduleBlock).not.toHaveBeenCalled()
+      expect(db.deleteScheduleSlot).not.toHaveBeenCalled()
+      expect(store.blocksWithSlots).toHaveLength(1)
+      expect(store.blocksWithSlots[0].title).toBe('Pesas')
+      expect(store.blocksWithSlots[0].slots[0].id).toBe(tuesdaySlotId)
+    })
+
+    it('separa la ocurrencia en un bloque nuevo con el mismo color cuando el bloque tiene más horarios', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock()]
+      vi.mocked(db.createScheduleBlock).mockImplementation(
+        async (draft, id, created_at, updated_at) => ({
+          id,
+          title: draft.title,
+          color: draft.color,
+          sort_order: draft.sort_order,
+          created_at,
+          updated_at,
+        })
+      )
+      vi.mocked(db.createScheduleSlot).mockImplementation(
+        async (draft, id, newBlockId, created_at, updated_at) => ({
+          id,
+          block_id: newBlockId,
+          day_of_week: draft.day_of_week,
+          start_minutes: draft.start_minutes,
+          end_minutes: draft.end_minutes,
+          created_at,
+          updated_at,
+        })
+      )
+
+      await store.renameOccurrence(tuesdaySlotId, 'Pesas')
+
+      expect(db.updateScheduleBlock).not.toHaveBeenCalled()
+      expect(db.createScheduleBlock).toHaveBeenCalledWith(
+        { title: 'Pesas', color: 'lavender', sort_order: 2 },
+        expect.any(String),
+        expect.any(String),
+        expect.any(String)
+      )
+      const newBlockId = vi.mocked(db.createScheduleBlock).mock.calls[0][1]
+      expect(db.createScheduleSlot).toHaveBeenCalledWith(
+        { day_of_week: 1, start_minutes: 540, end_minutes: 570 },
+        expect.any(String),
+        newBlockId,
+        expect.any(String),
+        expect.any(String)
+      )
+      expect(db.deleteScheduleSlot).toHaveBeenCalledWith(tuesdaySlotId)
+
+      expect(store.blocksWithSlots).toHaveLength(2)
+      const original = store.blocksWithSlots.find((bw) => bw.id === blockId)!
+      expect(original.title).toBe('Gimnasio')
+      expect(original.slots.map((s) => s.id)).toEqual([thursdaySlotId])
+      const split = store.blocksWithSlots.find((bw) => bw.id === newBlockId)!
+      expect(split.title).toBe('Pesas')
+      expect(split.color).toBe('lavender')
+      expect(split.slots).toHaveLength(1)
+      expect(split.slots[0]).toMatchObject({
+        day_of_week: 1,
+        start_minutes: 540,
+        end_minutes: 570,
+      })
+    })
+
+    it('usa "Sin título" cuando el nombre queda vacío', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock([slot(tuesdaySlotId, 1)])]
+      vi.mocked(db.updateScheduleBlock).mockResolvedValue({
+        id: blockId,
+        title: 'Sin título',
+        color: 'lavender',
+        sort_order: 2,
+        created_at: validIso,
+        updated_at: validIso,
+      })
+
+      await store.renameOccurrence(tuesdaySlotId, '   ')
+
+      expect(db.updateScheduleBlock).toHaveBeenCalledWith(
+        blockId,
+        { title: 'Sin título' },
+        expect.any(String)
+      )
+      expect(store.blocksWithSlots[0].title).toBe('Sin título')
+    })
+
+    it('lanza si la ocurrencia no existe', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock()]
+
+      await expect(
+        store.renameOccurrence('550e8400-e29b-41d4-a716-4466554400ff', 'Pesas')
+      ).rejects.toThrow('Slot no encontrado')
+      expect(db.createScheduleBlock).not.toHaveBeenCalled()
+      expect(db.deleteScheduleSlot).not.toHaveBeenCalled()
+    })
+
+    it('si falla la creación del slot nuevo, borra el bloque creado y deja intacto el original', async () => {
+      const store = useWeeklyScheduleStore()
+      store.blocksWithSlots = [makeBlock()]
+      vi.mocked(db.createScheduleBlock).mockImplementation(
+        async (draft, id, created_at, updated_at) => ({
+          id,
+          title: draft.title,
+          color: draft.color,
+          sort_order: draft.sort_order,
+          created_at,
+          updated_at,
+        })
+      )
+      vi.mocked(db.createScheduleSlot).mockRejectedValue(new Error('db caída'))
+
+      await expect(store.renameOccurrence(tuesdaySlotId, 'Pesas')).rejects.toThrow('db caída')
+
+      const newBlockId = vi.mocked(db.createScheduleBlock).mock.calls[0][1]
+      expect(db.deleteScheduleBlock).toHaveBeenCalledWith(newBlockId)
+      expect(db.deleteScheduleSlot).not.toHaveBeenCalled()
+      expect(store.blocksWithSlots).toHaveLength(1)
+      expect(store.blocksWithSlots[0].title).toBe('Gimnasio')
+      expect(store.blocksWithSlots[0].slots).toHaveLength(2)
+    })
+  })
+
   describe('saveBlock (Guardar único del modal)', () => {
     const blockId = '333e8400-e29b-41d4-a716-446655440000'
     const slotAId = '550e8400-e29b-41d4-a716-446655440001'

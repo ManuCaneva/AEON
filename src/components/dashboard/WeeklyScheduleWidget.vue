@@ -22,8 +22,8 @@ const selectedSlotId = ref<string | null>(null)
 // La grilla avisa cuando hay un nombre editándose inline: ese Esc cancela el
 // nombre, no cierra el modo edición.
 const inlineNameEditing = ref(false)
-// Copia de una ocurrencia: título, color y duración para pegar como bloque
-// nuevo independiente. El pegado sigue al puntero hasta que se coloca o se
+// Copia de una ocurrencia: título y color. El pegado nace con una unidad de la
+// grilla (una fila) y el fantasma sigue al puntero hasta que se coloca o se
 // termina con Esc.
 const clipboard = ref<ScheduleClipboardPayload | null>(null)
 const pasting = ref(false)
@@ -48,13 +48,7 @@ async function removeOccurrence(slotId: string) {
 function copyOccurrence(slotId: string) {
   const block = store.blockForSlot(slotId)
   if (!block) return
-  const slot = block.slots.find((s) => s.id === slotId)
-  if (!slot) return
-  clipboard.value = {
-    title: block.title,
-    color: block.color,
-    durationMinutes: slot.end_minutes - slot.start_minutes,
-  }
+  clipboard.value = { blockId: block.id, title: block.title, color: block.color }
 }
 
 function startPaste() {
@@ -65,18 +59,35 @@ function startPaste() {
 async function pasteOccurrence(day: number, startMinutes: number) {
   const clip = clipboard.value
   if (!clip || !store.enabledDays.includes(day)) return
-  // La grilla ya rechazó los destinos que no entran en el día: acá no se
-  // reubica la copia en silencio.
-  if (startMinutes < 0 || startMinutes + clip.durationMinutes > MINUTES_PER_DAY) return
+  // La copia nace con una unidad de la grilla (una fila): así entra en el
+  // hueco libre que la grilla ya resolvió, sin arrastrar la duración original.
+  const duration = store.settings.granularity_minutes
+  if (startMinutes < 0 || startMinutes + duration > MINUTES_PER_DAY) return
+  const draft = {
+    day_of_week: day,
+    start_minutes: startMinutes,
+    end_minutes: startMinutes + duration,
+  }
   try {
-    await store.createBlock({ title: clip.title, color: clip.color, sort_order: 0 }, [
-      {
-        day_of_week: day,
-        start_minutes: startMinutes,
-        end_minutes: startMinutes + clip.durationMinutes,
-      },
-    ])
+    // La copia se suma al bloque de origen mientras siga existiendo y conserve
+    // el nombre. Si fue borrado, se recrea desde la instantánea del portapapeles.
+    const source = store.blocksWithSlots.find(
+      (bw) => bw.id === clip.blockId && bw.title === clip.title
+    )
+    if (source) {
+      await store.addSlot(source.id, draft)
+    } else {
+      const created = await store.createBlock(
+        { title: clip.title, color: clip.color, sort_order: 0 },
+        [draft]
+      )
+      clipboard.value = { ...clip, blockId: created.id }
+    }
+    // Un pegado por activación. La copia queda en el portapapeles para volver
+    // a pegar con otra pulsación, sin salir del modo edición.
+    pasting.value = false
   } catch (e) {
+    // Si falla, el pegado sigue activo para reintentar sin perder la copia.
     console.error('No se pudo pegar el bloque en la grilla:', e)
   }
 }
@@ -193,6 +204,7 @@ function openEdit(b: ScheduleBlockWithSlots) {
           @remove="removeOccurrence"
           @copy="copyOccurrence"
           @paste-start="startPaste"
+          @paste-cancel="pasting = false"
           @paste="pasteOccurrence"
           @edit="openEdit"
           @name-edit-state="inlineNameEditing = $event"

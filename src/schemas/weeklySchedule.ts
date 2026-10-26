@@ -15,11 +15,12 @@ export const BLOCK_COLOR_TOKENS = [
 export type BlockColorToken = (typeof BLOCK_COLOR_TOKENS)[number]
 export const blockColorSchema = z.enum(BLOCK_COLOR_TOKENS)
 
-/** Copia de una ocurrencia para pegarla como bloque nuevo en la grilla. */
+/** Copia de una ocurrencia para pegarla en la grilla. */
 export interface ScheduleClipboardPayload {
+  /** Bloque de origen: los pegados se suman a él mientras conserve su nombre. */
+  blockId: string
   title: string
   color: BlockColorToken
-  durationMinutes: number
 }
 
 // ── Dominio (consume Pinia/Vue) ──
@@ -192,6 +193,7 @@ export function scheduleSlotToRow(s: ScheduleSlot): ScheduleSlotRow {
 export const WeeklyScheduleSettingsSchema = z.object({
   granularity_minutes: z.union([z.literal(15), z.literal(30), z.literal(60)]).default(30),
   week_starts_monday: z.boolean().default(true), // MVP fijo true (sin UI)
+  show_block_times: z.boolean().default(true),
   enabled_days: z
     .array(z.number().int().min(0).max(6))
     .min(1)

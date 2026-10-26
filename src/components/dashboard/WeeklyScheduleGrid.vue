@@ -16,10 +16,12 @@ import {
   growthEdgeAt,
   pointerToScheduleMinutes,
   pointerToSchedulePosition,
+  WINDOW_GROWTH_INTERVAL_MS,
   type ScheduleDragPoint,
   type WindowGrowthEdge,
 } from '@/lib/scheduleDragGeometry'
-import { MINUTES_PER_DAY, clampMinutes } from '@/lib/scheduleTime'
+import { MINUTES_PER_DAY, adaptiveLabelStepMinutes, clampMinutes } from '@/lib/scheduleTime'
+import { findFreePlacement } from '@/lib/schedulePlacement'
 import { blockColorTint } from '@/lib/scheduleColors'
 import type {
   ScheduleBlockWithSlots,
@@ -46,6 +48,7 @@ const emit = defineEmits<{
   remove: [slotId: string]
   copy: [slotId: string]
   'paste-start': []
+  'paste-cancel': []
   paste: [day: number, startMinutes: number]
   'name-edit-state': [active: boolean]
 }>()
@@ -150,6 +153,7 @@ onUnmounted(() => {
     cancelAnimationFrame(rafId)
     rafId = null
   }
+  stopGrowthTimer()
   stopTransitionListener?.()
   stopTransitionListener = null
 })
@@ -159,9 +163,11 @@ watch(() => [store.settings, store.visibleWindow], measure, { deep: true })
 // Horas extra que se muestran mientras un gesto se acerca a un borde. La
 // ventana base sigue siendo la derivada del store: al soltar, esto vuelve a 0.
 const gestureWindowGrowth = ref({ above: 0, below: 0 })
-// Banda de borde alcanzada por el puntero. El crecimiento ocurre al entrar a la
-// banda: para sumar otra hora hay que salir y volver a entrar.
+// Banda de borde alcanzada por el puntero. Mientras siga dentro, la ventana
+// crece una hora por tick; salir de la banda detiene el crecimiento.
 const growthEdge = ref<WindowGrowthEdge | null>(null)
+let growthTimer: ReturnType<typeof setInterval> | null = null
+let lastPointerClient: { clientX: number; clientY: number } | null = null
 
 const effectiveWindow = computed<VisibleWindow>(() => ({
   start_minutes: Math.max(0, store.visibleWindow.start_minutes - gestureWindowGrowth.value.above),
@@ -172,8 +178,17 @@ const effectiveWindow = computed<VisibleWindow>(() => ({
 }))
 
 function resetGestureWindow() {
+  stopGrowthTimer()
+  lastPointerClient = null
   gestureWindowGrowth.value = { above: 0, below: 0 }
   growthEdge.value = null
+}
+
+function stopGrowthTimer() {
+  if (growthTimer !== null) {
+    clearInterval(growthTimer)
+    growthTimer = null
+  }
 }
 
 const visibleRows = computed(() => {
@@ -195,14 +210,38 @@ const nowLineTop = computed(() =>
   nowLineTopPx(minutesSinceMidnight(nowRef.value), effectiveWindow.value, minuteHeightPx.value)
 )
 
+/** Cada cuánto se rotula: las filas siguen la granularidad, las etiquetas no. */
+const labelStepMinutes = computed(() =>
+  adaptiveLabelStepMinutes(store.settings.granularity_minutes, rowHeightPx.value)
+)
+
 const hourLabels = computed(() => {
-  const out: { minute: number; label: string }[] = []
+  const out: { minute: number; label: string; heightPx: number; labelHeightPx: number }[] = []
+  const start = effectiveWindow.value.start_minutes
+  const end = effectiveWindow.value.end_minutes
+  const step = labelStepMinutes.value
+  for (let m = start; m < end; m += step) {
+    // La última etiqueta no se extiende más allá de la ventana visible.
+    const coverMinutes = Math.min(step, end - m)
+    out.push({
+      minute: m,
+      label: minutesToHHMM(m),
+      heightPx: coverMinutes * minuteHeightPx.value,
+      // El rótulo se centra en la primera hora de su tramo: en un tramo de 2 h
+      // sigue marcando las 10:00 dentro de la franja 10:00–11:00.
+      labelHeightPx: Math.min(60, coverMinutes) * minuteHeightPx.value,
+    })
+  }
+  return out
+})
+
+/** Filas reales de edición: siempre una por granularidad, independientes del rótulo. */
+const gridRows = computed(() => {
+  const out: { minute: number }[] = []
   const start = effectiveWindow.value.start_minutes
   const end = effectiveWindow.value.end_minutes
   const step = store.settings.granularity_minutes
-  for (let m = start; m < end; m += step) {
-    out.push({ minute: m, label: minutesToHHMM(m) })
-  }
+  for (let m = start; m < end; m += step) out.push({ minute: m })
   return out
 })
 
@@ -270,7 +309,13 @@ function isHoverVisible(slotId: string): boolean {
 }
 
 function onSlotClick(vs: VisibleSlot) {
-  if (props.pasting) return
+  if (props.pasting) {
+    // Click sobre otro bloque mientras se pega: cancela el pegado y lo elige,
+    // para poder copiarlo sin salir del modo edición.
+    emit('paste-cancel')
+    emit('select', vs.slot.id)
+    return
+  }
   if (!ui.scheduleEditMode) {
     emit('edit', vs.block)
     return
@@ -281,13 +326,15 @@ function onSlotClick(vs: VisibleSlot) {
 /** Click en un hueco de la grilla: limpia la selección o coloca el pegado. */
 function onGridClick(event: MouseEvent) {
   if (!ui.scheduleEditMode) return
+  const target = event.target as HTMLElement | null
+  // Un click sobre un bloque o sus controles nunca coloca la copia: o la
+  // cancela (onSlotClick) o pertenece al bloque. Se resuelve antes del pegado.
+  if (target?.closest?.('.schedule-block')) return
+  if (target?.closest?.('[data-schedule-slot-control]')) return
   if (pasteActive.value) {
     placePaste(event)
     return
   }
-  const target = event.target as HTMLElement | null
-  if (target?.closest?.('.schedule-block')) return
-  if (target?.closest?.('[data-schedule-slot-control]')) return
   emit('select', null)
 }
 
@@ -326,7 +373,7 @@ async function onBlockDoubleClick(vs: VisibleSlot) {
 }
 
 async function onDayDoubleClick(day: number, event: MouseEvent) {
-  if (!ui.scheduleEditMode || props.pasting) return
+  if (props.pasting) return
   const rowHeight = rowHeightPx.value
   if (rowHeight <= 0) return
 
@@ -339,6 +386,13 @@ async function onDayDoubleClick(day: number, event: MouseEvent) {
   const end = Math.min(MINUTES_PER_DAY, start + granularity)
   if (end <= start) return
   if (store.wouldOverlapOnDay(day, start, end)) return
+
+  // Doble click sobre un hueco vacío: entra al modo edición y crea el bloque
+  // con el nombre inline, sin pasar por el modal de creación.
+  if (!ui.scheduleEditMode) {
+    ui.toggleScheduleEditMode()
+    if (!ui.scheduleEditMode) return
+  }
 
   await confirmName()
   try {
@@ -362,7 +416,10 @@ async function confirmName() {
   creatingBlockId.value = null
   if (!block || block.title === title) return
   try {
-    await store.updateBlock(block.id, { title })
+    // Un nombre distinto separa solo esta ocurrencia en un bloque nuevo; las
+    // demás conservan el nombre original. Con una única ocurrencia, renombra
+    // el bloque entero.
+    await store.renameOccurrence(slotId, title)
   } catch (e) {
     console.error('No se pudo renombrar el bloque:', e)
   }
@@ -387,6 +444,8 @@ interface GestureState {
   day: number
   start: number
   end: number
+  /** Minutos entre el borde agarrado y el puntero al iniciar el gesto. */
+  grabOffsetMinutes: number
   pointerX: number | null
   pointerY: number | null
 }
@@ -394,6 +453,7 @@ interface GestureState {
 interface GestureCandidate {
   vs: VisibleSlot
   kind: GestureKind
+  grabOffsetMinutes: number
 }
 
 const daysGridRef = ref<HTMLElement | null>(null)
@@ -423,6 +483,7 @@ const { begin: beginGesture } = useScheduleDrag(
         day: candidate.vs.slot.day_of_week,
         start: candidate.vs.slot.start_minutes,
         end: candidate.vs.slot.end_minutes,
+        grabOffsetMinutes: candidate.grabOffsetMinutes,
         pointerX: null,
         pointerY: null,
       }
@@ -439,16 +500,95 @@ const { begin: beginGesture } = useScheduleDrag(
   }
 )
 
+/**
+ * Minuto del puntero sobre la grilla al iniciar el gesto. Se descuenta del
+ * borde agarrado al mover: el bloque no salta para enganchar su inicio al
+ * mouse, conserva el punto donde el usuario lo tomó.
+ */
+function pointerMinutesOnGrid(event: PointerEvent): number | null {
+  const grid = daysGridRef.value
+  if (!grid || minuteHeightPx.value <= 0) return null
+  return pointerToScheduleMinutes(event.clientY, grid.getBoundingClientRect(), {
+    windowStart: windowStart.value,
+    minuteHeightPx: minuteHeightPx.value,
+  })
+}
+
+function grabOffsetMinutes(vs: VisibleSlot, kind: GestureKind, event: PointerEvent): number {
+  const minutes = pointerMinutesOnGrid(event)
+  if (minutes === null) return 0
+  // El borde agarrado es el inicio salvo en la manija inferior.
+  const edge = kind === 'resize-bottom' ? vs.slot.end_minutes : vs.slot.start_minutes
+  return minutes - edge
+}
+
 function onBlockPointerDown(vs: VisibleSlot, event: PointerEvent) {
   if (!ui.scheduleEditMode || props.pasting) return
-  gestureCandidate.value = { vs, kind: 'move' }
+  gestureCandidate.value = {
+    vs,
+    kind: 'move',
+    grabOffsetMinutes: grabOffsetMinutes(vs, 'move', event),
+  }
   beginGesture(event)
 }
 
 function onResizePointerDown(vs: VisibleSlot, edge: 'top' | 'bottom', event: PointerEvent) {
   if (!ui.scheduleEditMode || props.pasting) return
-  gestureCandidate.value = { vs, kind: edge === 'top' ? 'resize-top' : 'resize-bottom' }
+  const kind = edge === 'top' ? 'resize-top' : 'resize-bottom'
+  gestureCandidate.value = { vs, kind, grabOffsetMinutes: grabOffsetMinutes(vs, kind, event) }
   beginGesture(event)
+}
+
+function applyWindowGrowth(edge: WindowGrowthEdge): boolean {
+  const before = effectiveWindow.value
+  const grown = growWindowAtEdge(before, edge)
+  if (grown.start_minutes === before.start_minutes && grown.end_minutes === before.end_minutes) {
+    // Llegó a 00:00 o 24:00: no hay más horas para mostrar.
+    stopGrowthTimer()
+    return false
+  }
+  const base = store.visibleWindow
+  gestureWindowGrowth.value = {
+    above: base.start_minutes - grown.start_minutes,
+    below: grown.end_minutes - base.end_minutes,
+  }
+  return true
+}
+
+function startGrowthTimer(edge: WindowGrowthEdge) {
+  if (growthTimer !== null) return
+  growthTimer = setInterval(() => tickGrowth(edge), WINDOW_GROWTH_INTERVAL_MS)
+}
+
+/**
+ * Mientras el puntero siga en la banda, la ventana suma una hora por tick. El
+ * gesto se reevalúa con la ventana nueva para que el bloque siga bajo el mouse.
+ */
+function tickGrowth(edge: WindowGrowthEdge) {
+  if (!gestureState.value) {
+    stopGrowthTimer()
+    return
+  }
+  const grid = daysGridRef.value
+  const pointer = lastPointerClient
+  if (!grid || !pointer) {
+    stopGrowthTimer()
+    return
+  }
+  const rect = grid.getBoundingClientRect()
+  if (growthEdgeAt(pointer.clientY, rect) !== edge) {
+    growthEdge.value = null
+    stopGrowthTimer()
+    return
+  }
+  if (!applyWindowGrowth(edge)) return
+  applyGesturePoint(
+    pointerToSchedulePosition(pointer.clientX, pointer.clientY, rect, {
+      enabledDays: enabledDays.value,
+      windowStart: effectiveWindow.value.start_minutes,
+      minuteHeightPx: minuteHeightPx.value,
+    })
+  )
 }
 
 function growWindowAtPointer(point: ScheduleDragPoint): ScheduleDragPoint {
@@ -456,21 +596,20 @@ function growWindowAtPointer(point: ScheduleDragPoint): ScheduleDragPoint {
   if (!grid) return point
   const rect = grid.getBoundingClientRect()
   const edge = growthEdgeAt(point.clientY, rect)
-  // Una hora por acercamiento: el crecimiento se dispara al ENTRAR a la banda
-  // del borde, no en cada pointermove. Para la segunda hora hay que salir de la
-  // banda y volver a entrar.
   if (edge === null) {
     growthEdge.value = null
+    stopGrowthTimer()
     return point
   }
+  lastPointerClient = { clientX: point.clientX, clientY: point.clientY }
+  // Ya estábamos en esta banda: el intervalo sigue sumando horas. Cada
+  // pointermove llega mapeado con la ventana vigente, así que no hay que
+  // volver a crecer ni a reproyectar.
   if (edge === growthEdge.value) return point
   growthEdge.value = edge
-  const grown = growWindowAtEdge(effectiveWindow.value, edge)
-  const base = store.visibleWindow
-  gestureWindowGrowth.value = {
-    above: base.start_minutes - grown.start_minutes,
-    below: grown.end_minutes - base.end_minutes,
-  }
+  if (!applyWindowGrowth(edge)) return point
+  stopGrowthTimer()
+  startGrowthTimer(edge)
   // El crecimiento cambia el mapeo píxeles → minutos: el mismo puntero se
   // traduce con la ventana vigente para que el bloque no se despegue.
   return pointerToSchedulePosition(point.clientX, point.clientY, rect, {
@@ -480,17 +619,19 @@ function growWindowAtPointer(point: ScheduleDragPoint): ScheduleDragPoint {
   })
 }
 
-function moveGesture(point: ScheduleDragPoint) {
+function applyGesturePoint(point: ScheduleDragPoint) {
   const state = gestureState.value
   if (!state) return
-
-  point = growWindowAtPointer(point)
 
   if (state.kind === 'move') {
     // Los días deshabilitados no son destino de arrastre.
     if (!enabledDays.value.includes(point.day)) return
     const duration = state.end - state.start
-    const start = clampMinutes(point.minutes, 0, MINUTES_PER_DAY - duration)
+    const start = clampMinutes(
+      point.minutes - state.grabOffsetMinutes,
+      0,
+      MINUTES_PER_DAY - duration
+    )
     gestureState.value = {
       ...state,
       day: point.day,
@@ -503,16 +644,23 @@ function moveGesture(point: ScheduleDragPoint) {
   }
 
   // La arista opuesta queda anclada: estirar desde arriba mueve el inicio con
-  // el fin fijo; estirar desde abajo mueve el fin con el inicio fijo.
+  // el fin fijo; estirar desde abajo mueve el fin con el inicio fijo. El borde
+  // conserva su distancia al puntero, igual que al mover.
+  const edgeMinutes = point.minutes - state.grabOffsetMinutes
   const start =
     state.kind === 'resize-top'
-      ? clampMinutes(point.minutes, 0, state.end - MIN_SLOT_DURATION_MINUTES)
+      ? clampMinutes(edgeMinutes, 0, state.end - MIN_SLOT_DURATION_MINUTES)
       : state.start
   const end =
     state.kind === 'resize-bottom'
-      ? clampMinutes(point.minutes, state.start + MIN_SLOT_DURATION_MINUTES, MINUTES_PER_DAY)
+      ? clampMinutes(edgeMinutes, state.start + MIN_SLOT_DURATION_MINUTES, MINUTES_PER_DAY)
       : state.end
   gestureState.value = { ...state, start, end, pointerX: point.clientX, pointerY: point.clientY }
+}
+
+function moveGesture(point: ScheduleDragPoint) {
+  if (!gestureState.value) return
+  applyGesturePoint(growWindowAtPointer(point))
 }
 
 function cancelGesture() {
@@ -597,6 +745,7 @@ const gestureRangeLabel = computed(() => {
 
 // ── Copiar y pegar (solo en el modo edición del cronograma) ──
 interface PastePoint {
+  day: number
   minutes: number
   clientX: number
   clientY: number
@@ -611,6 +760,25 @@ const lastPointer = ref<PastePoint | null>(null)
 
 const pasteActive = computed(() => props.pasting === true && props.clipboard != null)
 
+/** Una copia mide una fila de la grilla: así entra en cualquier hueco. */
+const pasteUnitMinutes = computed(() => store.settings.granularity_minutes)
+
+/** Horarios del día donde la copia no puede caer. */
+function occupiedRangesForDay(day: number) {
+  return store.blocksWithSlots
+    .flatMap((bw) => bw.slots)
+    .filter((slot) => slot.day_of_week === day)
+    .map((slot) => ({ start_minutes: slot.start_minutes, end_minutes: slot.end_minutes }))
+}
+
+/** Fila de la grilla bajo el puntero, alineada a la granularidad. */
+function rowStartAt(minutes: number) {
+  const step = pasteUnitMinutes.value
+  const start = windowStart.value
+  const clamped = clampMinutes(minutes, start, effectiveWindow.value.end_minutes)
+  return start + Math.floor((clamped - start) / step) * step
+}
+
 watch(
   () => props.pasting,
   (active) => {
@@ -623,11 +791,14 @@ function onDayPointerMove(event: PointerEvent) {
   if (minuteHeightPx.value <= 0) return
   const column = event.currentTarget as HTMLElement | null
   if (!column) return
+  const day = Number(column.dataset.day)
+  if (!enabledDays.value.includes(day)) return
   const minutes = pointerToScheduleMinutes(event.clientY, column.getBoundingClientRect(), {
     windowStart: windowStart.value,
     minuteHeightPx: minuteHeightPx.value,
   })
   const point = {
+    day,
     minutes: clampMinutes(minutes),
     clientX: event.clientX,
     clientY: event.clientY,
@@ -636,39 +807,46 @@ function onDayPointerMove(event: PointerEvent) {
   if (pasteActive.value) pastePoint.value = point
 }
 
+/**
+ * Dónde caería la copia: el hueco libre más cercano a la fila del puntero.
+ * Mientras haya lugar el fantasma ya muestra el destino exacto; si el día no
+ * tiene hueco no hay fantasma y el click avisa.
+ */
 const pasteRange = computed(() => {
-  const clip = props.clipboard
   const point = pastePoint.value
-  if (!pasteActive.value || !clip || !point) return null
-  // Sin reubicar en silencio: el fantasma muestra dónde caería la copia tal
-  // cual, aunque el destino se pase del fin del día (ahí el click rechaza).
-  const start = clampMinutes(point.minutes)
-  return { start, end: start + clip.durationMinutes }
-})
-
-const pasteGhostHeightPx = computed(() => {
-  const clip = props.clipboard
-  if (!clip) return 0
-  return Math.max(16, clip.durationMinutes * minuteHeightPx.value)
+  if (!pasteActive.value || !point) return null
+  const start = findFreePlacement(
+    rowStartAt(point.minutes),
+    pasteUnitMinutes.value,
+    occupiedRangesForDay(point.day),
+    {
+      start_minutes: effectiveWindow.value.start_minutes,
+      end_minutes: effectiveWindow.value.end_minutes,
+    }
+  )
+  if (start === null) return null
+  return { day: point.day, start, end: start + pasteUnitMinutes.value }
 })
 
 const pasteGhostStyle = computed(() => {
-  const point = pastePoint.value
-  if (!pasteActive.value || !point) return null
+  const range = pasteRange.value
+  if (!range) return null
+  const count = Math.max(1, enabledDays.value.length)
+  const column = Math.max(0, enabledDays.value.indexOf(range.day))
   return {
-    left: `${point.clientX + PASTE_GHOST_OFFSET_X}px`,
-    top: `${point.clientY + PASTE_GHOST_OFFSET_Y}px`,
-    width: '120px',
-    height: `${pasteGhostHeightPx.value}px`,
+    left: `${(column * 100) / count}%`,
+    width: `${100 / count}%`,
+    top: `${(range.start - windowStart.value) * minuteHeightPx.value}px`,
+    height: `${(range.end - range.start) * minuteHeightPx.value}px`,
   }
 })
 
 const pasteBadgeStyle = computed(() => {
   const point = pastePoint.value
-  if (!pasteActive.value || !point) return null
+  if (!pasteActive.value || !point || !pasteRange.value) return null
   return {
     left: `${point.clientX + PASTE_GHOST_OFFSET_X}px`,
-    top: `${point.clientY + PASTE_GHOST_OFFSET_Y + pasteGhostHeightPx.value + 6}px`,
+    top: `${point.clientY + PASTE_GHOST_OFFSET_Y}px`,
   }
 })
 
@@ -682,36 +860,34 @@ const floatingBadgeLabel = computed(() =>
   gestureState.value ? gestureRangeLabel.value : pasteRangeLabel.value
 )
 
-/** Un click sobre una columna habilitada coloca la copia en ese día y minuto. */
+/**
+ * Un click sobre una columna coloca la copia en el hueco libre más cercano a
+ * la fila clickeada: un solape puntual no rechaza el pegado, lo reubica.
+ */
 function placePaste(event: MouseEvent) {
-  const clip = props.clipboard
-  if (!clip || minuteHeightPx.value <= 0) return
+  if (!props.clipboard || minuteHeightPx.value <= 0) return
   const target = event.target as HTMLElement | null
   const column = target?.closest?.('[data-day]') as HTMLElement | null
   if (!column) return
   const day = Number(column.dataset.day)
   if (!enabledDays.value.includes(day)) return
-  const rect = column.getBoundingClientRect()
-  const start = clampMinutes(
-    pointerToScheduleMinutes(event.clientY, rect, {
+  const minutes = clampMinutes(
+    pointerToScheduleMinutes(event.clientY, column.getBoundingClientRect(), {
       windowStart: windowStart.value,
       minuteHeightPx: minuteHeightPx.value,
     })
   )
-  const end = start + clip.durationMinutes
-  // Si el destino se pasa del fin del día, se rechaza: nunca se reubica la
-  // copia en silencio lejos de donde el usuario hizo click.
-  if (end > MINUTES_PER_DAY) {
-    scheduleToast.value = 'La copia no entra en el día a esa hora'
-    return
-  }
-  const validation = store.validateSlot({
-    day_of_week: day,
-    start_minutes: start,
-    end_minutes: end,
-  })
-  if (!validation.ok) {
-    scheduleToast.value = `Los horarios se superponen con «${overlapBlockTitle(validation)}»`
+  const start = findFreePlacement(
+    rowStartAt(minutes),
+    pasteUnitMinutes.value,
+    occupiedRangesForDay(day),
+    {
+      start_minutes: effectiveWindow.value.start_minutes,
+      end_minutes: effectiveWindow.value.end_minutes,
+    }
+  )
+  if (start === null) {
+    scheduleToast.value = 'No hay espacio libre en este día'
     return
   }
   emit('paste', day, start)
@@ -761,10 +937,15 @@ watch(
           <div
             v-for="hl in hourLabels"
             :key="hl.minute"
-            :style="{ height: rowHeightStyle }"
-            class="schedule-hour-label flex items-center justify-center border-b border-hairline/30 px-1 text-ink-subtle transition-[height] duration-200 ease-out"
+            :style="{ height: hl.heightPx + 'px' }"
+            class="schedule-hour-label relative flex items-center justify-center border-b border-hairline/30 px-1 text-ink-subtle transition-[height] duration-200 ease-out"
           >
-            <span class="leading-3">{{ hl.label }}</span>
+            <span
+              class="absolute inset-x-0 top-0 flex items-center justify-center"
+              :style="{ height: hl.labelHeightPx + 'px' }"
+            >
+              <span class="leading-3">{{ hl.label }}</span>
+            </span>
           </div>
         </div>
 
@@ -795,10 +976,10 @@ watch(
               data-testid="schedule-day-content"
             >
               <div
-                v-for="hl in hourLabels"
-                :key="hl.minute"
+                v-for="row in gridRows"
+                :key="row.minute"
                 :style="{ height: rowHeightStyle }"
-                class="w-full border-b border-hairline/30 transition-[height] duration-200 ease-out"
+                class="schedule-grid-row w-full border-b border-hairline/30 transition-[height] duration-200 ease-out"
               />
 
               <WeeklyScheduleBlock
@@ -807,6 +988,9 @@ watch(
                 :title="vs.block.title"
                 :color="vs.block.color"
                 :today="dayIndex === todayIndex"
+                :start-time="minutesToHHMM(vs.slot.start_minutes)"
+                :end-time="minutesToHHMM(vs.slot.end_minutes)"
+                :show-times="store.settings.show_block_times"
                 :selected="props.selectedSlotId === vs.slot.id"
                 :selectable="ui.scheduleEditMode"
                 :data-slot-id="vs.slot.id"
@@ -965,6 +1149,27 @@ watch(
             />
           </div>
 
+          <!-- Fantasma del pegado: bloque translúcido en el hueco libre resuelto -->
+          <div
+            v-if="pasteGhostStyle && clipboard"
+            data-testid="schedule-paste-ghost"
+            aria-hidden="true"
+            class="pointer-events-none absolute z-30 opacity-50 grayscale"
+            :style="pasteGhostStyle"
+          >
+            <WeeklyScheduleBlock
+              :title="clipboard.title"
+              :color="clipboard.color"
+              :style="{
+                top: '0px',
+                left: '2%',
+                width: '96%',
+                height: '100%',
+                transition: 'none',
+              }"
+            />
+          </div>
+
           <!-- Línea fina de la hora actual: cruza toda la grilla de días -->
           <div
             v-if="nowLineTop !== null"
@@ -976,23 +1181,6 @@ watch(
         </div>
       </div>
     </div>
-
-    <!-- Fantasma del pegado: bloque translúcido enganchado al puntero -->
-    <Teleport to="body">
-      <div
-        v-if="pasteGhostStyle && clipboard"
-        data-testid="schedule-paste-ghost"
-        aria-hidden="true"
-        class="pointer-events-none fixed z-40 opacity-50 grayscale"
-        :style="pasteGhostStyle"
-      >
-        <WeeklyScheduleBlock
-          :title="clipboard.title"
-          :color="clipboard.color"
-          :style="{ top: '0px', left: '0px', width: '100%', height: '100%' }"
-        />
-      </div>
-    </Teleport>
 
     <!-- Cartelito flotante con el rango exacto durante el gesto o el pegado -->
     <Teleport to="body">

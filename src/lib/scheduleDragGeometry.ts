@@ -12,6 +12,9 @@ export interface ScheduleDragGeometry {
 /** Una hora visible más cada vez que el puntero se acerca a un borde. */
 export const WINDOW_GROWTH_STEP_MINUTES = 60
 
+/** Cada cuánto vuelve a crecer la ventana mientras el puntero sigue en la banda. */
+export const WINDOW_GROWTH_INTERVAL_MS = 350
+
 /** Distancia al borde superior o inferior que dispara el crecimiento. */
 export const WINDOW_GROWTH_EDGE_PX = 40
 

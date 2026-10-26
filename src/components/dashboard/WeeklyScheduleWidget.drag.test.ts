@@ -126,6 +126,7 @@ async function mountEditor(enabledDays = [0, 1, 2, 3, 4, 5, 6]) {
   vi.mocked(db.loadWeeklyScheduleSettings).mockResolvedValue({
     granularity_minutes: 30,
     week_starts_monday: true,
+    show_block_times: true,
     enabled_days: enabledDays,
   })
   const ui = useUiStore()
@@ -175,9 +176,9 @@ function blockByTitle(
   return block
 }
 
-async function startDrag(wrapper: ReturnType<typeof mount>, title: string) {
+async function startDrag(wrapper: ReturnType<typeof mount>, title: string, clientY = 0) {
   const block = blockByTitle(wrapper, title)
-  await block.trigger('pointerdown', { button: 0, clientX: 10, clientY: 10 })
+  await block.trigger('pointerdown', { button: 0, clientX: 10, clientY })
   expect(dragHarness.beginCount).toBe(1)
   dragHarness.callbacks!.onStart()
   await wrapper.vm.$nextTick()
@@ -248,6 +249,45 @@ describe('WeeklyScheduleWidget · mover ocurrencias en modo edición', () => {
     const store = useWeeklyScheduleStore()
     const gym = store.blocksWithSlots.find((b) => b.id === GYM_BLOCK_ID)!
     expect(gym.slots[0]).toMatchObject({ day_of_week: 2, start_minutes: 995, end_minutes: 1040 })
+
+    wrapper.unmount()
+  })
+
+  it('conserva el punto de agarre: agarrar abajo del borde no salta al puntero', async () => {
+    const { wrapper } = await mountEditor()
+    // El puntero agarra 20' abajo del inicio (16:00 → 16:20).
+    await startDrag(wrapper, 'Gimnasio', 100)
+
+    await moveTo(wrapper, 2, 995) // puntero miércoles 16:35
+
+    const ghost = wrapper.find('[data-testid="schedule-drag-ghost"]')
+    // El bloque queda 20' arriba del puntero: 16:15 → 17:00, sin despegarse.
+    expect(stylePx(ghost, 'top')).toBeCloseTo(75, 5)
+    expect(stylePx(ghost, 'height')).toBeCloseTo(225, 5)
+
+    const badge = document.body.querySelector('[data-testid="schedule-drag-badge"]')
+    expect(badge?.textContent?.trim()).toBe('16:15 → 17:00')
+
+    await endDrag(wrapper)
+
+    expect(db.updateScheduleSlot).toHaveBeenCalledWith(
+      GYM_SLOT_ID,
+      { day_of_week: 2, start_minutes: 975, end_minutes: 1020 },
+      expect.any(String)
+    )
+
+    wrapper.unmount()
+  })
+
+  it('un gesto sin mover el bloque no persiste ningún cambio', async () => {
+    const { wrapper } = await mountEditor()
+    await startDrag(wrapper, 'Gimnasio')
+    expect(wrapper.find('[data-testid="schedule-drag-ghost"]').exists()).toBe(true)
+
+    await endDrag(wrapper)
+
+    expect(db.updateScheduleSlot).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="schedule-drag-ghost"]').exists()).toBe(false)
 
     wrapper.unmount()
   })

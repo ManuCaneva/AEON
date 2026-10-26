@@ -248,6 +248,79 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   }
 
+  /**
+   * Renombra una ocurrencia. Si su bloque tiene otros horarios, la ocurrencia
+   * se separa en un bloque nuevo con el mismo color: el nombre identifica al
+   * bloque, y un nombre distinto es otro bloque. Si era el único horario, el
+   * bloque entero cambia de nombre.
+   */
+  async function renameOccurrence(slotId: string, title: string): Promise<void> {
+    const block = blockForSlot(slotId)
+    if (!block) throw new Error('Slot no encontrado')
+    const nextTitle = title.trim() || 'Sin título'
+    if (nextTitle === block.title) return
+
+    const slot = block.slots.find((s) => s.id === slotId)
+    if (!slot) throw new Error('Slot no encontrado')
+
+    if (block.slots.length <= 1) {
+      await updateBlock(block.id, { title: nextTitle })
+      return
+    }
+
+    const newBlockId = uuidv4()
+    const newSlotId = uuidv4()
+    const ts = nowIsoUtc()
+    const blockRow = await db.createScheduleBlock(
+      { title: nextTitle, color: block.color, sort_order: block.sort_order },
+      newBlockId,
+      ts,
+      ts
+    )
+    try {
+      const slotRow = await db.createScheduleSlot(
+        {
+          day_of_week: slot.day_of_week,
+          start_minutes: slot.start_minutes,
+          end_minutes: slot.end_minutes,
+        },
+        newSlotId,
+        newBlockId,
+        ts,
+        ts
+      )
+      try {
+        await db.deleteScheduleSlot(slotId)
+      } catch (e) {
+        // La ocurrencia vieja sigue existiendo: deshacemos la copia nueva.
+        try {
+          await db.deleteScheduleSlot(newSlotId)
+        } catch {
+          // El borrado del bloque nuevo limpia también su slot si quedó.
+        }
+        throw e
+      }
+
+      const newBlock: ScheduleBlockWithSlots = {
+        ...rowToScheduleBlock(blockRow),
+        slots: [rowToScheduleSlot(slotRow)],
+      }
+      blocksWithSlots.value = [
+        ...blocksWithSlots.value.map((bw) =>
+          bw.id === block.id ? { ...bw, slots: bw.slots.filter((s) => s.id !== slotId) } : bw
+        ),
+        newBlock,
+      ]
+    } catch (e) {
+      try {
+        await db.deleteScheduleBlock(newBlockId)
+      } catch {
+        // Si tampoco se puede limpiar, el error original es el que importa.
+      }
+      throw e
+    }
+  }
+
   async function addSlot(blockId: string, draft: CreateScheduleSlotDraft): Promise<ScheduleSlot> {
     const v = validateSlot(draft)
     if (!v.ok) throw new Error('El slot se solapa con otro existente en ese día')
@@ -496,6 +569,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     loadAll,
     createBlock,
     updateBlock,
+    renameOccurrence,
     deleteBlock,
     addSlot,
     updateSlot,

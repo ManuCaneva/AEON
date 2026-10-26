@@ -234,7 +234,7 @@ describe('Cronograma semanal — crear y renombrar en la grilla', () => {
 
     // Alto de una fila, sin paleta de colores en la grilla.
     const block = wrapper.get('.schedule-block')
-    const row = wrapper.findAll('.schedule-hour-label')[0]
+    const row = wrapper.findAll('.schedule-grid-row')[0]
     expect(stylePx(block, 'height')).toBeCloseTo(stylePx(row, 'height'), 5)
     expect(wrapper.find('input[type="color"]').exists()).toBe(false)
     expect(hasRawPaletteColor(wrapper.html())).toBe(false)
@@ -321,7 +321,7 @@ describe('Cronograma semanal — crear y renombrar en la grilla', () => {
     wrapper.unmount()
   })
 
-  it('doble click sobre un bloque renombra el título compartido en todas sus ocurrencias', async () => {
+  it('doble click sobre un bloque separa solo esa ocurrencia al confirmar un nombre distinto', async () => {
     const fixture = makeFixtureBlock(1, [
       { day: 1, start: 540, end: 570 },
       { day: 3, start: 540, end: 570 },
@@ -342,13 +342,36 @@ describe('Cronograma semanal — crear y renombrar en la grilla', () => {
     await input.trigger('keydown', { key: 'Enter' })
     await flushPromises()
 
-    expect(db.updateScheduleBlock).toHaveBeenCalledWith(
-      fixture.block.id,
-      { title: 'Pesas' },
+    // El bloque original conserva su nombre y sus otros dos horarios.
+    expect(db.updateScheduleBlock).not.toHaveBeenCalled()
+    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleBlock).toHaveBeenCalledWith(
+      { title: 'Pesas', color: 'lavender', sort_order: 0 },
+      expect.any(String),
+      expect.any(String),
       expect.any(String)
     )
+    const newBlockId = vi.mocked(db.createScheduleBlock).mock.calls[0][1]
+    expect(db.createScheduleSlot).toHaveBeenCalledWith(
+      { day_of_week: 1, start_minutes: 540, end_minutes: 570 },
+      expect.any(String),
+      newBlockId,
+      expect.any(String),
+      expect.any(String)
+    )
+    expect(db.deleteScheduleSlot).toHaveBeenCalledWith(fixture.slots[0].id)
+
+    expect(store.blocksWithSlots).toHaveLength(2)
+    const original = store.blocksWithSlots.find((bw) => bw.id === fixture.block.id)!
+    expect(original.title).toBe('Gimnasio')
+    expect(original.slots.map((s) => s.day_of_week)).toEqual([3, 4])
+    const split = store.blocksWithSlots.find((bw) => bw.id === newBlockId)!
+    expect(split.title).toBe('Pesas')
+    expect(split.color).toBe('lavender')
+    expect(split.slots.map((s) => s.day_of_week)).toEqual([1])
+
     const titles = wrapper.findAll('.schedule-block-title').map((t) => t.text())
-    expect(titles).toEqual(['Pesas', 'Pesas', 'Pesas'])
+    expect(titles).toEqual(['Pesas', 'Gimnasio', 'Gimnasio'])
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
 
     wrapper.unmount()
@@ -376,13 +399,20 @@ describe('Cronograma semanal — crear y renombrar en la grilla', () => {
     wrapper.unmount()
   })
 
-  it('no crea nada con doble click fuera del modo edición', async () => {
+  it('con doble click en un hueco fuera del modo edición entra al modo y crea el bloque', async () => {
     const wrapper = await mountWidget()
 
     await doubleClickDay(wrapper, 1, 40)
 
-    expect(db.createScheduleBlock).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-testid="schedule-name-input"]').exists()).toBe(false)
+    expect(useUiStore().scheduleEditMode).toBe(true)
+    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(store.blocksWithSlots[0].slots[0]).toMatchObject({
+      day_of_week: 1,
+      start_minutes: 540,
+      end_minutes: 570,
+    })
+    const input = wrapper.get('[data-testid="schedule-name-input"]')
+    expect((input.element as HTMLInputElement).value).toBe('Sin título')
 
     wrapper.unmount()
   })

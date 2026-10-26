@@ -101,6 +101,7 @@ async function mountEditor(enabledDays = [0, 1, 2, 3, 4, 5, 6], editMode = true)
   vi.mocked(db.loadWeeklyScheduleSettings).mockResolvedValue({
     granularity_minutes: 30,
     week_starts_monday: true,
+    show_block_times: true,
     enabled_days: enabledDays,
   })
 
@@ -220,7 +221,7 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     document.body.innerHTML = ''
   })
 
-  it('el botón al hover copia y Ctrl/Cmd+V pega con un fantasma que sigue al mouse', async () => {
+  it('el botón al hover copia y Ctrl/Cmd+V pega con un fantasma en el hueco libre', async () => {
     const { wrapper } = await mountEditor()
     await hoverDay(wrapper, 0, 300, 175)
     await blockAt(wrapper, 0).trigger('mouseenter')
@@ -237,15 +238,16 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     const ghostEl = ghost()
     expect(ghostEl).not.toBeNull()
     expect(ghostEl!.textContent).toContain('Gimnasio')
-    // El fantasma es translúcido y está enganchado al puntero.
+    // El fantasma es translúcido, mide una fila y cae en la celda 16:30.
     expect(ghostEl!.className).toContain('opacity-50')
-    expect(stylePx(ghostEl!, 'left')).toBe(314)
-    expect(stylePx(ghostEl!, 'top')).toBe(193)
-    expect(badgeText()).toBe('16:35 → 17:20')
+    expect(stylePx(ghostEl!, 'left')).toBeCloseTo(200 / 7)
+    expect(stylePx(ghostEl!, 'width')).toBeCloseTo(100 / 7)
+    expect(stylePx(ghostEl!, 'top')).toBe(150)
+    expect(stylePx(ghostEl!, 'height')).toBe(150)
+    expect(badgeText()).toBe('16:30 → 17:00')
 
-    await hoverDay(wrapper, 2, 400, 250)
-    expect(stylePx(ghost()!, 'left')).toBe(414)
-    expect(stylePx(ghost()!, 'top')).toBe(268)
+    await hoverDay(wrapper, 2, 400, 350)
+    expect(stylePx(ghost()!, 'top')).toBe(300)
 
     wrapper.unmount()
   })
@@ -262,12 +264,12 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     await hoverDay(wrapper, 4, 300, 175) // viernes 16:35
 
     expect(ghost()?.textContent).toContain('Gimnasio')
-    expect(badgeText()).toBe('16:35 → 17:20')
+    expect(badgeText()).toBe('16:30 → 17:00')
 
     wrapper.unmount()
   })
 
-  it('un click coloca un bloque nuevo independiente con el mismo título y color, id propio y un horario', async () => {
+  it('un click suma la copia al bloque de origen con el mismo título y color, sin crear otro bloque', async () => {
     const { wrapper, store } = await mountEditor()
 
     await copyFromShortcut(wrapper)
@@ -275,32 +277,33 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     await nextTick()
     await clickDay(wrapper, 2, 300, 175) // miércoles 16:35
 
-    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
     expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
-
-    const pasted = store.blocksWithSlots.find(
-      (bw) => bw.id !== GYM_BLOCK_ID && bw.id !== STUDY_BLOCK_ID
+    expect(db.createScheduleSlot).toHaveBeenCalledWith(
+      { day_of_week: 2, start_minutes: 990, end_minutes: 1020 },
+      expect.any(String),
+      GYM_BLOCK_ID,
+      expect.any(String),
+      expect.any(String)
     )
-    expect(pasted).toBeDefined()
-    expect(pasted!.title).toBe('Gimnasio')
-    expect(pasted!.color).toBe('lavender')
-    expect(pasted!.id).not.toBe(GYM_BLOCK_ID)
-    expect(pasted!.slots).toHaveLength(1)
-    expect(pasted!.slots[0]).toMatchObject({
-      day_of_week: 2,
-      start_minutes: 995,
-      end_minutes: 1040,
-    })
-    expect(pasted!.slots[0].id).not.toBe(GYM_SLOT_ID)
 
-    // El bloque original queda intacto: borrar uno no afecta al otro.
-    const original = store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)!
-    expect(original.slots.map((s) => s.id)).toEqual([GYM_SLOT_ID])
+    // La ocurrencia pegada es otro horario del mismo bloque, no un bloque aparte.
+    expect(store.blocksWithSlots).toHaveLength(2)
+    const gym = store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)!
+    expect(gym.title).toBe('Gimnasio')
+    expect(gym.color).toBe('lavender')
+    expect(gym.slots).toHaveLength(2)
+    expect(gym.slots[0].id).toBe(GYM_SLOT_ID)
+    expect(gym.slots[1]).toMatchObject({
+      day_of_week: 2,
+      start_minutes: 990,
+      end_minutes: 1020,
+    })
 
     wrapper.unmount()
   })
 
-  it('permite pegar varias veces seguidas hasta Esc, que termina el pegado antes que el modo', async () => {
+  it('pega una sola vez por activación pero conserva la copia para volver a pegar sin salir del modo', async () => {
     const { wrapper, store, ui } = await mountEditor()
 
     await copyFromShortcut(wrapper)
@@ -309,60 +312,160 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
 
     await hoverDay(wrapper, 2, 300, 175)
     await clickDay(wrapper, 2, 300, 175) // miércoles 16:35
-    expect(ghost()).not.toBeNull()
+    // El pegado terminó: ya no hay fantasma.
+    expect(ghost()).toBeNull()
+
+    // Un click sin volver a activar el pegado no persiste otra copia.
     await hoverDay(wrapper, 4, 300, 175)
     await clickDay(wrapper, 4, 300, 175) // viernes 16:35
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
+
+    // La copia sigue en el portapapeles: Ctrl+V vuelve a activar el pegado.
+    press('v', { ctrlKey: true })
+    await nextTick()
     expect(ghost()).not.toBeNull()
 
-    expect(db.createScheduleBlock).toHaveBeenCalledTimes(2)
-    const pasted = store.blocksWithSlots.filter(
-      (bw) => bw.id !== GYM_BLOCK_ID && bw.id !== STUDY_BLOCK_ID
-    )
-    expect(
-      pasted
-        .map((bw) => bw.slots[0])
-        .map((s) => s.day_of_week)
-        .sort()
-    ).toEqual([2, 4])
+    await hoverDay(wrapper, 4, 300, 175)
+    await clickDay(wrapper, 4, 300, 175) // viernes 16:35
+    expect(ghost()).toBeNull()
 
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(2)
+    const gym = store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)!
+    expect(gym.slots.map((s) => s.day_of_week).sort()).toEqual([0, 2, 4])
+
+    // Un Escape con el pegado inactivo sí sale del modo.
+    expect(ui.scheduleEditMode).toBe(true)
     press('Escape')
     await nextTick()
-    expect(ui.scheduleEditMode).toBe(true)
-    expect(ghost()).toBeNull()
-    expect(badgeText()).toBeNull()
+    expect(ui.scheduleEditMode).toBe(false)
 
-    // El pegado ya terminó: un click solo selecciona, no persiste otra copia.
     await clickDay(wrapper, 2, 300, 175)
-    expect(db.createScheduleBlock).toHaveBeenCalledTimes(2)
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(2)
 
     wrapper.unmount()
   })
 
-  it('destino ocupado: no persiste, avisa con el bloque que chocó y el fantasma sigue vivo', async () => {
+  it('click sobre otro bloque cancela el pegado y permite copiarlo sin salir del modo', async () => {
+    const { wrapper, store, ui } = await mountEditor()
+
+    await copyFromShortcut(wrapper)
+    press('v', { ctrlKey: true })
+    await nextTick()
+    await hoverDay(wrapper, 2, 300, 175)
+    expect(ghost()).not.toBeNull()
+
+    // Click sobre Estudio (jueves): cancela el pegado y lo selecciona.
+    await wrapper.get(`.schedule-block[data-slot-id="${STUDY_SLOT_ID}"]`).trigger('click')
+    await flushPromises()
+    await nextTick()
+    expect(ghost()).toBeNull()
+
+    // Ctrl+C copia el bloque recién seleccionado, no la copia anterior.
+    press('c', { ctrlKey: true })
+    await nextTick()
+    press('v', { ctrlKey: true })
+    await nextTick()
+    await hoverDay(wrapper, 2, 300, 175)
+    expect(ghost()?.textContent).toContain('Estudio')
+
+    await clickDay(wrapper, 2, 300, 175)
+
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
+    expect(db.createScheduleSlot).toHaveBeenCalledWith(
+      { day_of_week: 2, start_minutes: 990, end_minutes: 1020 },
+      expect.any(String),
+      STUDY_BLOCK_ID,
+      expect.any(String),
+      expect.any(String)
+    )
+    const study = store.blocksWithSlots.find((bw) => bw.id === STUDY_BLOCK_ID)!
+    expect(study.slots).toHaveLength(2)
+    expect(ui.scheduleEditMode).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('si el bloque copiado ya no existe, el pegado lo recrea y los siguientes pegados se suman a esa copia', async () => {
+    const { wrapper, store } = await mountEditor()
+
+    await copyFromShortcut(wrapper)
+    press('v', { ctrlKey: true })
+    await nextTick()
+
+    // Se borra la última ocurrencia del bloque copiado: el bloque desaparece.
+    await store.deleteSlot(GYM_SLOT_ID)
+    await flushPromises()
+    expect(store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)).toBeUndefined()
+
+    await hoverDay(wrapper, 2, 300, 175)
+    await clickDay(wrapper, 2, 300, 175)
+
+    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
+    const recreated = store.blocksWithSlots.find(
+      (bw) => bw.title === 'Gimnasio' && bw.id !== STUDY_BLOCK_ID
+    )!
+    expect(recreated).toBeDefined()
+    expect(recreated.color).toBe('lavender')
+    expect(recreated.slots).toHaveLength(1)
+    expect(recreated.slots[0]).toMatchObject({
+      day_of_week: 2,
+      start_minutes: 990,
+      end_minutes: 1020,
+    })
+
+    // El portapapeles ahora apunta al bloque recreado: el segundo pegado se le suma.
+    press('v', { ctrlKey: true })
+    await nextTick()
+    await hoverDay(wrapper, 4, 300, 175)
+    await clickDay(wrapper, 4, 300, 175)
+
+    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(db.createScheduleSlot).mock.calls[1][2]).toBe(recreated.id)
+    const updated = store.blocksWithSlots.find((bw) => bw.id === recreated.id)!
+    expect(updated.slots).toHaveLength(2)
+
+    wrapper.unmount()
+  })
+
+  it('sin hueco en el día: no persiste, avisa y el pegado sigue activo para reintentar', async () => {
     const { wrapper } = await mountEditor()
 
     await copyFromShortcut(wrapper)
     press('v', { ctrlKey: true })
     await nextTick()
-    await hoverDay(wrapper, 3, 300, 175) // jueves 16:35, ocupado por Estudio
+    await hoverDay(wrapper, 3, 300, 175) // jueves lleno de 16:00 a 18:00
+
+    // No hay dónde ubicar una unidad: ni fantasma ni rango.
+    expect(ghost()).toBeNull()
+    expect(badgeText()).toBeNull()
 
     await clickDay(wrapper, 3, 300, 175)
 
     expect(db.createScheduleBlock).not.toHaveBeenCalled()
     expect(db.createScheduleSlot).not.toHaveBeenCalled()
     const toast = document.body.querySelector('[data-testid="toast"]')
-    expect(toast?.textContent).toContain('Estudio')
-    expect(ghost()).not.toBeNull()
+    expect(toast?.textContent).toContain('No hay espacio libre en este día')
 
-    // La copia sigue disponible para pegar en otro lado.
+    // El pegado sigue activo: no hace falta volver a presionar Ctrl+V.
     await hoverDay(wrapper, 2, 300, 175)
+    expect(ghost()).not.toBeNull()
     await clickDay(wrapper, 2, 300, 175)
-    expect(db.createScheduleBlock).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
+    expect(db.createScheduleSlot).toHaveBeenCalledWith(
+      { day_of_week: 2, start_minutes: 990, end_minutes: 1020 },
+      expect.any(String),
+      GYM_BLOCK_ID,
+      expect.any(String),
+      expect.any(String)
+    )
 
     wrapper.unmount()
   })
 
-  it('si la copia no entra en el día, no persiste y avisa como el solape', async () => {
+  it('la copia entra en el último hueco del día aunque el puntero quede fuera', async () => {
     const { wrapper, store } = await mountEditor()
 
     // Un horario tarde estira la Ventana visible hasta 24:00: el puntero puede
@@ -391,21 +494,52 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     ]
     await nextTick()
 
-    await copyFromShortcut(wrapper) // 45' de duración
+    await copyFromShortcut(wrapper)
     press('v', { ctrlKey: true })
     await nextTick()
 
     await hoverDay(wrapper, 0, 300, 590) // 23:52
-    // El fantasma no se reubica solo: arranca donde está el puntero.
-    expect(badgeText()).toBe('23:52 → 00:37')
+    // La unidad entra en el hueco 23:30–00:00, el único que queda.
+    expect(badgeText()).toBe('23:30 → 00:00')
 
     await clickDay(wrapper, 0, 300, 590)
 
     expect(db.createScheduleBlock).not.toHaveBeenCalled()
-    expect(db.createScheduleSlot).not.toHaveBeenCalled()
-    const toast = document.body.querySelector('[data-testid="toast"]')
-    expect(toast?.textContent).toContain('no entra en el día')
-    expect(ghost()).not.toBeNull()
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
+    const gym = store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)!
+    expect(gym.slots[gym.slots.length - 1]).toMatchObject({
+      day_of_week: 0,
+      start_minutes: 1410,
+      end_minutes: 1440,
+    })
+    expect(document.body.querySelector('[data-testid="toast"]')).toBeNull()
+
+    wrapper.unmount()
+  })
+
+  it('el fantasma se engancha al hueco libre más cercano de la columna', async () => {
+    const { wrapper, store } = await mountEditor()
+
+    await copyFromShortcut(wrapper)
+    press('v', { ctrlKey: true })
+    await nextTick()
+
+    // Lunes 16:35: la fila 16:30 está ocupada por Gimnasio (16:00–16:45).
+    await hoverDay(wrapper, 0, 300, 175)
+    expect(badgeText()).toBe('16:45 → 17:15')
+    expect(stylePx(ghost()!, 'top')).toBe(225)
+    expect(stylePx(ghost()!, 'height')).toBe(150)
+
+    await clickDay(wrapper, 0, 300, 175)
+
+    expect(db.createScheduleBlock).not.toHaveBeenCalled()
+    expect(db.createScheduleSlot).toHaveBeenCalledTimes(1)
+    const gym = store.blocksWithSlots.find((bw) => bw.id === GYM_BLOCK_ID)!
+    expect(gym.slots[gym.slots.length - 1]).toMatchObject({
+      day_of_week: 0,
+      start_minutes: 1005,
+      end_minutes: 1035,
+    })
 
     wrapper.unmount()
   })
@@ -438,7 +572,7 @@ describe('Cronograma semanal — copiar y pegar ocurrencias en modo edición', (
     press('v', { ctrlKey: true })
     await nextTick()
     await hoverDay(wrapper, 2, 300, 175)
-    expect(badgeText()).toBe('16:35 → 17:20')
+    expect(badgeText()).toBe('16:30 → 17:00')
 
     ui.exitScheduleEditMode()
     await nextTick()

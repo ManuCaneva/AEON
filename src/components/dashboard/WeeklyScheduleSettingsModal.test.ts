@@ -10,6 +10,7 @@ const mockStore = {
     granularity_minutes: 30,
     week_starts_monday: true,
     enabled_days: [0, 1, 2, 3, 4, 5, 6],
+    show_block_times: true,
   },
   saveSettings: vi.fn(),
 }
@@ -80,7 +81,30 @@ describe('WeeklyScheduleSettingsModal', () => {
     expect(mockStore.saveSettings).toHaveBeenCalledWith({
       granularity_minutes: 30,
       enabled_days: [0, 1, 2, 3, 4, 5, 6],
+      show_block_times: true,
     })
+  })
+
+  it('permite apagar la visualización de horarios y guarda la preferencia', async () => {
+    wrapper = mount(WeeklyScheduleSettingsModal, {
+      props: { open: true },
+      attachTo: document.body,
+    })
+
+    const toggle = document.body.querySelector(
+      '[data-testid="show-block-times"] input'
+    ) as HTMLInputElement
+    expect(toggle).not.toBeNull()
+    expect(toggle.checked).toBe(true)
+    await toggle.click()
+    const saveButton = Array.from(document.body.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Guardar')
+    )
+    await saveButton!.click()
+
+    expect(mockStore.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ show_block_times: false })
+    )
   })
 
   it('guarda los días activos al desactivar uno', async () => {
@@ -101,6 +125,7 @@ describe('WeeklyScheduleSettingsModal', () => {
     expect(mockStore.saveSettings).toHaveBeenCalledWith({
       granularity_minutes: 30,
       enabled_days: [0, 2, 3, 4, 5, 6],
+      show_block_times: true,
     })
   })
 

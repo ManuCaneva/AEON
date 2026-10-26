@@ -137,6 +137,7 @@ async function mountEditor(slots = [GYM_SLOT, STUDY_SLOT]) {
   vi.mocked(db.loadWeeklyScheduleSettings).mockResolvedValue({
     granularity_minutes: 30,
     week_starts_monday: true,
+    show_block_times: true,
     enabled_days: [0, 1, 2, 3, 4, 5, 6],
   })
   vi.mocked(db.listScheduleBlocks).mockResolvedValue([GYM_BLOCK, STUDY_BLOCK])
@@ -198,7 +199,12 @@ async function startResize(
   const handle = wrapper.get(
     `[data-testid="schedule-resize-handle-${edge}"][data-slot-id="${slotId}"]`
   )
-  await handle.trigger('pointerdown', { button: 0, clientX: 10, clientY: 10 })
+  await handle.trigger('pointerdown', {
+    button: 0,
+    clientX: 10,
+    // El puntero agarra el centro de la manija: el borde queda bajo el mouse.
+    clientY: stylePx(handle, 'top') + stylePx(handle, 'height') / 2,
+  })
   expect(gestureHarness.beginCount).toBe(1)
   gestureHarness.callbacks!.onStart()
   await wrapper.vm.$nextTick()

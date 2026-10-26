@@ -121,9 +121,13 @@ function stubResizeObserver() {
 }
 
 async function mountEditor() {
+  // Solo se falsean los intervalos: el crecimiento por borde es un setInterval
+  // y así los tests controlan cuándo avanza. rAF y promesas siguen reales.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   vi.mocked(db.loadWeeklyScheduleSettings).mockResolvedValue({
     granularity_minutes: 30,
     week_starts_monday: true,
+    show_block_times: true,
     enabled_days: [0, 1, 2, 3, 4, 5, 6],
   })
   vi.mocked(db.listScheduleBlocks).mockResolvedValue([GYM_BLOCK, STUDY_BLOCK])
@@ -177,7 +181,7 @@ function blockByTitle(
 
 async function startDrag(wrapper: ReturnType<typeof mount>, title: string) {
   const block = blockByTitle(wrapper, title)
-  await block.trigger('pointerdown', { button: 0, clientX: 10, clientY: 10 })
+  await block.trigger('pointerdown', { button: 0, clientX: 10, clientY: 0 })
   expect(gestureHarness.beginCount).toBe(1)
   gestureHarness.callbacks!.onStart()
   await wrapper.vm.$nextTick()
@@ -193,7 +197,12 @@ async function startResize(
   const handle = wrapper.get(
     `[data-testid="schedule-resize-handle-${edge}"][data-slot-id="${slotId}"]`
   )
-  await handle.trigger('pointerdown', { button: 0, clientX: 10, clientY: 10 })
+  await handle.trigger('pointerdown', {
+    button: 0,
+    clientX: 10,
+    // El puntero agarra el centro de la manija: el borde queda bajo el mouse.
+    clientY: stylePx(handle, 'top') + stylePx(handle, 'height') / 2,
+  })
   expect(gestureHarness.beginCount).toBe(1)
   gestureHarness.callbacks!.onStart()
   await wrapper.vm.$nextTick()
@@ -234,6 +243,7 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     useLayoutTransition().end()
     document.body.innerHTML = ''
@@ -248,7 +258,7 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
 
     // La ventana se extiende de 16:00 a 15:00: una hora más, sin saltos.
     expect(hourLabels(wrapper)[0]).toBe('15:00')
-    expect(hourLabels(wrapper)).toHaveLength(6)
+    expect(hourLabels(wrapper)).toHaveLength(3)
 
     // El mismo puntero a 10 px del borde ahora cae en 15:03: el fantasma queda
     // a 10 px del borde (600 px / 180 min = 3,33 px/min), no despegado.
@@ -274,8 +284,8 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
     await moveTo(wrapper, 1000, 590)
 
     const labels = hourLabels(wrapper)
-    expect(labels[labels.length - 1]).toBe('18:30')
-    expect(labels).toHaveLength(6)
+    expect(labels[labels.length - 1]).toBe('18:00')
+    expect(labels).toHaveLength(3)
 
     const ghost = wrapper.find('[data-testid="schedule-drag-ghost"]')
     expect(stylePx(ghost, 'top')).toBeCloseTo(590, 5)
@@ -291,38 +301,68 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
     wrapper.unmount()
   })
 
-  it('crece de a una hora por acercamiento, no achica mientras se arrastra y al soltar vuelve al rango derivado', async () => {
+  it('crece de a una hora por tick mientras el puntero sigue en la banda, no achica y al soltar vuelve al rango derivado', async () => {
     const { wrapper } = await mountEditor()
 
     await startDrag(wrapper, 'Gimnasio')
 
     await moveTo(wrapper, 1000, 10)
-    expect(hourLabels(wrapper)[0]).toBe('15:00')
+    expect(hourLabels(wrapper)).toEqual(['15:00', '16:00', '17:00'])
 
-    // Seguir dentro de la banda no suma otra hora: es un acercamiento.
+    // Seguir dentro de la banda no suma de inmediato: el crecimiento continuo
+    // ocurre en el siguiente tick.
     await moveTo(wrapper, 1000, 20)
-    expect(hourLabels(wrapper)[0]).toBe('15:00')
-    expect(hourLabels(wrapper)).toHaveLength(6)
+    expect(hourLabels(wrapper)).toEqual(['15:00', '16:00', '17:00'])
 
-    // Alejarse del borde no achica la ventana durante el gesto.
-    await moveTo(wrapper, 960, 300)
-    expect(hourLabels(wrapper)[0]).toBe('15:00')
+    vi.advanceTimersByTime(350)
+    await wrapper.vm.$nextTick()
+    expect(hourLabels(wrapper)).toEqual(['14:00', '15:00', '16:00', '17:00'])
 
-    // Hay que salir y volver a entrar para la segunda hora.
-    await moveTo(wrapper, 1000, 10)
-    expect(hourLabels(wrapper)[0]).toBe('14:00')
-    expect(hourLabels(wrapper)).toHaveLength(8)
+    vi.advanceTimersByTime(350)
+    await wrapper.vm.$nextTick()
+    expect(hourLabels(wrapper)).toEqual(['13:00', '14:00', '15:00', '16:00', '17:00'])
 
-    await moveTo(wrapper, 960, 300)
-    expect(hourLabels(wrapper)[0]).toBe('14:00')
+    // Alejarse del borde detiene el crecimiento, pero no achica la ventana
+    // durante el gesto. 360 px con la ventana 13:00–18:00 vuelve al minuto 960.
+    await moveTo(wrapper, 960, 360)
+    expect(hourLabels(wrapper)[0]).toBe('13:00')
+
+    vi.advanceTimersByTime(1000)
+    await wrapper.vm.$nextTick()
+    expect(hourLabels(wrapper)[0]).toBe('13:00')
 
     await endGesture(wrapper)
 
     // Al soltar, la ventana se deriva otra vez de los horarios (16:00–18:00).
-    expect(hourLabels(wrapper)[0]).toBe('16:00')
-    expect(hourLabels(wrapper)).toHaveLength(4)
+    expect(hourLabels(wrapper)).toEqual(['16:00', '17:00'])
     // El bloque volvió a su minuto original: no persiste nada.
     expect(db.updateScheduleSlot).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('el crecimiento continuo se detiene al llegar a las 00:00', async () => {
+    const { wrapper } = await mountEditor()
+
+    await startDrag(wrapper, 'Gimnasio')
+    await moveTo(wrapper, 1000, 10)
+    expect(hourLabels(wrapper)[0]).toBe('15:00')
+
+    // 15 ticks más llevan la ventana de 15:00 hasta 00:00; el siguiente tick
+    // ya no tiene horas para sumar y detiene el intervalo.
+    vi.advanceTimersByTime(350 * 15)
+    await wrapper.vm.$nextTick()
+    expect(hourLabels(wrapper)[0]).toBe('00:00')
+
+    vi.advanceTimersByTime(350 * 5)
+    await wrapper.vm.$nextTick()
+    expect(hourLabels(wrapper)[0]).toBe('00:00')
+
+    // Volver al minuto original antes de soltar: así la ventana derivada sigue
+    // siendo 16:00–18:00 y el gesto no persiste un movimiento.
+    await moveTo(wrapper, 960, 533.33)
+    await endGesture(wrapper)
+    expect(hourLabels(wrapper)).toEqual(['16:00', '17:00'])
 
     wrapper.unmount()
   })
@@ -358,7 +398,7 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
     await moveTo(wrapper, 1000, 590)
 
     const labels = hourLabels(wrapper)
-    expect(labels[labels.length - 1]).toBe('18:30')
+    expect(labels[labels.length - 1]).toBe('18:00')
 
     const ghost = wrapper.find('[data-testid="schedule-drag-ghost"]')
     expect(stylePx(ghost, 'top')).toBeCloseTo(0, 5)
@@ -378,7 +418,7 @@ describe('WeeklyScheduleWidget · bordes que crecen durante los gestos', () => {
   it('las filas animan el alto para que el crecimiento no sea un salto', async () => {
     const { wrapper } = await mountEditor()
 
-    const rows = wrapper.findAll('.schedule-hour-label')
+    const rows = wrapper.findAll('.schedule-grid-row')
     expect(rows.length).toBeGreaterThan(0)
     for (const row of rows) {
       expect(row.classes()).toContain('transition-[height]')

@@ -35,6 +35,7 @@ const defaultSettings = () => ({
   granularity_minutes: 30,
   week_starts_monday: true,
   enabled_days: [0, 1, 2, 3, 4, 5, 6],
+  show_block_times: true,
 })
 
 // Reactivo para que los tests puedan cambiar la Ventana visible con el
@@ -189,12 +190,33 @@ describe('WeeklyScheduleGrid', () => {
     wrapper.unmount()
   })
 
+  it('muestra en cada bloque el inicio y el fin del slot según el ajuste', async () => {
+    const wrapper = mount(WeeklyScheduleGrid)
+    const block = wrapper.findComponent(WeeklyScheduleBlock)
+
+    expect(block.props('startTime')).toBe('06:00')
+    expect(block.props('endTime')).toBe('07:00')
+    expect(block.props('showTimes')).toBe(true)
+    expect(block.text()).toContain('06:00')
+    expect(block.text()).toContain('07:00')
+
+    mockStore.settings.show_block_times = false
+    await wrapper.vm.$nextTick()
+    expect(block.props('showTimes')).toBe(false)
+    wrapper.unmount()
+  })
+
   it('renderiza las filas a partir de la Ventana visible derivada (no de settings)', () => {
     mockStore.visibleWindow = { start_minutes: 900, end_minutes: 960 }
     mockStore.settings.granularity_minutes = 30
     const wrapper = mount(WeeklyScheduleGrid)
+    // Las filas de edición siguen la granularidad; el rótulo se adapta y, en
+    // una ventana de una hora, alcanza con una etiqueta.
+    expect(
+      wrapper.get('[data-testid="schedule-day-content"]').findAll('.schedule-grid-row')
+    ).toHaveLength(2)
     const labels = wrapper.findAll('.schedule-hour-label').map((w) => w.text())
-    expect(labels).toEqual(['15:00', '15:30'])
+    expect(labels).toEqual(['15:00'])
     wrapper.unmount()
     mockStore.visibleWindow = { start_minutes: 360, end_minutes: 1380 }
   })
@@ -215,15 +237,15 @@ describe('WeeklyScheduleGrid', () => {
     await wrapper.vm.$nextTick()
 
     // Sin pasar un frame, la altura del container sigue siendo el valor por defecto
-    const defaultHourHeight = wrapper.findAll('.schedule-hour-label')[0]?.attributes('style')
-    expect(defaultHourHeight).toContain('height:')
+    const defaultRowHeight = wrapper.findAll('.schedule-grid-row')[0]?.attributes('style')
+    expect(defaultRowHeight).toContain('height:')
 
     await nextFrame()
     await wrapper.vm.$nextTick()
 
-    // Tras el rAF, las filas de hora se recalcularon con la altura real
-    const hourHeight = wrapper.findAll('.schedule-hour-label')[0]?.attributes('style')
-    expect(hourHeight).not.toBe(defaultHourHeight)
+    // Tras el rAF, las filas se recalcularon con la altura real
+    const rowHeight = wrapper.findAll('.schedule-grid-row')[0]?.attributes('style')
+    expect(rowHeight).not.toBe(defaultRowHeight)
     wrapper.unmount()
   })
 
@@ -240,7 +262,7 @@ describe('WeeklyScheduleGrid', () => {
     triggerResize()
     await nextFrame()
     await wrapper.vm.$nextTick()
-    const before = wrapper.findAll('.schedule-hour-label')[0]!.attributes('style')
+    const before = wrapper.findAll('.schedule-grid-row')[0]!.attributes('style')
 
     // Transición activa: resizes no miden (quedan deferidos)
     start()
@@ -249,13 +271,13 @@ describe('WeeklyScheduleGrid', () => {
     triggerResize()
     await nextFrame()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.schedule-hour-label')[0]!.attributes('style')).toBe(before)
+    expect(wrapper.findAll('.schedule-grid-row')[0]!.attributes('style')).toBe(before)
 
     // Al terminar la transición: una única medición final con el último tamaño
     end()
     await nextFrame()
     await wrapper.vm.$nextTick()
-    const after = wrapper.findAll('.schedule-hour-label')[0]!.attributes('style')
+    const after = wrapper.findAll('.schedule-grid-row')[0]!.attributes('style')
     expect(after).not.toBe(before)
 
     wrapper.unmount()
@@ -273,9 +295,9 @@ describe('WeeklyScheduleGrid', () => {
     await nextFrame()
     await wrapper.vm.$nextTick()
 
-    const hourHeight = wrapper.findAll('.schedule-hour-label')[0]?.attributes('style')
-    expect(hourHeight).not.toContain('height: 400px')
-    expect(hourHeight).toContain('height:')
+    const rowHeight = wrapper.findAll('.schedule-grid-row')[0]?.attributes('style')
+    expect(rowHeight).not.toContain('height: 400px')
+    expect(rowHeight).toContain('height:')
 
     wrapper.unmount()
   })
@@ -290,14 +312,41 @@ describe('WeeklyScheduleGrid', () => {
     const wrapper = await mountMeasured(containerHeight, headerHeight)
 
     // La ventana visible no se recalcula al comprimir: siguen estando todas las filas
-    expect(wrapper.findAll('.schedule-hour-label')).toHaveLength(rows)
+    const rowsInDay = wrapper
+      .get('[data-testid="schedule-day-content"]')
+      .findAll('.schedule-grid-row')
+    expect(rowsInDay).toHaveLength(rows)
 
-    const first = wrapper.findAll('.schedule-hour-label')[0]!
+    const first = rowsInDay[0]!
     const rowHeight = stylePx(first, 'height')
     // Sin piso mínimo, cada fila mide exactamente (contenedor - header) / filas
     expect(rowHeight).toBeCloseTo((containerHeight - headerHeight) / rows, 5)
     // Header + grilla caben dentro del contenedor: no hay scroll posible
     expect(headerHeight + rowHeight * rows).toBeLessThanOrEqual(containerHeight + 0.01)
+    expect(wrapper.find('.overflow-y-auto').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('reduce los rótulos de hora cuando las filas son bajas, sin scrollear ni perder filas', async () => {
+    const rows = Math.floor(
+      (mockStore.visibleWindow.end_minutes - mockStore.visibleWindow.start_minutes) /
+        mockStore.settings.granularity_minutes
+    )
+    const containerHeight = 100
+    const headerHeight = 32
+    const wrapper = await mountMeasured(containerHeight, headerHeight)
+
+    // 2 px por fila: no entran rótulos cada hora ni cada 2, 3 o 4 horas; se
+    // muestran cada 6 horas. Las filas de edición siguen siendo todas.
+    expect(wrapper.findAll('.schedule-hour-label').map((w) => w.text())).toEqual([
+      '06:00',
+      '12:00',
+      '18:00',
+    ])
+    expect(
+      wrapper.get('[data-testid="schedule-day-content"]').findAll('.schedule-grid-row')
+    ).toHaveLength(rows)
     expect(wrapper.find('.overflow-y-auto').exists()).toBe(false)
 
     wrapper.unmount()
@@ -466,6 +515,7 @@ describe('WeeklyScheduleGrid', () => {
       },
     ]
 
+    mockStore.settings.show_block_times = false
     const wrapper = mount(WeeklyScheduleGrid)
     const blocks = wrapper.findAll('.schedule-block')
     expect(blocks).toHaveLength(3)
