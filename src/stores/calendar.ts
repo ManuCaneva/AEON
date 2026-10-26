@@ -26,6 +26,7 @@ import {
   DEFAULT_EVENT_COLOR,
 } from '@/schemas/calendar'
 import { yearBounds } from '@/lib/calendarDates'
+import { nextLocalDate } from '@/lib/allDayEvent'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { fetch } from '@tauri-apps/plugin-http'
 import { invoke } from '@tauri-apps/api/core'
@@ -48,6 +49,53 @@ function debugLog(...args: unknown[]): void {
 }
 
 type PendingOAuth = { verifier: string; state: string; redirectUri: string; createdAt: number }
+
+type EventInput = {
+  title: string
+  description?: string
+  colorId?: string
+  allDay?: boolean
+  start: string
+  end: string
+}
+
+/**
+ * Cuerpo de un evento para Google Calendar. Un evento de todo el día viaja con
+ * fecha sin hora y fin exclusivo del día siguiente; el `end` del formulario se
+ * ignora en ese caso.
+ */
+function buildGoogleEventBody(eventData: EventInput): Record<string, unknown> {
+  if (eventData.allDay) {
+    return {
+      summary: eventData.title,
+      description: eventData.description,
+      colorId: eventData.colorId,
+      start: { date: eventData.start },
+      end: { date: nextLocalDate(eventData.start) },
+    }
+  }
+  return {
+    summary: eventData.title,
+    description: eventData.description,
+    colorId: eventData.colorId,
+    start: { dateTime: eventData.start },
+    end: { dateTime: eventData.end },
+  }
+}
+
+/**
+ * Fechas de un evento local. De todo el día: `start`/`end` son fechas sin hora
+ * y el fin es el día siguiente (exclusivo). Con horario: se respeta `end`.
+ */
+function resolveLocalEventBounds(eventData: EventInput): {
+  start: string
+  end: string
+  date: string
+} {
+  const start = eventData.start
+  const end = eventData.allDay ? nextLocalDate(start) : eventData.end
+  return { start, end, date: start.split('T')[0] }
+}
 
 export const useCalendarStore = defineStore('calendar', () => {
   const connected = ref(false)
@@ -535,10 +583,12 @@ export const useCalendarStore = defineStore('calendar', () => {
       error instanceof Error ? error.message : 'Failed to load calendar configuration'
   })
 
-  async function createEvent(
-    calendarId: string,
-    eventData: { title: string; description?: string; colorId?: string; start: string; end: string }
-  ): Promise<void> {
+  /**
+   * Crea un evento y devuelve el `CalendarEvent` resultante. El valor devuelto
+   * es el que quedó en el store: quien lo necesite (p.ej. el vínculo de una
+   * entidad) lo usa sin tener que diferenciar el estado antes/después.
+   */
+  async function createEvent(calendarId: string, eventData: EventInput): Promise<CalendarEvent> {
     syncing.value = true
     syncError.value = null
     try {
@@ -547,35 +597,30 @@ export const useCalendarStore = defineStore('calendar', () => {
         const calendarColor = eventData.colorId
           ? (CALENDAR_COLORS[eventData.colorId] ?? DEFAULT_EVENT_COLOR)
           : DEFAULT_EVENT_COLOR
+        const { start, end, date } = resolveLocalEventBounds(eventData)
 
         const newEvent: CalendarEvent = {
           id: eventId,
-          date: eventData.start.split('T')[0],
+          date,
           title: eventData.title,
           description: eventData.description,
           color: calendarColor,
           calendarId: 'local',
-          start: eventData.start,
-          end: eventData.end,
+          start,
+          end,
         }
 
         localEvents.value.push(newEvent)
         await saveConfig('local-calendar-events', JSON.stringify(localEvents.value))
 
         events.value = [...events.value, newEvent].sort((a, b) => a.date.localeCompare(b.date))
-        return
+        return newEvent
       }
 
       const token = await ensureAccessToken()
       const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
 
-      const body = {
-        summary: eventData.title,
-        description: eventData.description,
-        colorId: eventData.colorId,
-        start: { dateTime: eventData.start },
-        end: { dateTime: eventData.end },
-      }
+      const body = buildGoogleEventBody(eventData)
 
       const res = await fetch(url, {
         method: 'POST',
@@ -595,6 +640,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         calendars.value.find((c) => c.id === calendarId)?.backgroundColor ?? DEFAULT_EVENT_COLOR
       const mapped = mapGcalEventsToDomain([data], calendarId, calendarColor)[0]
       events.value = [...events.value, mapped].sort((a, b) => a.date.localeCompare(b.date))
+      return mapped
     } catch (e: unknown) {
       syncError.value = e instanceof Error ? e.message : 'Failed to create event'
       throw e
@@ -606,7 +652,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   async function updateEvent(
     calendarId: string,
     eventId: string,
-    eventData: { title: string; description?: string; colorId?: string; start: string; end: string }
+    eventData: EventInput
   ): Promise<void> {
     syncing.value = true
     syncError.value = null
@@ -615,6 +661,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         const calendarColor = eventData.colorId
           ? (CALENDAR_COLORS[eventData.colorId] ?? DEFAULT_EVENT_COLOR)
           : DEFAULT_EVENT_COLOR
+        const { start, end, date } = resolveLocalEventBounds(eventData)
         localEvents.value = localEvents.value.map((evt) => {
           if (evt.id === eventId) {
             return {
@@ -622,9 +669,9 @@ export const useCalendarStore = defineStore('calendar', () => {
               title: eventData.title,
               description: eventData.description,
               color: calendarColor,
-              start: eventData.start,
-              end: eventData.end,
-              date: eventData.start.split('T')[0],
+              start,
+              end,
+              date,
             }
           }
           return evt
@@ -639,9 +686,9 @@ export const useCalendarStore = defineStore('calendar', () => {
                 title: eventData.title,
                 description: eventData.description,
                 color: calendarColor,
-                start: eventData.start,
-                end: eventData.end,
-                date: eventData.start.split('T')[0],
+                start,
+                end,
+                date,
               }
             }
             return evt
@@ -653,13 +700,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       const token = await ensureAccessToken()
       const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
 
-      const body = {
-        summary: eventData.title,
-        description: eventData.description,
-        colorId: eventData.colorId,
-        start: { dateTime: eventData.start },
-        end: { dateTime: eventData.end },
-      }
+      const body = buildGoogleEventBody(eventData)
 
       const res = await fetch(url, {
         method: 'PUT',

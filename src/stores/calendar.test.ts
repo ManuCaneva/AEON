@@ -873,6 +873,127 @@ describe('useCalendarStore', () => {
     expect(store.events[0].color).toBe('#33b679') // colorId "2" resolves to #33b679
   })
 
+  it('createEvent() de todo el día en Google envía fecha sin hora y fin exclusivo del día siguiente', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'new_allday',
+        summary: 'Feriado',
+        start: { date: '2026-07-22' },
+        end: { date: '2026-07-23' },
+        colorId: '2',
+      }),
+    })
+
+    const store = useCalendarStore()
+    store.connected = true
+    store.accessToken = 'at123'
+    store.events = []
+
+    // `end` llega con el mismo día: el store debe ignorarlo y derivar el
+    // fin exclusivo por su cuenta.
+    await store.createEvent('primary', {
+      title: 'Feriado',
+      start: '2026-07-22',
+      end: '2026-07-22',
+      allDay: true,
+      colorId: '2',
+    })
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer at123',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          summary: 'Feriado',
+          colorId: '2',
+          start: { date: '2026-07-22' },
+          end: { date: '2026-07-23' },
+        }),
+      })
+    )
+
+    expect(store.events).toHaveLength(1)
+    expect(store.events[0].date).toBe('2026-07-22')
+    expect(store.events[0].start).toBe('2026-07-22')
+    expect(store.events[0].end).toBe('2026-07-23')
+  })
+
+  it('createEvent() de todo el día en local guarda fechas sin hora y aparece solo en su día', async () => {
+    const store = useCalendarStore()
+    store.connected = false
+
+    await store.createEvent('local', {
+      title: 'Feriado local',
+      start: '2026-07-22',
+      end: '2026-07-22',
+      allDay: true,
+      colorId: '2',
+    })
+
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    const saved = JSON.parse(dbStore.get('local-calendar-events')!)
+    expect(saved).toHaveLength(1)
+    expect(saved[0].date).toBe('2026-07-22')
+    expect(saved[0].start).toBe('2026-07-22')
+    expect(saved[0].end).toBe('2026-07-23')
+
+    expect(store.eventsByDate.get('2026-07-22')).toHaveLength(1)
+    expect(store.eventsByDate.has('2026-07-23')).toBe(false)
+  })
+
+  it('createEvent() resuelve el evento recién creado en el calendario local', async () => {
+    const store = useCalendarStore()
+    store.connected = false
+
+    const created = await store.createEvent('local', {
+      title: 'Consulta de Análisis',
+      start: '2026-07-22',
+      end: '2026-07-22',
+      allDay: true,
+    })
+
+    expect(created.title).toBe('Consulta de Análisis')
+    expect(created.calendarId).toBe('local')
+    expect(created.date).toBe('2026-07-22')
+    // El evento devuelto es el mismo que quedó en el store.
+    expect(store.events).toContainEqual(created)
+  })
+
+  it('createEvent() resuelve el evento recién creado en Google', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'created_evt',
+        summary: 'Evento nuevo',
+        start: { dateTime: '2026-07-22T10:00:00Z' },
+        end: { dateTime: '2026-07-22T11:00:00Z' },
+      }),
+    })
+
+    const store = useCalendarStore()
+    store.connected = true
+    store.accessToken = 'at123'
+    store.events = []
+
+    const created = await store.createEvent('primary', {
+      title: 'Evento nuevo',
+      start: '2026-07-22T10:00:00Z',
+      end: '2026-07-22T11:00:00Z',
+    })
+
+    expect(created.id).toBe('created_evt')
+    expect(created.calendarId).toBe('primary')
+    expect(store.events).toContainEqual(created)
+  })
+
   it('updateEvent() performs PUT request and updates local store', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -929,6 +1050,94 @@ describe('useCalendarStore', () => {
     expect(store.events[0].title).toBe('Evento Editado')
     expect(store.events[0].description).toBe('Nueva desc')
     expect(store.events[0].color).toBe('#8e24aa') // colorId "3" resolves to #8e24aa
+  })
+
+  it('updateEvent() de todo el día en Google mantiene la fecha sin hora y deriva el fin exclusivo', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt_allday',
+        summary: 'Feriado movido',
+        start: { date: '2026-08-01' },
+        end: { date: '2026-08-02' },
+      }),
+    })
+
+    const store = useCalendarStore()
+    store.connected = true
+    store.accessToken = 'at123'
+    store.events = [
+      {
+        id: 'evt_allday',
+        title: 'Feriado',
+        start: '2026-07-22',
+        end: '2026-07-23',
+        color: '#33b679',
+        date: '2026-07-22',
+        calendarId: 'primary',
+      },
+    ]
+
+    // `end` llega con la misma fecha de inicio: el store debe ignorarlo.
+    await store.updateEvent('primary', 'evt_allday', {
+      title: 'Feriado movido',
+      start: '2026-08-01',
+      end: '2026-08-01',
+      allDay: true,
+    })
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://www.googleapis.com/calendar/v3/calendars/primary/events/evt_allday',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          summary: 'Feriado movido',
+          start: { date: '2026-08-01' },
+          end: { date: '2026-08-02' },
+        }),
+      })
+    )
+
+    expect(store.events).toHaveLength(1)
+    expect(store.events[0].start).toBe('2026-08-01')
+    expect(store.events[0].end).toBe('2026-08-02')
+    expect(store.events[0].date).toBe('2026-08-01')
+  })
+
+  it('updateEvent() de todo el día en local mantiene fechas sin hora al cambiar solo el título', async () => {
+    const store = useCalendarStore()
+    store.connected = false
+
+    const initialEvent = {
+      id: 'local_allday',
+      title: 'Feriado local',
+      start: '2026-07-22',
+      end: '2026-07-23',
+      color: '#33b679',
+      date: '2026-07-22',
+      calendarId: 'local',
+    }
+    dbStore.set('local-calendar-events', JSON.stringify([initialEvent]))
+    await store.syncYear(2026)
+
+    await store.updateEvent('local', 'local_allday', {
+      title: 'Feriado local renombrado',
+      start: '2026-07-22',
+      end: '2026-07-22',
+      allDay: true,
+    })
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(store.events).toHaveLength(1)
+    expect(store.events[0].title).toBe('Feriado local renombrado')
+    expect(store.events[0].date).toBe('2026-07-22')
+    expect(store.events[0].start).toBe('2026-07-22')
+    expect(store.events[0].end).toBe('2026-07-23')
+
+    const saved = JSON.parse(dbStore.get('local-calendar-events')!)
+    expect(saved[0].title).toBe('Feriado local renombrado')
+    expect(saved[0].end).toBe('2026-07-23')
   })
 
   it('deleteEvent() performs DELETE request and removes event from store', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ActivePomodoroSessionSchema,
   PomodoroSettingsSchema,
+  PomodoroSyncPayloadSchema,
   defaultPomodoroSettings,
 } from './pomodoro'
 
@@ -59,5 +60,35 @@ describe('pomodoro schemas', () => {
         completedFocusSessions: 1,
       })
     ).toMatchObject({ isRunning: false, remainingMs: 120_000 })
+  })
+})
+
+describe('pomodoro sync payload', () => {
+  const snapshot = {
+    origin: 'ventana-emisora',
+    settings: PomodoroSettingsSchema.parse({ volume: 0.5, muted: true }),
+    session: {
+      phase: 'shortBreak' as const,
+      isRunning: true,
+      endsAt: '2026-09-01T12:10:00.000Z',
+      remainingMs: null,
+      completedFocusSessions: 2,
+    },
+  }
+
+  it('acepta un snapshot completo del estado con la ventana de origen', () => {
+    expect(PomodoroSyncPayloadSchema.parse(snapshot)).toEqual(snapshot)
+  })
+
+  it('rechaza payloads sin origen, con settings fuera de rango o con sesión inconsistente', () => {
+    const rechazados = [
+      { ...snapshot, origin: '' },
+      { ...snapshot, origin: undefined },
+      { ...snapshot, settings: { ...snapshot.settings, volume: 2 } },
+      { ...snapshot, session: { ...snapshot.session, endsAt: null } },
+    ]
+    for (const payload of rechazados) {
+      expect(PomodoroSyncPayloadSchema.safeParse(payload).success).toBe(false)
+    }
   })
 })

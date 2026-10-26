@@ -23,6 +23,7 @@ export const DATA_TABLES = [
   'goals',
   'tasks',
   'notes',
+  'exams',
   'schedule_block_slots',
   'schedule_blocks',
 ] as const
@@ -32,9 +33,9 @@ export const DATA_TABLES = [
 export const DATA_CONFIG_KEYS = ['local-calendar-events', 'pomodoro-session'] as const
 
 // Claves de la tabla `config` que almacenan CONFIGURACIÓN (se conservan):
-// distribución de Widgets, conexión y tokens de Google Calendar,
-// wallpaper, ajustes del cronograma y del Pomodoro, y la marca de
-// primera ejecución.
+// disposición de pantalla (distribución de Widgets y ventana mini del
+// Pomodoro), conexión y tokens de Google Calendar, wallpaper, ajustes del
+// cronograma y del Pomodoro, y la marca de primera ejecución.
 
 // Marca persistente de "ya se sembraron los datos de ejemplo": la siembra
 // ocurre como máximo una vez en la vida de la instalación.
@@ -48,6 +49,7 @@ export const PRESERVED_CONFIG_KEYS = [
   'gcal_pending_oauth',
   'gcal_refresh_token',
   'gcal_token_expiry',
+  'pomodoro-mini-window',
   'pomodoro-settings',
   'wallpaper-settings',
   'weekly-schedule-settings',

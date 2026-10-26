@@ -3,9 +3,11 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import YearCalendarWidget from './YearCalendarWidget.vue'
 import MonthMini from '@/components/calendar/MonthMini.vue'
+import YearStrip from '@/components/dashboard/YearStrip.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
+import { eventKey } from '@/lib/entityEventLink'
 
 function flushRaf() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
@@ -45,6 +47,20 @@ vi.mock('@/stores/calendar', () => ({
   useCalendarStore: () => mockStore,
 }))
 
+const mockExams: {
+  exams: unknown[]
+  overlayByDate: Map<string, { id: string; title: string; color: string }[]>
+  linkedEventKeys: Set<string>
+} = {
+  exams: [],
+  overlayByDate: new Map(),
+  linkedEventKeys: new Set(),
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => mockExams,
+}))
+
 describe('YearCalendarWidget', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -55,6 +71,9 @@ describe('YearCalendarWidget', () => {
     mockStore.eventsByDate = new Map()
     mockStore.syncError = null
     mockStore.configReady = Promise.resolve()
+    mockExams.overlayByDate = new Map()
+    mockExams.exams = []
+    mockExams.linkedEventKeys = new Set()
     // Los tests históricos cubren el modo meses: lo pinean explícito.
     // El comportamiento de auto/tira tiene sus propios tests abajo.
     const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
@@ -658,6 +677,102 @@ describe('YearCalendarWidget', () => {
       wrapper.unmount()
     })
 
+    it('pasa el overlay de exámenes a los meses sin crear eventos espejo', async () => {
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-10-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' },
+      ])
+      // El examen se lee como overlay: no se agrega ningún evento al calendario.
+      expect(mockStore.events).toEqual([])
+      expect(mockStore.eventsByDate.size).toBe(0)
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira también pasa el overlay de exámenes', async () => {
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-10-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+
+      const strip = wrapper.findComponent(YearStrip)
+      expect(strip.props('overlayByDate')?.get('2026-10-11')).toEqual([
+        { id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' },
+      ])
+      expect(mockStore.events).toEqual([])
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un examen vinculado a un evento del mismo día pinta un solo punto (dedup)', async () => {
+      const evt = {
+        id: 'evt-1',
+        title: 'Consulta de Análisis',
+        date: '2026-01-11',
+        color: '#6e56cf',
+        calendarId: 'local',
+        start: '2026-01-11T10:00:00',
+        end: '2026-01-11T11:00:00',
+      }
+      mockStore.eventsByDate = new Map([['2026-01-11', [evt]]])
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-01-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      mockExams.linkedEventKeys = new Set([eventKey('local', 'evt-1')])
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      // El mapa de eventos se pasa completo (el tooltip lo necesita)…
+      expect(month.props('eventsByDate')?.get('2026-01-11')).toEqual([evt])
+      // …y el dedup se resuelve en el render por las claves vinculadas…
+      expect([...(month.props('linkedEventKeys') ?? [])]).toEqual([eventKey('local', 'evt-1')])
+      // …de modo que sólo queda el punto del examen.
+      const dots = month.findAll("[data-testid='event-dot']")
+      expect(dots).toHaveLength(1)
+      expect(dots[0].attributes('style')).toContain('rgb(var(--color-block-green))')
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('un vínculo huérfano no rompe el render del calendario', async () => {
+      mockStore.eventsByDate = new Map()
+      mockExams.overlayByDate = new Map([
+        [
+          '2026-01-11',
+          [{ id: 'exam_1', title: 'Parcial 1', color: 'rgb(var(--color-block-green))' }],
+        ],
+      ])
+      mockExams.linkedEventKeys = new Set()
+      localStorage.setItem('aeon:yearcal-mode', 'meses')
+      const wrapper = await mountWithSize(500, 900)
+
+      const month = wrapper.findComponent(MonthMini)
+      expect(month.findAll("[data-testid='event-dot']")).toHaveLength(1)
+
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
     it('en tira el popup muestra la lista de eventos del día clickeado', async () => {
       const evt = {
         id: 'e1',
@@ -770,6 +885,76 @@ describe('YearCalendarWidget', () => {
       expect(wrapper.findAll("[data-testid='month-mini']")).toHaveLength(12)
       vi.unstubAllGlobals()
       wrapper.unmount()
+    })
+
+    function contentHeight(wrapper: ReturnType<typeof mount>): number {
+      const style = wrapper.find('.ycw').attributes('style') ?? ''
+      const monthH = parseFloat(style.match(/--month-h:\s*([\d.]+)px/)![1])
+      const gridGap = parseFloat(style.match(/--grid-gap:\s*([\d.]+)px/)![1])
+      // 1 columna: 12 filas; en happy-dom clientHeight es 0.
+      return 12 * monthH + 11 * gridGap
+    }
+
+    it('restaura la posición de scroll guardada al abrir (abajo del todo)', async () => {
+      localStorage.setItem('aeon:yearcal-scroll', '1')
+      const wrapper = await mountScrollable(280, 300, 1)
+      await wrapper.vm.$nextTick()
+      const viewport = wrapper.find("[data-testid='year-grid-viewport']").element as HTMLElement
+      expect(viewport.scrollTop).toBe(contentHeight(wrapper))
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('guarda la posición al hacer scroll', async () => {
+      const wrapper = await mountScrollable(280, 300, 1)
+      const viewport = wrapper.find("[data-testid='year-grid-viewport']")
+      const el = viewport.element as HTMLElement
+      el.scrollTop = 400
+      await viewport.trigger('scroll')
+      expect(localStorage.getItem('aeon:yearcal-scroll')).toBe(String(400 / contentHeight(wrapper)))
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+    it('un scroll espurio antes de asentar no cancela la restauración (WebKitGTK)', async () => {
+      localStorage.setItem('aeon:yearcal-scroll', '1')
+      // Viewport sin asentar: clientHeight gigante => max<=0 => apply conserva pending.
+      const protoDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        value: 100000,
+        configurable: true,
+      })
+      const getCallback = stubResize()
+      const wrapper = mount(YearCalendarWidget, {
+        attachTo: document.body,
+        props: { item: { i: 'year-calendar', x: 0, y: 0, w: 1, h: 10 } },
+      })
+      try {
+        const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+        Object.defineProperty(bodyEl, 'clientWidth', { value: 280, configurable: true })
+        Object.defineProperty(bodyEl, 'clientHeight', { value: 300, configurable: true })
+        const cb = getCallback()
+        if (cb) (cb as () => void)()
+        await flushRaf()
+        await wrapper.vm.$nextTick()
+        // Restauración pendiente (el viewport aún no asentó). Scroll espurio en 0:
+        const viewport = wrapper.find("[data-testid='year-grid-viewport']")
+        const el = viewport.element as HTMLElement
+        el.scrollTop = 0
+        await viewport.trigger('scroll')
+        // Se asienta el viewport y se reintenta tras un recompute:
+        if (protoDesc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', protoDesc)
+        const cb2 = getCallback()
+        if (cb2) (cb2 as () => void)()
+        await flushRaf()
+        await wrapper.vm.$nextTick()
+        await wrapper.vm.$nextTick()
+        expect(localStorage.getItem('aeon:yearcal-scroll')).toBe('1')
+        expect(el.scrollTop).toBe(contentHeight(wrapper))
+      } finally {
+        if (protoDesc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', protoDesc)
+        vi.unstubAllGlobals()
+        wrapper.unmount()
+      }
     })
   })
 })

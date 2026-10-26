@@ -250,6 +250,7 @@ describe('weeklySchedule schema tests', () => {
         granularity_minutes: 30,
         week_starts_monday: true,
         enabled_days: [0, 1, 2, 3, 4, 5, 6],
+        show_block_times: true,
       })
     })
 
@@ -258,6 +259,7 @@ describe('weeklySchedule schema tests', () => {
         granularity_minutes: 15,
         week_starts_monday: true,
         enabled_days: [0, 1, 2, 3, 4],
+        show_block_times: true,
       }
       expect(WeeklyScheduleSettingsSchema.parse(customSettings)).toEqual(customSettings)
     })

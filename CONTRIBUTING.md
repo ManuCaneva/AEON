@@ -83,7 +83,7 @@ Usamos [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/) co
 <tipo>(<ámbito>): <descripción>
 ```
 
-Tipos: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `style`.
+Tipos: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `style`. Los commits de integración de una rama de ticket en su rama de feature se marcan con el tipo `merge` (p. ej. `merge: llevar spec146/147-titulo-widget a feature/pomodoro`).
 
 Ejemplos:
 

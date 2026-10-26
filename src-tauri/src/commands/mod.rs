@@ -5,6 +5,7 @@
 pub mod app_image;
 pub mod config;
 pub mod data;
+pub mod exams;
 pub mod goal_logs;
 pub mod goals;
 pub mod habits;

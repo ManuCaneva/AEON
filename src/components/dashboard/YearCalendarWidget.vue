@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
+import { useExamsStore } from '@/stores/exams'
+import { useTasksStore } from '@/stores/tasks'
 import MonthMini from '@/components/calendar/MonthMini.vue'
 import YearStrip from '@/components/dashboard/YearStrip.vue'
 import YearCalendarSettingsModal from '@/components/dashboard/YearCalendarSettingsModal.vue'
@@ -11,6 +13,7 @@ import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-vue-next'
 import { computeScrollableLayout, colsForItemWidth, type LayoutResult } from '@/lib/calendarLayout'
 import { significantChange, layoutVars } from '@/lib/calendarResize'
+import { loadScrollFraction, saveScrollFraction } from '@/lib/calendarScroll'
 import {
   loadStripPreference,
   resolveStripMode,
@@ -27,6 +30,8 @@ const props = defineProps<{
 }>()
 
 const store = useCalendarStore()
+const exams = useExamsStore()
+const tasks = useTasksStore()
 
 const MONTH_NAMES = [
   'enero',
@@ -137,8 +142,10 @@ function recomputeNow() {
   if (resolveMode(availW, availH) === 'tira') return
 
   // Modo meses scrolleable: columnas por el ancho del item del dashboard
-  // (w=1 -> 1, w=2 -> 2) y celda solo por ancho con mínimo legible 10px.
-  // El alto no achica celdas: el viewport scrollea en vertical.
+  // (w=1 -> 1, w=2 -> 2) y celda solo por ancho: prefiere el mínimo legible
+  // 10px pero encoge hasta entrar si el widget es ultra-angosto (nunca
+  // desborda en horizontal). El alto no achica celdas: el viewport scrollea
+  // en vertical.
   // Se reserva el ancho de la scrollbar para que la grilla nunca quede
   // debajo de ella (sin celdas recortadas a la derecha).
   const cols = colsForItemWidth(props.item?.w, availW)
@@ -147,7 +154,12 @@ function recomputeNow() {
 
   const change = significantChange(layout.value, candidate)
 
-  if (change === 'none') return
+  if (change === 'none') {
+    // Sin cambio de layout igual puede haberse asentado el viewport:
+    // verifica o re-aplica la restauración pendiente (no toca nada si no hay).
+    retryPendingRestore()
+    return
+  }
 
   // 'layout' siempre es la fuente de verdad: se actualiza con cualquier cambio
   // significativo (estructura o tamaño en un paso discreto). Los 12 MonthMini
@@ -157,10 +169,12 @@ function recomputeNow() {
   layout.value = candidate
 
   if (isFirstLayout) {
-    // Al abrir, scrollear al mes actual para que quede visible (ej. octubre).
-    scrollToCurrentMonth()
+    // Al abrir, se restaura la posición guardada o se scrollea al mes actual.
+    restoreInitialScroll()
     return
   }
+  // El layout se asentó después (tamaño final): aplica la restauración pendiente.
+  retryPendingRestore()
 }
 
 function scrollToMonth(monthIndex: number) {
@@ -175,6 +189,80 @@ function scrollToCurrentMonth() {
   const now = new Date()
   const target = store.currentYear === now.getFullYear() ? now.getMonth() : 0
   void nextTick(() => scrollToMonth(target))
+}
+
+/** Tope de scroll del viewport calculado con el layout (no con scrollHeight,
+ * que con content-visibility:auto no es fiable al montar). */
+function maxScrollTop(): number {
+  const el = viewportRef.value
+  const l = layout.value
+  if (!el || !l) return 0
+  const rows = Math.max(1, Math.ceil(12 / l.cols))
+  return Math.max(0, rows * l.monthHeight + (rows - 1) * l.gridGap - el.clientHeight)
+}
+
+function saveViewportScroll() {
+  const el = viewportRef.value
+  if (!el) return
+  const max = maxScrollTop()
+  if (max > 0) saveScrollFraction(el.scrollTop / max)
+}
+
+function onViewportScroll() {
+  // Mientras hay una restauración pendiente, el scroll es espurio del layout
+  // inicial (WebKitGTK lo emite al asentar): se ignora sin cancelar ni guardar.
+  if (pendingRestore !== null) return
+  saveViewportScroll()
+}
+
+/**
+ * Posición inicial: si hay una posición guardada (de una sesión anterior)
+ * se restaura; si no, se scrollea al mes actual como siempre.
+ * La restauración queda pendiente unos segundos: WebKitGTK puede devolver
+ * el scroll a 0 (o reacomodarlo) mientras la grilla se asienta incluso
+ * después de haberla aplicado, así que cada recompute la re-aplica y los
+ * scrolls intermedios se ignoran (no cancelan ni guardan). El timeout la
+ * libera para no trabar nunca el guardado del scroll del usuario.
+ */
+let pendingRestore: number | null = null
+let restoreTimer: number | null = null
+
+function clearRestoreTimer() {
+  if (restoreTimer !== null) {
+    clearTimeout(restoreTimer)
+    restoreTimer = null
+  }
+}
+
+function applyPendingRestore() {
+  if (pendingRestore === null) return
+  const el = viewportRef.value
+  if (!el) return
+  const max = maxScrollTop()
+  if (max <= 0) return // todavía sin desborde: se reintenta en el próximo recompute
+  el.scrollTop = pendingRestore * max
+}
+
+function restoreInitialScroll() {
+  const saved = loadScrollFraction()
+  if (saved === null) {
+    scrollToCurrentMonth()
+    return
+  }
+  clearRestoreTimer()
+  pendingRestore = saved
+  void nextTick(applyPendingRestore)
+  restoreTimer = window.setTimeout(() => {
+    pendingRestore = null
+    restoreTimer = null
+  }, 2000)
+}
+
+/** Reintento post-carga: verifica o re-aplica la posición pendiente. */
+function retryPendingRestore() {
+  if (pendingRestore === null) return
+  if (!viewportRef.value) return
+  void nextTick(applyPendingRestore)
 }
 
 function flushRecompute() {
@@ -216,6 +304,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearRestoreTimer()
+  pendingRestore = null
+  saveViewportScroll()
   resizeObserver?.disconnect()
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
@@ -240,6 +331,9 @@ watch(
   (newYear, oldYear) => {
     if (newYear !== oldYear) {
       store.syncYear(newYear)
+      // Navegación explícita de año: manda sobre la posición pendiente.
+      clearRestoreTimer()
+      pendingRestore = null
       scrollToCurrentMonth()
     }
   }
@@ -294,6 +388,9 @@ watch(
           v-if="resolvedMode === 'tira'"
           :year="store.currentYear"
           :events-by-date="store.eventsByDate"
+          :linked-event-keys="exams.linkedEventKeys"
+          :linked-event-items="tasks.linkedEventItems"
+          :overlay-by-date="exams.overlayByDate"
           :month-names="MONTH_NAMES"
           @select-day="openDayModal"
         />
@@ -309,6 +406,7 @@ watch(
             ref="viewportRef"
             class="ycw__grid-viewport"
             data-testid="year-grid-viewport"
+            @scroll="onViewportScroll"
           >
             <div class="ycw__grid">
               <MonthMini
@@ -318,6 +416,9 @@ watch(
                 :month="m - 1"
                 :month-name="MONTH_NAMES[m - 1]"
                 :events-by-date="store.eventsByDate"
+                :linked-event-keys="exams.linkedEventKeys"
+                :linked-event-items="tasks.linkedEventItems"
+                :overlay-by-date="exams.overlayByDate"
                 :show-header="false"
                 @select-day="openDayModal"
               />
@@ -515,7 +616,7 @@ watch(
 
 .ycw__grid-header {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: var(--grid-gap, 12px);
   flex-shrink: 0;
   margin-bottom: 6px;
@@ -525,8 +626,9 @@ watch(
   display: grid;
   grid-template-columns: repeat(7, var(--cell-size, auto));
   column-gap: var(--cell-gap-x, 2px);
-  justify-content: center;
+  justify-content: safe center;
   width: 100%;
+  min-width: 0;
 }
 
 .ycw__day-label {
@@ -594,9 +696,9 @@ watch(
 
 .ycw__grid {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: var(--grid-gap, 12px);
   align-content: start;
-  justify-content: center;
+  justify-content: safe center;
 }
 </style>

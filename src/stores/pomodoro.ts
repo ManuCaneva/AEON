@@ -1,24 +1,36 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { emit, listen } from '@tauri-apps/api/event'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import * as db from '@/lib/db'
 import {
   ActivePomodoroSessionSchema,
   defaultPomodoroSettings,
   PomodoroSettingsSchema,
+  PomodoroSyncPayloadSchema,
   type ActivePomodoroSession,
   type PomodoroPhase,
   type PomodoroSettings,
+  type PomodoroSyncPayload,
 } from '@/schemas/pomodoro'
 import { getPhaseDurationMs, getRemainingMs, nextPhase } from '@/lib/pomodoro'
+import { flushPomodoroMiniWindowClosed, POMODORO_MINI_LABEL } from '@/lib/pomodoroMiniWindow'
+import { isPomodoroOwnerWindow } from '@/lib/pomodoroOwner'
 import { createPomodoroSoundPlayer, type PomodoroSoundPlayer } from '@/lib/pomodoroSounds'
 
 export const POMODORO_SETTINGS_KEY = 'pomodoro-settings'
 export const POMODORO_SESSION_KEY = 'pomodoro-session'
 
+/** Canal de sincronización del pomodoro entre webviews (broadcast de Tauri). */
+const POMODORO_SYNC_EVENT = 'pomodoro-state-changed'
+
 /** Cadencia del chequeo de expiración de fase. */
 const TICK_INTERVAL_MS = 250
 
 export const usePomodoroStore = defineStore('pomodoro', () => {
+  /** Identifica a esta instancia entre las demás webviews para descartar su eco. */
+  const origin = crypto.randomUUID()
+
   const settings = ref<PomodoroSettings>({ ...defaultPomodoroSettings })
 
   /** Sesión en reposo calculada con la configuración vigente, no con la de fábrica. */
@@ -85,6 +97,49 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     await db.saveConfig(POMODORO_SETTINGS_KEY, JSON.stringify(settings.value))
   }
 
+  /**
+   * Publica el estado completo a las demás webviews. La ventana que muta es la
+   * única que persiste; las demás aplican el snapshot sin volver a escribirlo
+   * ni re-emitirlo.
+   */
+  function publish(): void {
+    const snapshot: PomodoroSyncPayload = {
+      origin,
+      settings: { ...settings.value },
+      session: { ...session.value },
+    }
+    void emit(POMODORO_SYNC_EVENT, snapshot)
+  }
+
+  /**
+   * Único escritor de la sesión persistida: la ventana que muta escribe en
+   * SQLite y publica el snapshot a las demás, que solo lo aplican.
+   */
+  async function persistAndPublish(): Promise<void> {
+    await persistSession()
+    publish()
+  }
+
+  /**
+   * Aplica el snapshot de otra ventana sin persistir ni re-emitir: la ventana
+   * que originó el cambio ya escribió en SQLite y el eco propio se descarta.
+   */
+  function applyRemote(payload: unknown): void {
+    const snapshot = PomodoroSyncPayloadSchema.safeParse(payload)
+    if (!snapshot.success || snapshot.data.origin === origin) return
+    settings.value = snapshot.data.settings
+    session.value = snapshot.data.session
+    clock.value = Date.now()
+  }
+
+  let syncRegistered = false
+
+  /**
+   * true cuando esta ventana se está cerrando: deja de resolver fines de fase y
+   * de sonar, para que el aviso no se juegue contra el cierre de la ventana.
+   */
+  let windowClosing = false
+
   function setPhase(
     phase: Exclude<PomodoroPhase, 'idle'>,
     isRunning: boolean,
@@ -113,12 +168,8 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     startsAt = Date.now()
   ): Promise<void> {
     const current = session.value.phase
-    if (completedNaturally && current === 'focus') {
-      session.value.completedFocusSessions += 1
-      player().playFocusEndChime(settings.value)
-    } else if (completedNaturally) {
-      player().playBreakEndChime(settings.value)
-    }
+    const focusCompletado = completedNaturally && current === 'focus'
+    if (focusCompletado) session.value.completedFocusSessions += 1
 
     const phase = nextPhase(
       current,
@@ -128,16 +179,32 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     const isRunning =
       phase === 'focus' ? settings.value.autoStartFocus : settings.value.autoStartBreak
     setPhase(phase, isRunning, startsAt)
-    await persistSession()
+    // La transición se publica antes de sonar: la otra ventana la aplica y cede
+    // antes de que suene nada. Si esta ventana muere en el medio, se pierde el
+    // aviso en vez de sonar dos veces.
+    await persistAndPublish()
+
+    if (!completedNaturally || windowClosing) return
+    if (focusCompletado) player().playFocusEndChime(settings.value)
+    else player().playBreakEndChime(settings.value)
   }
 
   async function advanceIfExpired(): Promise<void> {
     while (
+      !windowClosing &&
       session.value.isRunning &&
       session.value.endsAt &&
       new Date(session.value.endsAt).getTime() <= Date.now()
     ) {
-      await advanceToNextPhase(true, new Date(session.value.endsAt).getTime())
+      const expirada = session.value.endsAt
+      // Solo la ventana dueña resuelve el fin de fase: suena y persiste una
+      // sola vez; la otra se queda quieta y aplica el snapshot que llegue.
+      if (!(await isPomodoroOwnerWindow())) return
+      // La ventana pudo cerrarse o un snapshot ajeno pudo resolver la
+      // expiración mientras se decidía la dueña.
+      if (windowClosing) return
+      if (session.value.endsAt !== expirada) continue
+      await advanceToNextPhase(true, new Date(expirada).getTime())
       if (!session.value.isRunning) return
     }
   }
@@ -151,6 +218,26 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function load(): Promise<void> {
+    if (!syncRegistered) {
+      syncRegistered = true
+      await listen(POMODORO_SYNC_EVENT, (event) => applyRemote(event.payload))
+      // Al cerrarse, esta ventana entrega el fin de fase a la otra: con la
+      // principal cerrándose en la expiración, el aviso suena una sola vez.
+      const ventana = getCurrentWebviewWindow()
+      await ventana.onCloseRequested(async () => {
+        windowClosing = true
+        stopTicker()
+        if (ventana.label === POMODORO_MINI_LABEL) {
+          // La ventana se destruye cuando este handler termina: persistir el
+          // cierre acá evita que el destroy gane la carrera contra el guardado.
+          try {
+            await flushPomodoroMiniWindowClosed()
+          } catch {
+            // Cerrar manda: un fallo de persistencia no puede dejar la X muerta.
+          }
+        }
+      })
+    }
     const [rawSettings, rawSession] = await Promise.all([
       db.loadConfig(POMODORO_SETTINGS_KEY),
       db.loadConfig(POMODORO_SESSION_KEY),
@@ -190,7 +277,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: new Date(now + remaining).toISOString(),
       remainingMs: null,
     }
-    await persistSession()
+    await persistAndPublish()
   }
 
   async function pause(): Promise<void> {
@@ -201,7 +288,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       endsAt: null,
       remainingMs: getRemainingMs(session.value.endsAt),
     }
-    await persistSession()
+    await persistAndPublish()
   }
 
   async function resume(): Promise<void> {
@@ -217,7 +304,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
 
   async function reset(): Promise<void> {
     session.value = freshSession()
-    await persistSession()
+    await persistAndPublish()
   }
 
   /**
@@ -226,6 +313,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    */
   function resetSession(): void {
     session.value = freshSession()
+    publish()
   }
 
   async function saveSettings(patch: Partial<PomodoroSettings>): Promise<void> {
@@ -235,6 +323,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
       await persistSession()
     }
     await persistSettings()
+    publish()
   }
 
   return {

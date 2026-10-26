@@ -120,7 +120,7 @@ impl Db {
         )
         .map_err(|e| DbError::Migration(format!("schema_version: {e}")))?;
 
-        let migrations: [(i64, &str, &str); 11] = [
+        let migrations: [(i64, &str, &str); 13] = [
             (1, "001_init", include_str!("migrations/001_init.sql")),
             (2, "002_config", include_str!("migrations/002_config.sql")),
             (
@@ -144,6 +144,12 @@ impl Db {
             (9, "009_repair_habit_progressive_schema", ""),
             (10, "010_repair_schedule_blocks", ""),
             (11, "011_notes", include_str!("migrations/011_notes.sql")),
+            (12, "012_exams", include_str!("migrations/012_exams.sql")),
+            (
+                13,
+                "013_task_block_event",
+                include_str!("migrations/013_task_block_event.sql"),
+            ),
         ];
 
         for (version, name, sql) in &migrations {
@@ -186,6 +192,12 @@ impl Db {
                     )?;
                 } else if *version == 10 {
                     Self::run_migration_010(&conn)?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+                        params![version, now_iso8601()],
+                    )?;
+                } else if *version == 13 {
+                    Self::run_migration_013(&conn)?;
                     conn.execute(
                         "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
                         params![version, now_iso8601()],
@@ -460,6 +472,25 @@ impl Db {
     /// dispare borrados en cascada de slots. Idempotente por inspección real.
     fn run_migration_010(conn: &Connection) -> DbResult<()> {
         Self::ensure_schedule_blocks_schema(conn, "010")
+    }
+
+    /// Migración 013: agrega a `tasks` el Bloque asociado y el vínculo a evento
+    /// (columnas aditivas; ver `migrations/013_task_block_event.sql`). Tolera
+    /// una base donde `tasks` todavía no existe: los tests de reparación
+    /// reproducen esquemas parciales con `schema_version` en 9 pero sin la
+    /// migración 003 aplicada, y en ese caso no hay tabla que alterar.
+    fn run_migration_013(conn: &Connection) -> DbResult<()> {
+        let tasks_table_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks')",
+            [],
+            |r| r.get(0),
+        )?;
+        if !tasks_table_exists {
+            return Ok(());
+        }
+        conn.execute_batch(include_str!("migrations/013_task_block_event.sql"))
+            .map_err(|e| DbError::Migration(format!("013_task_block_event.sql: {e}")))?;
+        Ok(())
     }
 
     fn ensure_schedule_blocks_schema(conn: &Connection, migration: &str) -> DbResult<()> {

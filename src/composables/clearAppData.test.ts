@@ -5,6 +5,7 @@ import { useHabitsStore } from '@/stores/habits'
 import { useTasksStore } from '@/stores/tasks'
 import { useGoalsStore } from '@/stores/goals'
 import { useNotesStore } from '@/stores/notes'
+import { useExamsStore } from '@/stores/exams'
 import { useWeeklyScheduleStore } from '@/stores/weeklySchedule'
 import { useCalendarStore } from '@/stores/calendar'
 import { usePomodoroStore } from '@/stores/pomodoro'
@@ -14,6 +15,7 @@ import type { Habit, HabitLog } from '@/schemas/habits'
 import type { Task } from '@/schemas/tasks'
 import type { Goal, GoalLog } from '@/schemas/goals'
 import type { Note } from '@/schemas/notes'
+import type { Exam } from '@/schemas/exams'
 import {
   DEFAULT_WEEKLY_SCHEDULE_SETTINGS,
   type ScheduleBlockWithSlots,
@@ -34,7 +36,10 @@ const dbMocks = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => dbMocks)
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(vi.fn()),
+  emit: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }))
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }))
 
@@ -44,6 +49,7 @@ const task = { id: 't1' } as unknown as Task
 const goal = { id: 'g1' } as unknown as Goal
 const goalLog = { id: 'gl1', goal_id: 'g1' } as unknown as GoalLog
 const note = { id: 'n1' } as unknown as Note
+const exam = { id: 'e1' } as unknown as Exam
 const block = { id: 'b1', slots: [{ id: 's1' }] } as unknown as ScheduleBlockWithSlots
 const localEvent = {
   id: 'local_1',
@@ -61,6 +67,7 @@ function seedAllData(): void {
   useTasksStore().$patch({ tasks: [task] })
   useGoalsStore().$patch({ goals: [goal], logs: [goalLog] })
   useNotesStore().$patch({ notes: [note] })
+  useExamsStore().$patch({ exams: [exam] })
   useWeeklyScheduleStore().$patch({ blocksWithSlots: [block] })
   useCalendarStore().$patch({ events: [localEvent, gcalEvent] })
 }
@@ -104,6 +111,13 @@ describe('clearAppData — alcance de borrado', () => {
     await clearAppData()
 
     expect(useNotesStore().notes).toEqual([])
+  })
+
+  it('borra exámenes', async () => {
+    seedAllData()
+    await clearAppData()
+
+    expect(useExamsStore().exams).toEqual([])
   })
 
   it('borra bloques y slots del cronograma pero conserva sus ajustes', async () => {

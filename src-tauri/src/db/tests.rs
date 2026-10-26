@@ -638,3 +638,327 @@ fn normalizes_invalid_values_in_a_canonical_count_column() {
         .expect("read normalized count");
     assert_eq!(count, 1);
 }
+
+#[test]
+fn adds_exams_table_additively_and_preserves_existing_data() {
+    let (db, habit_id, _log_id, _note) = legacy_db();
+    db.run_migrations().expect("apply exams migration");
+
+    let conn = db.conn.lock().unwrap();
+
+    let exams_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='exams')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("check exams table");
+    assert!(exams_exists, "la migración debe crear la tabla exams");
+
+    // La data previa sobrevive intacta (migración aditiva).
+    let habit_count: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM habits WHERE id = ?1",
+            [&habit_id],
+            |row| row.get(0),
+        )
+        .expect("count legacy habit");
+    assert_eq!(habit_count, 1);
+}
+
+#[test]
+fn exams_schema_applies_expected_defaults_on_a_fresh_database() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, created_at, updated_at)
+         VALUES ('exam-fixture', 'Parcial', '2026-07-01',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with defaults");
+
+    let (status, fallback_color, topics, grade): (String, String, String, Option<f64>) = conn
+        .query_row(
+            "SELECT status, fallback_color, topics, grade FROM exams WHERE id = 'exam-fixture'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("read exam defaults");
+    assert_eq!(status, "pendiente");
+    assert_eq!(fallback_color, "lavender");
+    assert_eq!(topics, "[]");
+    assert_eq!(grade, None);
+}
+
+#[test]
+fn exams_grade_round_trips_and_enforces_range() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, status, grade, created_at, updated_at)
+         VALUES ('exam-grade', 'Parcial', '2026-07-01', 'rendido', 8.5,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with grade");
+
+    let grade: Option<f64> = conn
+        .query_row(
+            "SELECT grade FROM exams WHERE id = 'exam-grade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read grade");
+    assert_eq!(grade, Some(8.5));
+
+    // "Sin nota" se representa como NULL: limpiarla la deja sin valor.
+    conn.execute("UPDATE exams SET grade = NULL WHERE id = 'exam-grade'", [])
+        .expect("clear grade");
+    let cleared: Option<f64> = conn
+        .query_row(
+            "SELECT grade FROM exams WHERE id = 'exam-grade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read cleared grade");
+    assert_eq!(cleared, None);
+
+    // El CHECK rechaza una nota fuera del rango 0–10.
+    let out_of_range = conn.execute(
+        "INSERT INTO exams (id, title, date, status, grade, created_at, updated_at)
+         VALUES ('exam-bad', 'Parcial', '2026-07-01', 'rendido', 11,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(out_of_range.is_err(), "grade > 10 debe violar el CHECK");
+}
+
+#[test]
+fn exams_topics_round_trip_and_reject_invalid_json() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    let topics = r#"[{"id":"t1","title":"Límites","completed":false}]"#;
+    conn.execute(
+        "INSERT INTO exams (id, title, date, topics, created_at, updated_at)
+         VALUES ('exam-topics', 'Parcial', '2026-07-01', ?1,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [topics],
+    )
+    .expect("insert exam with topics");
+
+    let stored: String = conn
+        .query_row(
+            "SELECT topics FROM exams WHERE id = 'exam-topics'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read topics");
+    assert_eq!(stored, topics);
+
+    // El CHECK(json_valid) rechaza un string que no es JSON.
+    let invalid = conn.execute(
+        "INSERT INTO exams (id, title, date, topics, created_at, updated_at)
+         VALUES ('exam-bad-topics', 'Parcial', '2026-07-01', 'no-json',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(invalid.is_err(), "topics inválido debe violar el CHECK");
+}
+
+#[test]
+fn exams_block_id_round_trips_and_set_null_on_block_delete() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // Un Bloque del Cronograma semanal (la materia del examen).
+    conn.execute(
+        "INSERT INTO schedule_blocks (id, title, color, sort_order, created_at, updated_at)
+         VALUES ('block-1', 'Física', 'green', 0,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert schedule block");
+
+    conn.execute(
+        "INSERT INTO exams (id, title, date, block_id, created_at, updated_at)
+         VALUES ('exam-block', 'Parcial', '2026-07-01', 'block-1',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with block");
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT block_id FROM exams WHERE id = 'exam-block'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read block_id");
+    assert_eq!(stored.as_deref(), Some("block-1"));
+
+    // Borrar el Bloque NO borra el examen: la referencia se anula (SET NULL)
+    // y el examen conserva su color de respaldo.
+    conn.execute("DELETE FROM schedule_blocks WHERE id = 'block-1'", [])
+        .expect("delete schedule block");
+
+    let (count, block_id, fallback_color): (i64, Option<String>, String) = conn
+        .query_row(
+            "SELECT (SELECT count(*) FROM exams WHERE id = 'exam-block'),
+                    block_id, fallback_color
+             FROM exams WHERE id = 'exam-block'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read exam after block delete");
+    assert_eq!(count, 1, "el examen debe sobrevivir al borrado del bloque");
+    assert_eq!(
+        block_id, None,
+        "block_id debe anularse (ON DELETE SET NULL)"
+    );
+    assert_eq!(fallback_color, "lavender", "conserva su color de respaldo");
+}
+
+#[test]
+fn exams_event_link_round_trips_and_clears() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // El vínculo es el par (calendar_id, event_id). Las columnas ya existen
+    // (012_exams): este test es una guarda de su persistencia.
+    conn.execute(
+        "INSERT INTO exams (id, title, date, calendar_id, event_id, created_at, updated_at)
+         VALUES ('exam-link', 'Parcial', '2026-07-01', 'local', 'evt-1',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert exam with event link");
+
+    let (calendar_id, event_id): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT calendar_id, event_id FROM exams WHERE id = 'exam-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read event link");
+    assert_eq!(calendar_id.as_deref(), Some("local"));
+    assert_eq!(event_id.as_deref(), Some("evt-1"));
+
+    // Desvincular: ambas columnas quedan NULL y el examen conserva su fecha.
+    conn.execute(
+        "UPDATE exams SET calendar_id = NULL, event_id = NULL WHERE id = 'exam-link'",
+        [],
+    )
+    .expect("clear event link");
+
+    let (calendar_id, event_id, date): (Option<String>, Option<String>, String) = conn
+        .query_row(
+            "SELECT calendar_id, event_id, date FROM exams WHERE id = 'exam-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read cleared event link");
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+    assert_eq!(date, "2026-07-01", "la fecha del examen no cambia");
+}
+
+#[test]
+fn tasks_schema_adds_block_and_event_columns_with_null_defaults() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    // 013_task_block_event: las columnas son aditivas y opcionales. Una tarea
+    // creada sin asociación las deja en NULL.
+    conn.execute(
+        "INSERT INTO tasks (id, title, color, status, created_at, updated_at)
+         VALUES ('task-defaults', 'Informe', '#112233', 'todo',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert task with defaults");
+
+    let (block_id, calendar_id, event_id): (Option<String>, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT block_id, calendar_id, event_id FROM tasks WHERE id = 'task-defaults'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task defaults");
+    assert_eq!(block_id, None);
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+}
+
+#[test]
+fn tasks_block_round_trips_set_null_on_block_delete_and_event_link_clears() {
+    let db = Db::open_in_memory().expect("fresh database");
+    let conn = db.conn.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO schedule_blocks (id, title, color, sort_order, created_at, updated_at)
+         VALUES ('block-task', 'Química', 'cyan', 0,
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert schedule block");
+
+    conn.execute(
+        "INSERT INTO tasks (id, title, color, status, block_id, calendar_id, event_id, created_at, updated_at)
+         VALUES ('task-link', 'Informe', '#112233', 'todo', 'block-task', 'local', 'evt-9',
+                 '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z')",
+        [],
+    )
+    .expect("insert task with block and event link");
+
+    let (block_id, calendar_id, event_id): (Option<String>, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT block_id, calendar_id, event_id FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task link");
+    assert_eq!(block_id.as_deref(), Some("block-task"));
+    assert_eq!(calendar_id.as_deref(), Some("local"));
+    assert_eq!(event_id.as_deref(), Some("evt-9"));
+
+    // Borrar el Bloque NO borra la tarea: el bloque se anula (SET NULL) y la
+    // tarea conserva su color manual.
+    conn.execute("DELETE FROM schedule_blocks WHERE id = 'block-task'", [])
+        .expect("delete schedule block");
+
+    let (count, block_id, color): (i64, Option<String>, String) = conn
+        .query_row(
+            "SELECT (SELECT count(*) FROM tasks WHERE id = 'task-link'),
+                    block_id, color
+             FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read task after block delete");
+    assert_eq!(count, 1, "la tarea debe sobrevivir al borrado del bloque");
+    assert_eq!(
+        block_id, None,
+        "block_id debe anularse (ON DELETE SET NULL)"
+    );
+    assert_eq!(color, "#112233", "conserva su color manual");
+
+    // Desvincular: el par queda NULL y la tarea sigue existiendo.
+    conn.execute(
+        "UPDATE tasks SET calendar_id = NULL, event_id = NULL WHERE id = 'task-link'",
+        [],
+    )
+    .expect("clear event link");
+    let (calendar_id, event_id): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT calendar_id, event_id FROM tasks WHERE id = 'task-link'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read cleared event link");
+    assert_eq!(calendar_id, None);
+    assert_eq!(event_id, None);
+}

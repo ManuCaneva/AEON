@@ -32,6 +32,32 @@ describe('WeeklyScheduleBlock', () => {
     expect(blockColorTint).toHaveBeenCalledWith('lavender', 0.8)
   })
 
+  it('muestra inicio arriba a la izquierda y fin abajo a la izquierda cuando está habilitado', () => {
+    const wrapper = mount(WeeklyScheduleBlock, {
+      props: {
+        title: 'Gimnasio',
+        color: 'lavender',
+        startTime: '15:15',
+        endTime: '16:45',
+        showTimes: true,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="schedule-block-start"]').text()).toBe('15:15')
+    expect(wrapper.find('[data-testid="schedule-block-end"]').text()).toBe('16:45')
+    expect(wrapper.find('[data-testid="schedule-block-start"]').classes()).toContain('left-1')
+    expect(wrapper.find('[data-testid="schedule-block-end"]').classes()).toContain('left-1')
+  })
+
+  it('oculta los horarios cuando el modo está deshabilitado', () => {
+    const wrapper = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', startTime: '15:15', endTime: '16:45' },
+    })
+
+    expect(wrapper.find('[data-testid="schedule-block-start"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="schedule-block-end"]').exists()).toBe(false)
+  })
+
   it('permite que el título envuelva en varias líneas en vez de truncarse', () => {
     const wrapper = mount(WeeklyScheduleBlock, {
       props: {
@@ -106,6 +132,23 @@ describe('WeeklyScheduleBlock', () => {
 
     await wrapper.find('button').trigger('click')
     expect(wrapper.emitted('click')).toBeTruthy()
+  })
+
+  it('solo anuncia aria-pressed cuando la ocurrencia es seleccionable', () => {
+    const selectable = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', selected: false, selectable: true },
+    })
+    expect(selectable.find('button').attributes('aria-pressed')).toBe('false')
+
+    const selected = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender', selected: true, selectable: true },
+    })
+    expect(selected.find('button').attributes('aria-pressed')).toBe('true')
+
+    const notSelectable = mount(WeeklyScheduleBlock, {
+      props: { title: 'Gimnasio', color: 'lavender' },
+    })
+    expect(notSelectable.find('button').attributes('aria-pressed')).toBeUndefined()
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {

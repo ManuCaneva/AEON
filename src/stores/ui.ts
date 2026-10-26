@@ -128,6 +128,9 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const editMode = ref(false)
+  // Modo edición propio del cronograma semanal. Es exclusivo con el modo
+  // edición general: nunca pueden estar activos a la vez.
+  const scheduleEditMode = ref(false)
   // Diálogo de salida del modo edición: estado único con la vista destino
   // pendiente. La navegación a esa vista se aplica recién al resolverlo.
   const exitDialogOpen = ref(false)
@@ -137,13 +140,18 @@ export const useUiStore = defineStore('ui', () => {
   const tasks = createEntityUi()
   const goals = createEntityUi()
   const notes = createEntityUi()
+  const exams = createEntityUi()
 
   function applyViewMode(mode: ViewMode) {
     viewMode.value = mode
+    // El modo del cronograma es exclusivo del dashboard: navegar a otra vista
+    // lo apaga para no volver a la grilla con una edición colgada.
+    if (mode !== 'dashboard') scheduleEditMode.value = false
     habits.closeMenu()
     tasks.closeMenu()
     goals.closeMenu()
     notes.closeMenu()
+    exams.closeMenu()
   }
 
   function setViewMode(mode: ViewMode) {
@@ -182,6 +190,8 @@ export const useUiStore = defineStore('ui', () => {
    * dashboard: los cambios viven en memoria hasta apretar "Guardar".
    */
   function enterEditMode() {
+    // Exclusividad: entrar al modo edición general apaga el del cronograma.
+    scheduleEditMode.value = false
     useDashboardStore().beginEdit()
     editMode.value = true
   }
@@ -190,6 +200,19 @@ export const useUiStore = defineStore('ui', () => {
   function exitEditMode() {
     useDashboardStore().endEdit()
     editMode.value = false
+  }
+
+  /**
+   * Alterna el modo edición del cronograma. Con el modo edición general activo
+   * no hace nada: el botón del cronograma no está disponible en ese estado.
+   */
+  function toggleScheduleEditMode() {
+    if (editMode.value) return
+    scheduleEditMode.value = !scheduleEditMode.value
+  }
+
+  function exitScheduleEditMode() {
+    scheduleEditMode.value = false
   }
 
   function openExitDialog(destination: ViewMode | null) {
@@ -314,11 +337,18 @@ export const useUiStore = defineStore('ui', () => {
     createNoteOpen: notes.createOpen,
     editingNoteId: notes.editingId,
     menuOpenForNoteId: notes.menuOpenForId,
+    isEditingExam: exams.isEditing,
+    createExamOpen: exams.createOpen,
+    editingExamId: exams.editingId,
+    menuOpenForExamId: exams.menuOpenForId,
     setViewMode,
     toggleSidebar,
     toggleEditMode,
     enterEditMode,
     exitEditMode,
+    scheduleEditMode,
+    toggleScheduleEditMode,
+    exitScheduleEditMode,
     exitDialogOpen,
     pendingView,
     resolveExitDialog,
@@ -351,5 +381,10 @@ export const useUiStore = defineStore('ui', () => {
     closeNoteModal: notes.closeModal,
     toggleNoteMenu: notes.toggleMenu,
     closeNoteMenu: notes.closeMenu,
+    openCreateExam: exams.openCreate,
+    openEditExam: exams.openEdit,
+    closeExamModal: exams.closeModal,
+    toggleExamMenu: exams.toggleMenu,
+    closeExamMenu: exams.closeMenu,
   }
 })

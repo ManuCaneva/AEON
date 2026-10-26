@@ -7,6 +7,7 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 const tasksMock = {
   toggleStep: vi.fn(),
   completeTask: vi.fn(),
+  colorFor: vi.fn((task: Task) => (task.block_id ? 'rgb(var(--color-block-green))' : task.color)),
 }
 const uiMock = {
   menuOpenForTaskId: null as string | null,
@@ -31,6 +32,8 @@ const mockTaskWithSteps: Task = {
   color: '#ff0000',
   status: 'todo',
   due_date: null,
+  block_id: null,
+  event_link: null,
   steps: [
     { id: 'step-1', title: 'Step 1', done: false },
     { id: 'step-2', title: 'Step 2', done: true },
@@ -82,6 +85,15 @@ describe('TaskCard', () => {
     const indicator = wrapper.find("[data-testid='task-color-indicator']")
     expect(indicator.exists()).toBe(true)
     expect(indicator.attributes('style')).toContain('background-color: #ff0000')
+  })
+
+  it('usa el color del bloque cuando la tarea lo tiene', () => {
+    const task = { ...mockTaskWithSteps, block_id: 'block-1' }
+    const wrapper = mount(TaskCard, {
+      props: { task },
+    })
+    const indicator = wrapper.find("[data-testid='task-color-indicator']")
+    expect(indicator.attributes('style')).toContain('rgb(var(--color-block-green))')
   })
 
   it('should not render CycleCheckbox when task has steps', () => {

@@ -1,14 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as db from '@/lib/db'
+import { blockColorRgb } from '@/lib/scheduleColors'
+import { eventKey, type EventChoice, type LinkedEventItem } from '@/lib/entityEventLink'
+import { createEntityEventLifecycle } from '@/lib/entityEventLifecycle'
+import { taskInAgenda } from '@/lib/taskAgenda'
 import {
   rowToTask,
+  pruneEmptySteps,
   type Task,
   type TaskStep,
   type CreateTaskDraft,
   type UpdateTaskDraft,
   type TaskRow,
 } from '@/schemas/tasks'
+import type { ScheduleBlock } from '@/schemas/weeklySchedule'
+import { useWeeklyScheduleStore } from './weeklySchedule'
+import { useCalendarStore } from './calendar'
 
 function nowIsoUtc(): string {
   return new Date().toISOString()
@@ -70,6 +78,44 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const pendingTasks = computed(() => activeTasks.value.filter((t) => t.status !== 'done'))
 
+  /**
+   * Claves de los eventos que ya representa una tarea en la agenda, para no
+   * listarlos dos veces. La tarea se agenda el día del evento (su vencimiento
+   * no manda), así que la clave no exige el mismo día. Una tarea archivada sin
+   * completar no entra en la agenda y por eso no aporta su evento: si el evento
+   * existe, debe verse una vez en «Otros».
+   */
+  const representedEventKeys = computed<Set<string>>(() => {
+    const keys = new Set<string>()
+    for (const task of tasks.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (link) keys.add(eventKey(link.calendarId, link.eventId))
+    }
+    return keys
+  })
+
+  /**
+   * Cómo se pinta el evento de cada tarea agendada: con el título y el color
+   * de la tarea, nunca con los del evento de Google. Espeja
+   * `representedEventKeys` (misma regla de agenda) para que calendario y
+   * «Agenda del Día» se vean igual.
+   */
+  const linkedEventItems = computed<Map<string, LinkedEventItem>>(() => {
+    const items = new Map<string, LinkedEventItem>()
+    for (const task of tasks.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (!link) continue
+      items.set(eventKey(link.calendarId, link.eventId), {
+        id: `task_${task.id}`,
+        title: task.title,
+        color: colorFor(task),
+      })
+    }
+    return items
+  })
+
   /** Vacía el contenido en memoria (tareas y sus pasos). Para «Borrar datos». */
   function reset(): void {
     tasks.value = []
@@ -92,7 +138,10 @@ export const useTasksStore = defineStore('tasks', () => {
   async function createTask(draft: CreateTaskDraft): Promise<Task> {
     const now = nowIsoUtc()
     const id = uuidv4()
-    const row = await db.createTask(draft, id, now, now)
+    // Las filas sin título se descartan antes de persistir: no bloquean el alta.
+    const prepared: CreateTaskDraft =
+      draft.steps !== undefined ? { ...draft, steps: pruneEmptySteps(draft.steps) } : draft
+    const row = await db.createTask(prepared, id, now, now)
     const task = rowToTask(row)
     tasks.value = [...tasks.value, task]
     return task
@@ -100,7 +149,10 @@ export const useTasksStore = defineStore('tasks', () => {
 
   async function updateTask(id: string, patch: UpdateTaskDraft): Promise<Task> {
     const now = nowIsoUtc()
-    const row = await db.updateTask(id, patch, now)
+    // Igual que al crear: sólo se filtran los pasos cuando el patch los trae.
+    const prepared: UpdateTaskDraft =
+      patch.steps !== undefined ? { ...patch, steps: pruneEmptySteps(patch.steps) } : patch
+    const row = await db.updateTask(id, prepared, now)
     const task = rowToTask(row)
     tasks.value = tasks.value.map((t) => (t.id === id ? task : t))
     return task
@@ -156,6 +208,79 @@ export const useTasksStore = defineStore('tasks', () => {
     await updateTask(taskId, { steps: updatedSteps })
   }
 
+  /**
+   * Bloque asociado (la materia), resuelto contra el Cronograma semanal.
+   * Degrada en silencio: si no hay asociación o el bloque ya no existe
+   * (borrado, SET NULL), devuelve undefined.
+   */
+  function blockFor(task: Task): ScheduleBlock | undefined {
+    if (!task.block_id) return undefined
+    return useWeeklyScheduleStore().blocksWithSlots.find((b) => b.id === task.block_id)
+  }
+
+  /**
+   * Color vivo de la tarea: el del bloque mientras exista; si no, su color
+   * manual. El color derivado nunca se persiste.
+   */
+  function colorFor(task: Task): string {
+    const block = blockFor(task)
+    return block ? blockColorRgb(block.color) : task.color
+  }
+
+  // Ciclo de vida del vínculo entidad→evento (ADR 0010), compartido con los
+  // exámenes. La fecha de la tarea (`due_date`) es la fuente de verdad; sin
+  // fecha no hay evento posible.
+  const lifecycle = createEntityEventLifecycle<Task, CreateTaskDraft, UpdateTaskDraft>({
+    calendar: () => useCalendarStore(),
+    date: (task) => task.due_date ?? '',
+    draftDate: (patch) => patch.due_date,
+    link: (task) => task.event_link,
+    find: (id) => tasks.value.find((t) => t.id === id),
+    persistCreate: (draft) => createTask(draft),
+    persistUpdate: (id, patch) => updateTask(id, patch),
+    persistLink: (id, link) => updateTask(id, { event_link: link }),
+    persistDelete: (id) => deleteTask(id),
+    missingDateMessage: 'La tarea necesita una fecha para crear su evento.',
+  })
+
+  /**
+   * Crea la tarea y, según la elección, su evento. La entidad se persiste
+   * primero (es la fuente de verdad de su fecha y su título); recién después
+   * se crea el evento. Si eso falla, la tarea queda SIN vínculo y el error se
+   * devuelve para que la UI lo muestre.
+   */
+  async function createTaskWithEvent(
+    draft: CreateTaskDraft,
+    choice: EventChoice
+  ): Promise<{ task: Task; eventError: string | null }> {
+    const { entity, eventError } = await lifecycle.createWithEvent(draft, choice)
+    return { task: entity, eventError }
+  }
+
+  /**
+   * Edita la tarea y su evento. `none` limpia el vínculo (el evento queda
+   * intacto); `existing` fija el vínculo elegido y, si el vínculo previo
+   * seguía vigente y el título o la fecha cambiaron, actualiza ese evento;
+   * `local`/`new` crean un evento nuevo y lo vinculan.
+   */
+  async function updateTaskWithEvent(
+    id: string,
+    patch: UpdateTaskDraft,
+    choice: EventChoice
+  ): Promise<{ task: Task; eventError: string | null }> {
+    const { entity, eventError } = await lifecycle.updateWithEvent(id, patch, choice)
+    return { task: entity, eventError }
+  }
+
+  /**
+   * Borra la tarea y, si se pide, el evento de su vínculo vigente (mismo día).
+   * Un vínculo huérfano o de otro día degrada en silencio: sólo se borra la
+   * tarea.
+   */
+  async function deleteTaskWithEvent(id: string, deleteEvent: boolean): Promise<void> {
+    await lifecycle.deleteWithEvent(id, deleteEvent)
+  }
+
   return {
     tasks,
     loading,
@@ -163,6 +288,8 @@ export const useTasksStore = defineStore('tasks', () => {
     activeTasks,
     archivedTasks,
     pendingTasks,
+    representedEventKeys,
+    linkedEventItems,
     reset,
     loadTasks,
     createTask,
@@ -173,5 +300,10 @@ export const useTasksStore = defineStore('tasks', () => {
     completeTask,
     uncompleteTask,
     toggleStep,
+    blockFor,
+    colorFor,
+    createTaskWithEvent,
+    updateTaskWithEvent,
+    deleteTaskWithEvent,
   }
 })

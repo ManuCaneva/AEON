@@ -225,7 +225,8 @@
 }
 .container-widget .tasks-header-responsive,
 .container-widget .goals-header-responsive,
-.container-widget .notes-header-responsive {
+.container-widget .notes-header-responsive,
+.container-widget .exams-header-responsive {
   padding: max(0.25rem, 0.6cqw) max(0.5rem, 1.2cqw);
 }
 
@@ -295,7 +296,8 @@
 .container-widget .new-habit-card,
 .container-widget .new-task-card,
 .container-widget .new-goal-card,
-.container-widget .new-note-card {
+.container-widget .new-note-card,
+.container-widget .new-exam-card {
   min-height: max(2rem, 5cqw);
   padding: max(0.25rem, 0.6cqw);
   gap: max(0.125rem, 0.4cqw);
@@ -343,6 +345,13 @@
 .container-widget .pomodoro-countdown {
   font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
 }
+/* Ventana mini (contenedor chico): el piso del contador baja junto con el
+   disco, sin dejar de respetar la escala de Configuración. */
+@container (max-width: 240px) {
+  .container-widget .pomodoro-countdown {
+    font-size: max(calc(1rem * var(--text-scale)), 12cqmin);
+  }
+}
 .container-widget .pomodoro-controls {
   gap: max(0.25rem, 2cqmin);
 }
@@ -353,6 +362,11 @@
 .container-widget .pomodoro-btn svg {
   width: 45%;
   height: 45%;
+}
+
+/* Header compacto del pomodoro: la fila no le roba alto al disco */
+.container-widget .pomodoro-header .text-card-title {
+  font-size: calc(0.875rem * var(--text-scale));
 }
 
 /* Schedule widget header - proportional scaling */

@@ -10,6 +10,7 @@ describe('dataScope — frontera entre datos y configuración', () => {
       'goals',
       'tasks',
       'notes',
+      'exams',
       'schedule_block_slots',
       'schedule_blocks',
     ])
@@ -29,6 +30,7 @@ describe('dataScope — frontera entre datos y configuración', () => {
         'gcal_pending_oauth',
         'gcal_refresh_token',
         'gcal_token_expiry',
+        'pomodoro-mini-window',
         'pomodoro-settings',
         'wallpaper-settings',
         'weekly-schedule-settings',
@@ -45,10 +47,11 @@ describe('dataScope — frontera entre datos y configuración', () => {
     }
   })
 
-  it('conserva explícitamente la configuración crítica: widgets, gcal, wallpaper, ajustes y primera ejecución', () => {
+  it('conserva explícitamente la configuración crítica: disposición de pantalla, gcal, wallpaper, ajustes y primera ejecución', () => {
     const preserved = new Set<string>(PRESERVED_CONFIG_KEYS)
-    // Distribución de Widgets
+    // Disposición de pantalla: distribución de Widgets y ventana mini del Pomodoro
     expect(preserved.has('aeon-dashboard-layout')).toBe(true)
+    expect(preserved.has('pomodoro-mini-window')).toBe(true)
     // Conexión y tokens de Google Calendar
     expect(preserved.has('gcal_access_token')).toBe(true)
     expect(preserved.has('gcal_refresh_token')).toBe(true)

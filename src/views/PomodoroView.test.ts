@@ -35,6 +35,12 @@ vi.mock('@/stores/pomodoro', () => ({
   usePomodoroStore: () => store,
 }))
 
+const mockOpenMini = vi.fn().mockResolvedValue(undefined)
+
+vi.mock('@/lib/pomodoroMiniWindow', () => ({
+  openPomodoroMiniWindow: (...args: unknown[]) => mockOpenMini(...args),
+}))
+
 describe('PomodoroView', () => {
   it('renders the countdown, phase, cycle dots, and idle controls', () => {
     store = createStore()
@@ -142,6 +148,22 @@ describe('PomodoroView', () => {
     const dots = wrapper.findAll('[data-testid="cycle-dot"]')
     expect(dots[0].classes()).toContain('bg-primary')
     expect(dots[3].classes()).toContain('bg-surface-3')
+    wrapper.unmount()
+  })
+
+  it('el botón pop-out de la card abre la ventana mini junto al indicador de fase', async () => {
+    store = createStore()
+    mockOpenMini.mockClear()
+    const wrapper = mount(PomodoroView)
+
+    const phase = wrapper.get('[data-testid="pomodoro-phase"]')
+    const popout = wrapper.get('[data-testid="pomodoro-view-popout"]')
+    expect(popout.attributes('aria-label')).toBe('Abrir ventana mini')
+    expect(popout.find('svg.lucide-picture-in-picture2-icon').exists()).toBe(true)
+    expect(popout.element.parentElement).toBe(phase.element.parentElement)
+
+    await popout.trigger('click')
+    expect(mockOpenMini).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
 })

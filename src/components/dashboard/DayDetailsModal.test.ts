@@ -5,6 +5,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { ref, reactive } from 'vue'
 import TimePicker from '@/components/ui/TimePicker.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import { eventKey, resolveEntityLink } from '@/lib/entityEventLink'
+import { taskInAgenda } from '@/lib/taskAgenda'
 
 const hiddenCalendarIds = ref(new Set<string>())
 
@@ -26,6 +28,110 @@ const reactiveMockStore = reactive(mockStore)
 vi.mock('@/stores/calendar', () => ({
   useCalendarStore: () => reactiveMockStore,
 }))
+
+type ExamLike = {
+  id: string
+  title: string
+  date: string
+  status: string
+  fallback_color: string
+  event_link?: { calendarId: string; eventId: string } | null
+}
+
+type TaskLike = {
+  id: string
+  title: string
+  color: string
+  status: 'todo' | 'doing' | 'done'
+  due_date: string | null
+  event_link?: { calendarId: string; eventId: string } | null
+  archived_at?: string | null
+}
+
+const examsState = ref<ExamLike[]>([])
+
+const examsMock = {
+  get exams() {
+    return examsState.value
+  },
+  colorFor: vi.fn().mockReturnValue('rgb(var(--color-block-lavender))'),
+  blockFor: vi.fn().mockReturnValue(undefined),
+  get linkedEventKeys() {
+    const keys = new Set<string>()
+    for (const exam of examsState.value) {
+      const resolved = resolveEntityLink(
+        { date: exam.date, event_link: exam.event_link ?? null },
+        mockStore.events.value
+      )
+      if (resolved) keys.add(eventKey(resolved.calendarId, resolved.id))
+    }
+    return keys
+  },
+}
+
+const tasksState = ref<TaskLike[]>([])
+
+const tasksMock = {
+  get tasks() {
+    return tasksState.value
+  },
+  colorFor: vi.fn((task: TaskLike) => task.color),
+  blockFor: vi.fn().mockReturnValue(undefined),
+  get representedEventKeys() {
+    const keys = new Set<string>()
+    for (const task of tasksState.value) {
+      if (!taskInAgenda(task)) continue
+      const link = task.event_link
+      if (link) keys.add(eventKey(link.calendarId, link.eventId))
+    }
+    return keys
+  },
+}
+
+const uiMock = {
+  openEditExam: vi.fn(),
+}
+
+vi.mock('@/stores/exams', () => ({
+  useExamsStore: () => examsMock,
+}))
+vi.mock('@/stores/tasks', () => ({
+  useTasksStore: () => tasksMock,
+}))
+vi.mock('@/stores/ui', () => ({
+  useUiStore: () => uiMock,
+}))
+
+function makeExam(id: string, title: string, date: string, overrides: Partial<ExamLike> = {}) {
+  return {
+    id,
+    title,
+    date,
+    status: 'pendiente',
+    fallback_color: 'lavender',
+    event_link: null,
+    ...overrides,
+  }
+}
+
+function makeTask(id: string, title: string, overrides: Partial<TaskLike> = {}) {
+  return {
+    id,
+    title,
+    color: '#5e6ad2',
+    status: 'todo' as const,
+    due_date: null,
+    event_link: null,
+    archived_at: null,
+    ...overrides,
+  }
+}
+
+function sectionIds(): (string | null)[] {
+  return Array.from(document.body.querySelectorAll('[data-testid^="day-section-"]')).map((el) =>
+    el.getAttribute('data-testid')
+  )
+}
 
 describe('DayDetailsModal', () => {
   let wrapper: any
@@ -54,6 +160,13 @@ describe('DayDetailsModal', () => {
 
     mockStore.syncError.value = null
     hiddenCalendarIds.value = new Set<string>()
+    examsState.value = []
+    tasksState.value = []
+    examsMock.colorFor.mockReturnValue('rgb(var(--color-block-lavender))')
+    examsMock.blockFor.mockReturnValue(undefined)
+    tasksMock.colorFor.mockImplementation((task: TaskLike) => task.color)
+    tasksMock.blockFor.mockReturnValue(undefined)
+    uiMock.openEditExam.mockReset()
     mockStore.createEvent.mockReset().mockResolvedValue(undefined)
     mockStore.updateEvent.mockReset().mockResolvedValue(undefined)
     mockStore.deleteEvent.mockReset().mockResolvedValue(undefined)
@@ -222,5 +335,277 @@ describe('DayDetailsModal', () => {
     const dialog = document.body.querySelector("[role='dialog']")
     expect(dialog!.textContent).toContain('Permisos requeridos')
     expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+  })
+
+  describe('agenda del día por secciones', () => {
+    it('muestra las tres secciones en orden y oculta las vacías', () => {
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      tasksState.value = [makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22' })]
+      // mockStore.events ya trae un evento suelto el 2026-07-22
+
+      factory()
+
+      expect(sectionIds()).toEqual(['day-section-exams', 'day-section-tasks', 'day-section-others'])
+    })
+
+    it('oculta una sección sin contenido', () => {
+      tasksState.value = [makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22' })]
+      mockStore.events.value = []
+      factory()
+
+      expect(sectionIds()).toEqual(['day-section-tasks'])
+    })
+
+    it('un examen del día aparece en Exámenes', () => {
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-exams']")
+      expect(section).not.toBeNull()
+      expect(section!.textContent).toContain('Parcial de Análisis')
+    })
+
+    it('un examen con evento aparece en Exámenes y su evento no aparece en Otros', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22', {
+          event_link: { calendarId: 'primary', eventId: 'evt1' },
+        }),
+      ]
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-exams']")
+      expect(section!.textContent).toContain('Parcial de Análisis')
+      expect(document.body.querySelector("[data-testid='day-section-others']")).toBeNull()
+      expect(document.body.textContent).not.toContain('Evento Test 1')
+    })
+
+    it('una tarea con vencimiento hoy y sin evento aparece en Tareas', () => {
+      tasksState.value = [makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22' })]
+      mockStore.events.value = []
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-tasks']")
+      expect(section).not.toBeNull()
+      expect(section!.textContent).toContain('Entregar informe')
+    })
+
+    it('una tarea con evento aparece el día del evento y no el del vencimiento', () => {
+      tasksState.value = [
+        makeTask('task-1', 'Entregar informe', {
+          due_date: '2026-07-23',
+          event_link: { calendarId: 'primary', eventId: 'evt-evento' },
+        }),
+      ]
+      mockStore.events.value = [
+        {
+          id: 'evt-evento',
+          date: '2026-07-22',
+          title: 'Entregar informe',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-22',
+          end: '2026-07-23',
+        },
+      ]
+
+      factory()
+      expect(document.body.querySelector("[data-testid='day-task-item']")).not.toBeNull()
+
+      // El día del vencimiento (un día después del evento) no la lista.
+      wrapper.unmount()
+      factory({ date: '2026-07-23' })
+      expect(document.body.querySelector("[data-testid='day-task-item']")).toBeNull()
+    })
+
+    it('una tarea hecha aparece tachada aunque esté archivada', () => {
+      tasksState.value = [
+        makeTask('task-1', 'Entregar informe', {
+          due_date: '2026-07-22',
+          status: 'done',
+          archived_at: '2026-07-22T12:00:00.000Z',
+        }),
+      ]
+      mockStore.events.value = []
+      factory()
+
+      const item = document.body.querySelector("[data-testid='day-task-item']")
+      expect(item).not.toBeNull()
+      expect(item!.querySelector('.line-through')).not.toBeNull()
+    })
+
+    it('no muestra una tarea archivada sin completar', () => {
+      tasksState.value = [
+        makeTask('task-active', 'Tarea activa', { due_date: '2026-07-22' }),
+        makeTask('task-archivada', 'Tarea archivada', {
+          due_date: '2026-07-22',
+          status: 'todo',
+          archived_at: '2026-07-22T12:00:00.000Z',
+        }),
+      ]
+      mockStore.events.value = []
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-tasks']")
+      expect(section).not.toBeNull()
+      expect(section!.textContent).toContain('Tarea activa')
+      expect(section!.textContent).not.toContain('Tarea archivada')
+    })
+
+    it('un evento suelto aparece en Otros', () => {
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-others']")
+      expect(section).not.toBeNull()
+      expect(section!.textContent).toContain('Evento Test 1')
+    })
+
+    it('un evento de todo el día se muestra como «Todo el día», sin rango 00:00', () => {
+      mockStore.events.value = [
+        {
+          id: 'evt-allday',
+          date: '2026-07-22',
+          title: 'Feriado',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-22',
+          end: '2026-07-23',
+        },
+      ]
+      factory()
+
+      const section = document.body.querySelector("[data-testid='day-section-others']")
+      expect(section!.textContent).toContain('Todo el día')
+      expect(section!.textContent).not.toContain('00:00')
+    })
+
+    it('no repite un evento que representa a una entidad', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22', {
+          event_link: { calendarId: 'primary', eventId: 'evt1' },
+        }),
+      ]
+      mockStore.events.value = [
+        {
+          id: 'evt1',
+          date: '2026-07-22',
+          title: 'Evento Test 1',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-22T10:00:00-03:00',
+          end: '2026-07-22T11:00:00-03:00',
+        },
+        {
+          id: 'evt-suelto',
+          date: '2026-07-22',
+          title: 'Evento Suelto',
+          color: '#33b679',
+          calendarId: 'primary',
+          start: '2026-07-22T12:00:00-03:00',
+          end: '2026-07-22T13:00:00-03:00',
+        },
+      ]
+      factory()
+
+      const body = document.body.textContent ?? ''
+      expect(body.split('Evento Suelto')).toHaveLength(2) // aparece una sola vez
+      expect(body).not.toContain('Evento Test 1') // representa al examen: no se repite
+      expect((document.body.textContent ?? '').split('Parcial de Análisis')).toHaveLength(2)
+    })
+
+    it('las filas de entidad muestran sólo el título y su color, sin adornos', () => {
+      examsMock.colorFor.mockReturnValue('rgb(var(--color-block-green))')
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      tasksMock.colorFor.mockReturnValue('rgb(var(--color-block-blue))')
+      tasksState.value = [makeTask('task-1', 'Entregar informe', { due_date: '2026-07-22' })]
+      mockStore.events.value = []
+      factory()
+
+      const examItem = document.body.querySelector("[data-testid='day-exam-item']") as HTMLElement
+      expect(examItem.textContent!.trim()).toBe('Parcial de Análisis')
+      const examDot = examItem.querySelector("[data-testid='day-exam-dot']") as HTMLElement
+      expect(examDot.getAttribute('style')).toContain('rgb(var(--color-block-green))')
+
+      const taskItem = document.body.querySelector("[data-testid='day-task-item']") as HTMLElement
+      expect(taskItem.textContent!.trim()).toBe('Entregar informe')
+      const taskDot = taskItem.querySelector("[data-testid='day-task-dot']") as HTMLElement
+      expect(taskDot.getAttribute('style')).toContain('rgb(var(--color-block-blue))')
+    })
+  })
+
+  describe('exámenes en el detalle del día', () => {
+    it('lista sólo los exámenes de la fecha mostrada', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22'),
+        makeExam('exam-2', 'Final de Física', '2026-07-23'),
+      ]
+      factory()
+
+      const dialog = document.body.querySelector("[role='dialog']")
+      expect(dialog!.textContent).toContain('Parcial de Análisis')
+      expect(dialog!.textContent).not.toContain('Final de Física')
+    })
+
+    it('abre el examen al clickearlo sin editarlo como evento del calendario', async () => {
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      factory()
+
+      const item = document.body.querySelector("[data-testid='day-exam-item']") as HTMLElement
+      expect(item).not.toBeNull()
+      await item.click()
+      await wrapper.vm.$nextTick()
+
+      expect(uiMock.openEditExam).toHaveBeenCalledWith('exam-1')
+      // El examen no entra en el CRUD del calendario: no se toca ningún evento.
+      expect(mockStore.updateEvent).not.toHaveBeenCalled()
+      expect(mockStore.deleteEvent).not.toHaveBeenCalled()
+    })
+
+    it('el punto del examen usa el color resuelto como variable CSS', () => {
+      examsMock.colorFor.mockReturnValue('rgb(var(--color-block-green))')
+      examsState.value = [makeExam('exam-1', 'Parcial de Análisis', '2026-07-22')]
+      factory()
+
+      const dot = document.body.querySelector("[data-testid='day-exam-dot']")
+      expect(dot).not.toBeNull()
+      expect((dot as HTMLElement).getAttribute('style')).toContain('rgb(var(--color-block-green))')
+      expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+    })
+
+    it('no muestra la sección si no hay exámenes ese día', () => {
+      examsState.value = []
+      factory()
+      expect(document.body.querySelector("[data-testid='day-section-exams']")).toBeNull()
+    })
+
+    it('muestra el examen si su vínculo es huérfano (evento ausente)', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22', {
+          event_link: { calendarId: 'primary', eventId: 'evt-ausente' },
+        }),
+      ]
+      factory()
+      expect(document.body.querySelector("[data-testid='day-exam-item']")).not.toBeNull()
+    })
+
+    it('muestra el examen si su evento vinculado es de otro día', () => {
+      examsState.value = [
+        makeExam('exam-1', 'Parcial de Análisis', '2026-07-22', {
+          event_link: { calendarId: 'primary', eventId: 'evt-otro-dia' },
+        }),
+      ]
+      mockStore.events.value = [
+        {
+          id: 'evt-otro-dia',
+          date: '2026-07-23',
+          title: 'Evento de otro día',
+          color: '#7986cb',
+          calendarId: 'primary',
+          start: '2026-07-23T10:00:00-03:00',
+          end: '2026-07-23T11:00:00-03:00',
+        },
+      ]
+      factory()
+      expect(document.body.querySelector("[data-testid='day-exam-item']")).not.toBeNull()
+    })
   })
 })

@@ -4,6 +4,8 @@
 
 mod commands;
 mod db;
+#[cfg(target_os = "linux")]
+mod linux_graphics;
 
 use db::Db;
 use std::path::PathBuf;
@@ -11,23 +13,10 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Política del renderer DMABUF de WebKitGTK (Linux).
-    //
-    // Historial: a664665 lo desactivaba siempre (`=1`) para evitar bordes
-    // fantasma en capas transformadas (NVIDIA/Wayland), pero eso deja la
-    // composición 100% por CPU en TODOS los equipos: jank general (scroll,
-    // drag, sidebar), CPU alta y ventiladores. Windows no se ve afectado
-    // (WebView2 ignora la variable).
-    //
-    // Hoy la app no toca la variable: el compositing por GPU queda activo por
-    // defecto y solo se respeta el override explícito del usuario como escape
-    // hatch para el caso original (export WEBKIT_DISABLE_DMABUF_RENDERER=1).
+    // Infraestructura de arranque: debe ejecutarse antes de inicializar GTK.
+    // DMABUF queda intacto; se conserva como override manual del usuario.
     #[cfg(target_os = "linux")]
-    {
-        if should_disable_dmabuf_renderer(std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER")) {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-    }
+    linux_graphics::prepare();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -66,6 +55,10 @@ pub fn run() {
             commands::tasks::delete_task,
             commands::tasks::archive_task,
             commands::tasks::restore_task,
+            commands::exams::create_exam,
+            commands::exams::list_exams,
+            commands::exams::update_exam,
+            commands::exams::delete_exam,
             commands::notes::create_note,
             commands::notes::list_notes,
             commands::notes::update_note,
@@ -91,41 +84,4 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// Política del workaround del renderer DMABUF de WebKitGTK (Linux).
-///
-/// Retorna `true` si la app debe forzar `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
-/// Hoy: nunca por defecto (la app no toca el entorno); el override explícito
-/// del usuario se respeta tal cual sin necesidad de forzarlo. Existe para
-/// documentar la decisión y dar seam de test: si el caso original (bordes
-/// fantasma en NVIDIA/Wayland) reaparece, se angosta acá con detección real
-/// en vez de un set incondicional.
-//
-// Sin `cfg(target_os)`: es lógica pura y los tests corren en todos los OS.
-#[allow(dead_code)]
-fn should_disable_dmabuf_renderer(user_override: Option<std::ffi::OsString>) -> bool {
-    let _ = user_override;
-    false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::should_disable_dmabuf_renderer;
-    use std::ffi::OsString;
-
-    #[test]
-    fn no_fuerza_software_sin_override() {
-        // Sin override del usuario la app no toca el renderer: forzar
-        // WEBKIT_DISABLE_DMABUF_RENDERER=1 deja la composición 100% por CPU
-        // (jank general + ventiladores en Linux).
-        assert!(!should_disable_dmabuf_renderer(None));
-    }
-
-    #[test]
-    fn no_pisa_override_explicito_del_usuario() {
-        // El escape hatch se respeta tal cual: la app nunca escribe la variable.
-        assert!(!should_disable_dmabuf_renderer(Some(OsString::from("1"))));
-        assert!(!should_disable_dmabuf_renderer(Some(OsString::from("0"))));
-    }
 }
