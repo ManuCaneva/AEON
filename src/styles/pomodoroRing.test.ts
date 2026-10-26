@@ -26,6 +26,14 @@ describe('pomodoro ring (anillo SVG)', () => {
     expect(track).toMatch(/fill:\s*none/)
   })
 
+  it('el anillo es decorativo y no intercepta los clicks de los controles del disco', () => {
+    // El SVG cubre todo el círculo y el disco con los botones va dentro de su
+    // slot: sin pointer-events: none el overlay posicionado se traga los clicks
+    // de reset/toggle/skip (jsdom no hace hit-testing, por eso se fija en CSS).
+    const anillo = rule('.pomodoro-ring')
+    expect(anillo).toMatch(/pointer-events:\s*none/)
+  })
+
   it('el countdown funde su entrada con una animación corta', () => {
     expect(css).toMatch(/\.pomodoro-fade-in\s*\{[^}]*animation:[^;]*pomodoro-fade/)
     expect(css).toMatch(/@keyframes pomodoro-fade[^{]*\{[^}]*opacity:\s*0/)

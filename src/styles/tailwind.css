@@ -349,6 +349,9 @@
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
+  /* Capa decorativa que cubre todo el círculo: sin esto tapa los clicks de
+     los controles que viven dentro del disco. */
+  pointer-events: none;
 }
 .pomodoro-ring-track {
   fill: none;
