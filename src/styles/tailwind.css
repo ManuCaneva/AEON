@@ -386,10 +386,30 @@
   font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
 }
 /* Ventana mini (contenedor chico): el piso del contador baja junto con el
-   disco, sin dejar de respetar la escala de Configuración. */
+   disco y los controles se compactan, sin dejar de respetar la escala de
+   Configuración. La mini ahora se puede achicar hasta 140 px de ancho y en
+   ese rango el disco deja de ser un cuadrado lleno de controles. */
 @container (max-width: 240px) {
   .container-widget .pomodoro-countdown {
     font-size: max(calc(1rem * var(--text-scale)), 12cqmin);
+  }
+  .container-widget .pomodoro-controls {
+    gap: max(0.125rem, 2cqmin);
+  }
+  .container-widget .pomodoro-btn {
+    width: max(1.5rem, 8cqmin);
+    height: max(1.5rem, 8cqmin);
+  }
+}
+/* Mínimo de la mini (140×150): otro escalón para que el countdown y los
+   controles sigan entrando en el disco. */
+@container (max-width: 170px) {
+  .container-widget .pomodoro-countdown {
+    font-size: max(calc(0.875rem * var(--text-scale)), 12cqmin);
+  }
+  .container-widget .pomodoro-btn {
+    width: max(1.25rem, 8cqmin);
+    height: max(1.25rem, 8cqmin);
   }
 }
 .container-widget .pomodoro-controls {

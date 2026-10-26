@@ -890,7 +890,7 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
 
     expect(db.saveConfig).toHaveBeenCalledWith(
       'pomodoro-mini-window',
-      JSON.stringify({ isOpen: false, x: null, y: null })
+      JSON.stringify({ isOpen: false, x: null, y: null, width: null, height: null })
     )
   })
 

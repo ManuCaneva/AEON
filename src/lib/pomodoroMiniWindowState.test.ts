@@ -20,7 +20,7 @@ describe('persistencia del estado de la ventana mini', () => {
     const state = await loadPomodoroMiniWindowState()
 
     expect(db.loadConfig).toHaveBeenCalledWith('pomodoro-mini-window')
-    expect(state).toEqual({ isOpen: true, x: 100, y: 200 })
+    expect(state).toEqual({ isOpen: true, x: 100, y: 200, width: null, height: null })
   })
 
   it('un dato persistido corrupto devuelve el estado por defecto sin lanzar', async () => {
@@ -32,11 +32,17 @@ describe('persistencia del estado de la ventana mini', () => {
   it('guarda el estado serializado en la misma clave', async () => {
     vi.mocked(db.saveConfig).mockResolvedValue(undefined)
 
-    await savePomodoroMiniWindowState({ isOpen: true, x: 66.5, y: -10 })
+    await savePomodoroMiniWindowState({
+      isOpen: true,
+      x: 66.5,
+      y: -10,
+      width: 160,
+      height: 180,
+    })
 
     expect(db.saveConfig).toHaveBeenCalledWith(
       'pomodoro-mini-window',
-      JSON.stringify({ isOpen: true, x: 66.5, y: -10 })
+      JSON.stringify({ isOpen: true, x: 66.5, y: -10, width: 160, height: 180 })
     )
   })
 
@@ -46,7 +52,7 @@ describe('persistencia del estado de la ventana mini', () => {
     vi.mocked(db.saveConfig).mockImplementation(async (key, value) => {
       stored.set(key, value)
     })
-    const saved = { isOpen: true, x: 1920, y: 1120 }
+    const saved = { isOpen: true, x: 1920, y: 1120, width: 140, height: 150 }
 
     await savePomodoroMiniWindowState(saved)
 

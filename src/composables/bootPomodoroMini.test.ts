@@ -58,6 +58,7 @@ const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
       },
       scaleFactor: () => Promise.resolve(1),
       onMoved: (handler: Handler) => registrar('tauri://move', handler),
+      onResized: (handler: Handler) => registrar('tauri://resize', handler),
       onCloseRequested: (handler: Handler) => registrar('tauri://close-requested', handler),
     }
   }
@@ -181,9 +182,21 @@ describe('arranque de la ventana mini', () => {
 
     await ventanaMini.emitir('tauri://move', { toLogical: () => ({ x: 120, y: 340 }) })
     await vi.advanceTimersByTimeAsync(250)
-    expect(estadoDeVentanaPersistido()).toEqual({ isOpen: true, x: 120, y: 340 })
+    expect(estadoDeVentanaPersistido()).toEqual({
+      isOpen: true,
+      x: 120,
+      y: 340,
+      width: null,
+      height: null,
+    })
 
     await ventanaMini.emitir('tauri://close-requested', { preventDefault: () => {} })
-    expect(estadoDeVentanaPersistido()).toEqual({ isOpen: false, x: 120, y: 340 })
+    expect(estadoDeVentanaPersistido()).toEqual({
+      isOpen: false,
+      x: 120,
+      y: 340,
+      width: null,
+      height: null,
+    })
   })
 })
