@@ -17,6 +17,12 @@ const breakEndChime: Chime = [
 ]
 
 export interface PomodoroSoundPlayer {
+  /**
+   * Crea el AudioContext sin necesidad de un gesto de usuario, para que el
+   * primer click no pague la creación. No despierta el contexto: eso lo hace
+   * `prepareFromUserGesture` dentro del gesto.
+   */
+  prewarm(): void
   prepareFromUserGesture(): Promise<{ available: boolean; state: string }>
   playFocusEndChime(settings: PomodoroSettings): boolean
   playBreakEndChime(settings: PomodoroSettings): boolean
@@ -31,6 +37,23 @@ export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
 
   const CHIME_WINDOW_MS = 700
 
+  /** Crea el contexto una sola vez. false si el backend no tiene audio. */
+  function ensureContext(): boolean {
+    if (context !== null) return true
+    try {
+      context = new AudioContext()
+      return true
+    } catch (error) {
+      context = null
+      console.warn('[pomodoro] AudioContext unavailable:', error)
+      return false
+    }
+  }
+
+  function prewarm(): void {
+    ensureContext()
+  }
+
   function armAutoSuspend(): void {
     if (suspendTimer !== undefined) clearTimeout(suspendTimer)
     suspendTimer = setTimeout(() => {
@@ -42,15 +65,7 @@ export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
   }
 
   async function prepareFromUserGesture(): Promise<{ available: boolean; state: string }> {
-    if (context === null) {
-      try {
-        context = new AudioContext()
-      } catch (error) {
-        context = null
-        console.warn('[pomodoro] AudioContext unavailable:', error)
-        return { available: false, state: 'unavailable' }
-      }
-    }
+    if (!ensureContext() || context === null) return { available: false, state: 'unavailable' }
     if (context.state === 'suspended') {
       try {
         await context.resume()
@@ -120,6 +135,7 @@ export function createPomodoroSoundPlayer(): PomodoroSoundPlayer {
   }
 
   return {
+    prewarm,
     prepareFromUserGesture,
     playFocusEndChime: (settings) => play(focusEndChime, settings),
     playBreakEndChime: (settings) => play(breakEndChime, settings),
