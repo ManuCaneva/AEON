@@ -1,3 +1,6 @@
+// Dev: instala el stub de IPC de Tauri si la app se abre en un navegador común.
+import './lib/devBrowserStub'
+
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
