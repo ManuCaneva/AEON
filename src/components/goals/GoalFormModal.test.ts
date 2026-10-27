@@ -13,6 +13,7 @@ const goalsState = ref<
     color: string
     target: number
     unit?: string | null
+    direction?: 'up' | 'down'
     frequency: any
   }[]
 >([])
@@ -66,6 +67,8 @@ describe('GoalFormModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     goalsState.value = []
+    goalsMock.createGoal.mockClear()
+    goalsMock.updateGoal.mockClear()
     uiState.createGoalOpen.value = true
     uiState.editingGoalId.value = null
     wrapper = mount(GoalFormModal, { attachTo: document.body })
@@ -231,5 +234,115 @@ describe('GoalFormModal', () => {
   it('no usa colores de paleta cruda de Tailwind', async () => {
     await flushPromises()
     expect(hasRawPaletteColor(document.body.innerHTML)).toBe(false)
+  })
+
+  async function selectDirection(label: 'Sumar' | 'Restar') {
+    const btn = Array.from(document.body.querySelectorAll("[data-testid='direction-option']")).find(
+      (b) => b.textContent?.trim() === label
+    ) as HTMLButtonElement
+    btn.click()
+    await flushPromises()
+  }
+
+  function targetInput(): HTMLInputElement {
+    return document.body.querySelector("input[data-testid='goal-target-input']") as HTMLInputElement
+  }
+
+  function titleInput(): HTMLInputElement {
+    return document.body.querySelector("input[type='text']") as HTMLInputElement
+  }
+
+  function fillInput(input: HTMLInputElement, value: string) {
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  function submitForm() {
+    const form = document.body.querySelector('form') as HTMLFormElement
+    form.dispatchEvent(new Event('submit', { bubbles: true }))
+  }
+
+  it('cambiar a Restar no cambia los campos del formulario', async () => {
+    const campos = () =>
+      Array.from(document.body.querySelectorAll('form input, form textarea')).map(
+        (el) => el.outerHTML
+      )
+    const antes = campos()
+    await selectDirection('Restar')
+    expect(campos()).toEqual(antes)
+    expect(document.body.querySelector("input[data-testid='goal-start-input']")).toBeNull()
+    expect(targetInput().value).toBe('10')
+  })
+
+  it('crea objetivo de restar con direction down y la meta intacta', async () => {
+    await selectDirection('Restar')
+
+    fillInput(titleInput(), 'Porciones')
+    fillInput(targetInput(), '10')
+    await flushPromises()
+
+    submitForm()
+    await flushPromises()
+
+    expect(goalsMock.createGoal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Porciones',
+        direction: 'down',
+        target: 10,
+      })
+    )
+    expect(goalsMock.createGoal.mock.calls[0][0]).not.toHaveProperty('start_value')
+  })
+
+  it('el submit de sumar envía direction up', async () => {
+    fillInput(titleInput(), 'Leer')
+    fillInput(targetInput(), '10')
+    await flushPromises()
+
+    submitForm()
+    await flushPromises()
+
+    expect(goalsMock.createGoal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'up',
+        target: 10,
+      })
+    )
+    expect(goalsMock.createGoal.mock.calls[0][0]).not.toHaveProperty('start_value')
+  })
+
+  it('edita un objetivo de restar precargando la dirección', async () => {
+    goalsState.value = [
+      {
+        id: 'goal-1',
+        title: 'Porciones',
+        description: null,
+        color: '#00ff00',
+        target: 10,
+        unit: null,
+        direction: 'down',
+        frequency: { type: 'daily' },
+      },
+    ]
+    uiMock.openEditGoal('goal-1')
+    await flushPromises()
+
+    expect(targetInput().value).toBe('10')
+    const restarBtn = Array.from(
+      document.body.querySelectorAll("[data-testid='direction-option']")
+    ).find((b) => b.textContent?.trim() === 'Restar') as HTMLButtonElement
+    expect(restarBtn.getAttribute('aria-checked')).toBe('true')
+
+    submitForm()
+    await flushPromises()
+
+    expect(goalsMock.updateGoal).toHaveBeenCalledWith(
+      'goal-1',
+      expect.objectContaining({
+        direction: 'down',
+        target: 10,
+      })
+    )
+    expect(goalsMock.updateGoal.mock.calls[0][1]).not.toHaveProperty('start_value')
   })
 })

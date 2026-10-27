@@ -25,6 +25,7 @@ const mockGoal = {
   color: '#00ff00',
   target: 10,
   unit: null,
+  direction: 'up' as const,
   frequency: { type: 'daily' as const },
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',

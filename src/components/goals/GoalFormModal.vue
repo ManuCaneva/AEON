@@ -26,9 +26,15 @@ const description = ref('')
 const color = ref<string>(HABIT_COLORS[0].value)
 const target = ref<number>(10)
 const unit = ref<string>('')
+const direction = ref<'up' | 'down'>('up')
 const frequency = ref<GoalFrequency>({ type: 'daily' })
 const error = ref<string | null>(null)
 const saving = ref(false)
+
+const directionOptions = [
+  { value: 'up' as const, label: 'Sumar' },
+  { value: 'down' as const, label: 'Restar' },
+]
 
 watch(
   () => [ui.createGoalOpen, ui.editingGoalId] as const,
@@ -40,6 +46,7 @@ watch(
         color.value = editing.value.color
         target.value = editing.value.target
         unit.value = editing.value.unit ?? ''
+        direction.value = editing.value.direction
         frequency.value = editing.value.frequency
       } else {
         title.value = ''
@@ -47,6 +54,7 @@ watch(
         color.value = HABIT_COLORS[0].value
         target.value = 10
         unit.value = ''
+        direction.value = 'up'
         frequency.value = { type: 'daily' }
       }
       error.value = null
@@ -79,6 +87,7 @@ async function handleSubmit(e: Event) {
         color: color.value,
         target: target.value,
         unit: unitValue,
+        direction: direction.value,
         frequency: frequency.value,
       })
     } else {
@@ -88,6 +97,7 @@ async function handleSubmit(e: Event) {
         color: color.value,
         target: target.value,
         unit: unitValue,
+        direction: direction.value,
         frequency: frequency.value,
       })
     }
@@ -129,11 +139,39 @@ async function handleSubmit(e: Event) {
           :rows="2"
         />
 
+        <div class="flex flex-col gap-2">
+          <Text variant="body-sm" color="muted">Tipo de contador</Text>
+          <div
+            role="radiogroup"
+            aria-label="Tipo de contador"
+            class="flex gap-1 rounded-lg border border-hairline bg-surface-2 p-1"
+          >
+            <button
+              v-for="opt in directionOptions"
+              :key="opt.value"
+              data-testid="direction-option"
+              type="button"
+              role="radio"
+              :aria-checked="direction === opt.value"
+              :class="[
+                'flex-1 rounded-md px-3 py-1.5 text-body-sm transition-colors',
+                direction === opt.value
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'text-ink-muted hover:text-ink',
+              ]"
+              @click="direction = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
         <div class="flex gap-3">
           <div class="flex-1">
             <label class="mb-1 block select-none text-body-sm text-ink-muted">Meta</label>
             <input
               v-model.number="target"
+              data-testid="goal-target-input"
               type="number"
               min="1"
               required

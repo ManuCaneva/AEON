@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as db from '@/lib/db'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 import {
   rowToGoal,
   rowToGoalLog,
@@ -18,8 +19,7 @@ function nowIsoUtc(): string {
 }
 
 function todayLocalDate(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return formatYyyyMmDd(new Date())
 }
 
 function uuidv4(): string {
@@ -72,6 +72,13 @@ export function currentProgress(goal: Goal, logs: GoalLog[], today: string): num
     .reduce((sum, l) => sum + l.amount, 0)
 }
 
+/** Valor que muestra el contador. «Sumar» avanza desde 0; «restar» muestra
+ *  lo que queda de la meta y baja hasta 0. */
+export function currentValue(goal: Goal, progress: number): number {
+  return goal.direction === 'down' ? Math.max(goal.target - progress, 0) : progress
+}
+
+/** Fracción del período recorrida (0..1): los logs acumulados sobre la meta. */
 export function progressPercent(goal: Goal, progress: number): number {
   return Math.min(progress / goal.target, 1)
 }
@@ -158,67 +165,84 @@ export const useGoalsStore = defineStore('goals', () => {
     )
   }
 
+  /** Cola de escrituras de logs por objetivo: serializa los clicks rápidos para
+   *  que no se pierdan montos ni se dupliquen filas de un mismo (goal_id, log_date). */
+  const pendingLogWrites = new Map<string, Promise<void>>()
+
+  function enqueueLogWrite(goalId: string, task: () => Promise<void>): Promise<void> {
+    const prev = pendingLogWrites.get(goalId) ?? Promise.resolve()
+    const next = prev.then(task, task)
+    const tracked = next.catch(() => undefined)
+    pendingLogWrites.set(goalId, tracked)
+    void tracked.then(() => {
+      if (pendingLogWrites.get(goalId) === tracked) pendingLogWrites.delete(goalId)
+    })
+    return next
+  }
+
+  /** Inserta o reemplaza el log por (goal_id, log_date), la clave real en la DB. */
+  function applyLogRow(log: GoalLog): void {
+    logs.value = [
+      ...logs.value.filter((l) => !(l.goal_id === log.goal_id && l.log_date === log.log_date)),
+      log,
+    ]
+  }
+
   async function incrementLog(goalId: string, delta: number = 1): Promise<void> {
-    const today = todayLocalDate()
-    const existingLog = logs.value.find((l) => l.goal_id === goalId && l.log_date === today)
+    await enqueueLogWrite(goalId, async () => {
+      const today = todayLocalDate()
+      const existingLog = logs.value.find((l) => l.goal_id === goalId && l.log_date === today)
 
-    const newAmount = existingLog ? existingLog.amount + delta : delta
-    const draft: CreateGoalLogDraft = {
-      goal_id: goalId,
-      log_date: today,
-      amount: newAmount,
-    }
+      const newAmount = existingLog ? existingLog.amount + delta : delta
+      const draft: CreateGoalLogDraft = {
+        goal_id: goalId,
+        log_date: today,
+        amount: newAmount,
+      }
 
-    const id = existingLog?.id || uuidv4()
-    const now = existingLog?.created_at || nowIsoUtc()
+      const id = existingLog?.id || uuidv4()
+      const now = existingLog?.created_at || nowIsoUtc()
 
-    const row = await db.upsertGoalLog(draft, id, now)
-    const log = rowToGoalLog(row)
-
-    if (existingLog) {
-      logs.value = logs.value.map((l) => (l.id === log.id ? log : l))
-    } else {
-      logs.value = [...logs.value, log]
-    }
+      const row = await db.upsertGoalLog(draft, id, now)
+      applyLogRow(rowToGoalLog(row))
+    })
   }
 
   async function setLogAmount(goalId: string, amount: number): Promise<void> {
-    const today = todayLocalDate()
-    const existingLog = logs.value.find((l) => l.goal_id === goalId && l.log_date === today)
+    await enqueueLogWrite(goalId, async () => {
+      const today = todayLocalDate()
+      const existingLog = logs.value.find((l) => l.goal_id === goalId && l.log_date === today)
 
-    if (amount <= 0) {
-      if (existingLog) {
-        await db.deleteGoalLog(existingLog.id)
-        logs.value = logs.value.filter((l) => l.id !== existingLog.id)
+      if (amount <= 0) {
+        if (existingLog) {
+          await db.deleteGoalLog(existingLog.id)
+          logs.value = logs.value.filter((l) => l.id !== existingLog.id)
+        }
+        return
       }
-      return
-    }
 
-    const draft: CreateGoalLogDraft = {
-      goal_id: goalId,
-      log_date: today,
-      amount,
-    }
+      const draft: CreateGoalLogDraft = {
+        goal_id: goalId,
+        log_date: today,
+        amount,
+      }
 
-    const id = existingLog?.id || uuidv4()
-    const now = existingLog?.created_at || nowIsoUtc()
+      const id = existingLog?.id || uuidv4()
+      const now = existingLog?.created_at || nowIsoUtc()
 
-    const row = await db.upsertGoalLog(draft, id, now)
-    const log = rowToGoalLog(row)
-
-    if (existingLog) {
-      logs.value = logs.value.map((l) => (l.id === log.id ? log : l))
-    } else {
-      logs.value = [...logs.value, log]
-    }
+      const row = await db.upsertGoalLog(draft, id, now)
+      applyLogRow(rowToGoalLog(row))
+    })
   }
 
   async function undoLog(goalId: string, logDate: string): Promise<void> {
-    const log = logs.value.find((l) => l.goal_id === goalId && l.log_date === logDate)
-    if (!log) return
+    await enqueueLogWrite(goalId, async () => {
+      const log = logs.value.find((l) => l.goal_id === goalId && l.log_date === logDate)
+      if (!log) return
 
-    await db.deleteGoalLog(log.id)
-    logs.value = logs.value.filter((l) => l.id !== log.id)
+      await db.deleteGoalLog(log.id)
+      logs.value = logs.value.filter((l) => l.id !== log.id)
+    })
   }
 
   return {
