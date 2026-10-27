@@ -1,9 +1,10 @@
 name: Release notes
 
 # Redacta las novedades de la release cuando se abre o actualiza el PR a main.
-# La IA (GitHub Models) escribe la sección en docs/CHANGELOG.md y la commitea a
-# la rama del PR para que se revise en el diff. Nunca bloquea el merge: si la
-# IA falla, comenta el problema y sigue.
+# La IA (cualquier endpoint compatible con OpenAI, Gemini por defecto) escribe
+# la sección en docs/CHANGELOG.md y la commitea a la rama del PR para que se
+# revise en el diff. Nunca bloquea el merge: si la IA falla, comenta el
+# problema y sigue.
 
 on:
   pull_request:
