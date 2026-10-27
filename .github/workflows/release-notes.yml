@@ -10,6 +10,10 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+    # Excluye PRs cuyo diff completo solo cambia el changelog. No es la
+    # protección contra regeneraciones: esa vive también en el generador.
+    paths-ignore:
+      - 'docs/CHANGELOG.md'
 
 permissions:
   contents: write
@@ -18,6 +22,9 @@ permissions:
 jobs:
   notes:
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-notes-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     steps:
       # Ref del head del PR: el commit del changelog vuelve a su rama.
       - uses: actions/checkout@v4
@@ -32,13 +39,27 @@ jobs:
 
       # Si el tag de la versión ya existe, la release está publicada:
       # no se pisa la sección de una versión que ya salió.
-      - name: Skip si la versión ya está publicada
+      # Si la sección ya existe, tampoco se pisa: se escribe una sola vez y
+      # las ediciones manuales se respetan (además, el commit del bot no
+      # puede dispararse a sí mismo en loop).
+      - name: Skip si la versión ya está publicada o redactada
         id: guard
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          HAS_ENTRY=$(node --experimental-strip-types --input-type=module <<'NODE'
+          import { existsSync, readFileSync } from 'node:fs'
+          import { extractVersionEntry } from './src/lib/update/changelog.ts'
+          const { version } = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))
+          const changelog = existsSync('docs/CHANGELOG.md') ? readFileSync('docs/CHANGELOG.md', 'utf8') : ''
+          console.log(extractVersionEntry(changelog, version) !== null)
+          NODE
+          )
           if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "El tag v$VERSION ya existe: no se regenera el changelog."
+          elif [ "$HAS_ENTRY" = true ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "docs/CHANGELOG.md ya tiene la sección de $VERSION: no se regenera."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
