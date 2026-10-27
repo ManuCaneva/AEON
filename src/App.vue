@@ -24,6 +24,7 @@ import { useUpdater } from '@/composables/useUpdater'
 import { useDesktopEntry } from '@/composables/useDesktopEntry'
 import { onShowPomodoroInMain, requestsPomodoroView } from '@/lib/pomodoroMainWindow'
 import { restorePomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -71,12 +72,13 @@ onMounted(async () => {
   await tasks.loadTasks()
   await goals.loadGoals()
   await exams.loadExams()
-  const today = new Date()
-  const ninetyDaysAgo = new Date(today)
-  ninetyDaysAgo.setDate(today.getDate() - 90)
-  const fromDate = ninetyDaysAgo.toISOString().split('T')[0]
-  const toDate = today.toISOString().split('T')[0]
-  await goals.loadLogsForRange(fromDate, toDate)
+  // Ventana local y amplia: un objetivo de intervalo puede tener períodos de
+  // hasta 365 días y el progreso suma los logs desde el inicio del período.
+  const today = formatYyyyMmDd(new Date())
+  const yearAgo = new Date()
+  yearAgo.setDate(yearAgo.getDate() - 366)
+  const fromDate = formatYyyyMmDd(yearAgo)
+  await goals.loadLogsForRange(fromDate, today)
   await pomodoro.load()
   pomodoro.startTicker()
 })

@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GoalCard from './GoalCard.vue'
 import type { Goal, GoalLog } from '@/schemas/goals'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 
 const mockGoal: Goal = {
@@ -12,11 +13,29 @@ const mockGoal: Goal = {
   color: '#00ff00',
   target: 10,
   unit: 'pages',
+  direction: 'up',
   frequency: { type: 'daily' },
   sort_order: 0,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   archived_at: null,
+}
+
+const mockDownGoal: Goal = {
+  ...mockGoal,
+  id: 'goal-down',
+  direction: 'down',
+}
+
+function makeLog(amount: number, logDate = formatYyyyMmDd(new Date())): GoalLog {
+  return {
+    id: `log-${amount}`,
+    goal_id: 'goal-1',
+    log_date: logDate,
+    amount,
+    note: null,
+    created_at: '2026-01-01T00:00:00Z',
+  }
 }
 
 const goalsMock = {
@@ -27,7 +46,8 @@ const uiMock = {
   menuOpenForGoalId: null as string | null,
   toggleGoalMenu: vi.fn(),
 }
-vi.mock('@/stores/goals', () => ({
+vi.mock('@/stores/goals', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/stores/goals')>()),
   useGoalsStore: () => goalsMock,
 }))
 vi.mock('@/stores/ui', () => ({
@@ -185,21 +205,74 @@ describe('GoalCard', () => {
   })
 
   it('badge de completado usa acento verde tintado', () => {
-    goalsMock.logs = [
-      {
-        id: 'log-1',
-        goal_id: 'goal-1',
-        log_date: new Date().toISOString().split('T')[0],
-        amount: 10,
-        note: null,
-        created_at: '2026-01-01T00:00:00Z',
-      },
-    ]
+    goalsMock.logs = [makeLog(10)]
     const wrapper = mount(GoalCard, {
       props: { goal: mockGoal },
     })
     const incrementBtn = wrapper.find("[data-testid='goal-increment-button']")
     expect(incrementBtn.classes()).toContain('bg-accent-green-tint')
     expect(incrementBtn.classes()).toContain('text-accent-green')
+  })
+
+  it('muestra el contador de restantes en objetivos de descontar', () => {
+    goalsMock.logs = [{ ...makeLog(3), goal_id: 'goal-down' }]
+    const wrapper = mount(GoalCard, {
+      props: { goal: mockDownGoal },
+    })
+    expect(wrapper.text()).toContain('7/10 restantes')
+  })
+
+  it('muestra 10/10 restantes al inicio de un objetivo de descontar', () => {
+    const wrapper = mount(GoalCard, {
+      props: { goal: mockDownGoal },
+    })
+    expect(wrapper.text()).toContain('10/10 restantes')
+  })
+
+  it('el botón etiqueta Sumar o Restar según la dirección y sigue llamando incrementLog', async () => {
+    const upWrapper = mount(GoalCard, { props: { goal: mockGoal } })
+    const upBtn = upWrapper.find("[data-testid='goal-increment-button']")
+    expect(upBtn.attributes('aria-label')).toBe('Sumar 1')
+    await upBtn.trigger('click')
+    expect(goalsMock.incrementLog).toHaveBeenCalledWith('goal-1', 1)
+
+    const downWrapper = mount(GoalCard, { props: { goal: mockDownGoal } })
+    const downBtn = downWrapper.find("[data-testid='goal-increment-button']")
+    expect(downBtn.attributes('aria-label')).toBe('Descontar 1')
+    await downBtn.trigger('click')
+    expect(goalsMock.incrementLog).toHaveBeenCalledWith('goal-down', 1)
+  })
+
+  it('deshabilita el botón al llegar a la meta en objetivos de descontar', () => {
+    goalsMock.logs = [{ ...makeLog(10), goal_id: 'goal-down' }]
+    const wrapper = mount(GoalCard, {
+      props: { goal: mockDownGoal },
+    })
+    const incrementBtn = wrapper.find("[data-testid='goal-increment-button']")
+    expect(incrementBtn.attributes('disabled')).toBeDefined()
+    expect(incrementBtn.classes()).toContain('bg-accent-green-tint')
+    expect(wrapper.text()).toContain('0/10 restantes')
+  })
+
+  it('cuenta los logs con la fecha local aunque la fecha UTC sea otra', () => {
+    vi.useFakeTimers()
+    try {
+      // 01:00Z cae en el día local anterior al oeste de UTC; 23:00Z, al día
+      // local siguiente al este. En TZ=UTC no hay desfase posible.
+      const offset = new Date().getTimezoneOffset()
+      if (offset === 0) return
+      const moment = new Date(Date.UTC(2026, 9, 26, offset >= 0 ? 1 : 23, 30))
+      vi.setSystemTime(moment)
+      const localDate = formatYyyyMmDd(moment)
+      expect(new Date().toISOString().split('T')[0]).not.toBe(localDate)
+
+      goalsMock.logs = [makeLog(4, localDate)]
+      const wrapper = mount(GoalCard, {
+        props: { goal: mockGoal },
+      })
+      expect(wrapper.text()).toContain('4/10')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

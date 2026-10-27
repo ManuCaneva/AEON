@@ -120,7 +120,7 @@ impl Db {
         )
         .map_err(|e| DbError::Migration(format!("schema_version: {e}")))?;
 
-        let migrations: [(i64, &str, &str); 13] = [
+        let migrations: [(i64, &str, &str); 14] = [
             (1, "001_init", include_str!("migrations/001_init.sql")),
             (2, "002_config", include_str!("migrations/002_config.sql")),
             (
@@ -150,6 +150,7 @@ impl Db {
                 "013_task_block_event",
                 include_str!("migrations/013_task_block_event.sql"),
             ),
+            (14, "014_goals_direction", ""), // Migración 014 se ejecuta en Rust (run_migration_014)
         ];
 
         for (version, name, sql) in &migrations {
@@ -198,6 +199,12 @@ impl Db {
                     )?;
                 } else if *version == 13 {
                     Self::run_migration_013(&conn)?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+                        params![version, now_iso8601()],
+                    )?;
+                } else if *version == 14 {
+                    Self::run_migration_014(&conn)?;
                     conn.execute(
                         "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
                         params![version, now_iso8601()],
@@ -491,6 +498,123 @@ impl Db {
         conn.execute_batch(include_str!("migrations/013_task_block_event.sql"))
             .map_err(|e| DbError::Migration(format!("013_task_block_event.sql: {e}")))?;
         Ok(())
+    }
+
+    /// Migración 014: dirección del contador + arreglar los CHECKs de `goals`.
+    ///
+    /// 1) `weekly` ya no exige `days_of_week`: el dominio no tiene días y el
+    ///    frontend siempre manda NULL, así que crear o editar objetivos
+    ///    semanales fallaba con "CHECK constraint failed".
+    /// 2) Agrega `direction` ('up' | 'down', default 'up'): si el contador
+    ///    suma hacia la meta o descuenta desde ella hasta 0.
+    ///
+    /// SQLite no permite alterar CHECKs, así que se recrea la tabla con el
+    /// procedimiento oficial (PRAGMA foreign_keys=OFF en autocommit → recrear
+    /// → ON + foreign_key_check) para que el DROP no dispare el borrado en
+    /// cascada de `goal_logs`. Idempotente por inspección real (columna
+    /// `direction`).
+    fn run_migration_014(conn: &Connection) -> DbResult<()> {
+        let goals_table_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='goals')",
+            [],
+            |r| r.get(0),
+        )?;
+        if !goals_table_exists {
+            return Ok(());
+        }
+        let has_direction: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('goals') WHERE name='direction')",
+            [],
+            |r| r.get(0),
+        )?;
+        if has_direction {
+            return Ok(());
+        }
+
+        // PRAGMA foreign_keys=OFF debe correr en autocommit (no puede
+        // ejecutarse dentro de una transacción). En este punto la conexión
+        // está en autocommit (las migraciones previas ya committearon).
+        conn.pragma_update(None, "foreign_keys", "OFF")
+            .map_err(|e| DbError::Migration(format!("014: foreign_keys=OFF: {e}")))?;
+
+        let result = (|| -> DbResult<()> {
+            conn.execute_batch("BEGIN TRANSACTION;")
+                .map_err(|e| DbError::Migration(format!("014: begin transaction: {e}")))?;
+
+            let result = (|| -> DbResult<()> {
+                conn.execute_batch(
+                    "CREATE TABLE goals_new (
+                        id             TEXT PRIMARY KEY,
+                        title          TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 100),
+                        description    TEXT CHECK(length(description) <= 500),
+                        color          TEXT NOT NULL CHECK(color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),
+                        target         INTEGER NOT NULL CHECK(target > 0),
+                        unit           TEXT CHECK(length(unit) <= 20),
+                        direction      TEXT NOT NULL DEFAULT 'up' CHECK(direction IN ('up','down')),
+                        frequency_type TEXT NOT NULL CHECK(frequency_type IN ('daily','weekly','interval')),
+                        interval_days  INTEGER CHECK(interval_days IS NULL OR (interval_days BETWEEN 1 AND 365)),
+                        days_of_week   TEXT CHECK(days_of_week IS NULL OR json_valid(days_of_week)),
+                        sort_order     INTEGER NOT NULL DEFAULT 0,
+                        created_at     TEXT NOT NULL,
+                        updated_at     TEXT NOT NULL,
+                        archived_at    TEXT CHECK (archived_at IS NULL OR archived_at >= created_at),
+                        CHECK((frequency_type = 'daily'   AND interval_days IS NULL)
+                           OR (frequency_type = 'weekly'   AND interval_days IS NULL)
+                           OR (frequency_type = 'interval' AND interval_days IS NOT NULL))
+                     );",
+                )
+                .map_err(|e| DbError::Migration(format!("014: crear goals_new: {e}")))?;
+
+                conn.execute_batch(
+                    "INSERT INTO goals_new
+                        (id, title, description, color, target, unit, direction,
+                         frequency_type, interval_days, days_of_week, sort_order,
+                         created_at, updated_at, archived_at)
+                     SELECT id, title, description, color, target, unit, 'up',
+                            frequency_type, interval_days, days_of_week, sort_order,
+                            created_at, updated_at, archived_at
+                     FROM goals;",
+                )
+                .map_err(|e| DbError::Migration(format!("014: copiar goals: {e}")))?;
+
+                conn.execute_batch("DROP TABLE goals; ALTER TABLE goals_new RENAME TO goals;")
+                    .map_err(|e| DbError::Migration(format!("014: recrear goals: {e}")))?;
+
+                conn.execute_batch(
+                    "CREATE INDEX idx_goals_sort ON goals(sort_order);
+                     CREATE INDEX idx_goals_archived ON goals(archived_at);
+                     CREATE INDEX idx_goals_sort_active ON goals(sort_order) WHERE archived_at IS NULL;",
+                )
+                .map_err(|e| DbError::Migration(format!("014: índices de goals: {e}")))?;
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    conn.execute_batch("COMMIT;")
+                        .map_err(|e| DbError::Migration(format!("014: commit: {e}")))?;
+                    Ok(())
+                }
+                Err(e) => {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    Err(e)
+                }
+            }
+        })();
+
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|e| DbError::Migration(format!("014: foreign_keys=ON: {e}")))?;
+
+        let violations: i64 =
+            conn.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })?;
+        if violations > 0 {
+            return Err(DbError::Migration(format!(
+                "014: foreign_key_check encontró {violations} violaciones"
+            )));
+        }
+        result
     }
 
     fn ensure_schedule_blocks_schema(conn: &Connection, migration: &str) -> DbResult<()> {

@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Plus, MoreHorizontal } from 'lucide-vue-next'
-import { useGoalsStore } from '@/stores/goals'
+import { Plus, Minus, MoreHorizontal } from 'lucide-vue-next'
+import {
+  useGoalsStore,
+  currentProgress,
+  currentValue,
+  progressPercent,
+  isGoalComplete,
+} from '@/stores/goals'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 import { useUiStore } from '@/stores/ui'
 import type { Goal } from '@/schemas/goals'
 import Container from '@/components/ui/Container.vue'
@@ -17,47 +24,18 @@ const ui = useUiStore()
 
 const isMenuOpen = computed(() => ui.menuOpenForGoalId === props.goal.id)
 
-const currentProgress = computed(() => {
-  const today = new Date().toISOString().split('T')[0]
-  const periodStart = getPeriodStart(props.goal, today)
-  return goals.logs
-    .filter((l) => l.goal_id === props.goal.id && l.log_date >= periodStart && l.log_date <= today)
-    .reduce((sum, l) => sum + l.amount, 0)
+const isDown = computed(() => props.goal.direction === 'down')
+
+const progress = computed(() => {
+  const today = formatYyyyMmDd(new Date())
+  return currentProgress(props.goal, goals.logs, today)
 })
 
-const progressPercent = computed(() => {
-  return Math.min((currentProgress.value / props.goal.target) * 100, 100)
-})
+const value = computed(() => currentValue(props.goal, progress.value))
 
-const isComplete = computed(() => {
-  return currentProgress.value >= props.goal.target
-})
+const percent = computed(() => progressPercent(props.goal, progress.value) * 100)
 
-function getPeriodStart(goal: Goal, today: string): string {
-  switch (goal.frequency.type) {
-    case 'daily':
-      return today
-    case 'weekly': {
-      const d = new Date(today + 'T00:00:00')
-      const day = d.getDay()
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-      d.setDate(diff)
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    }
-    case 'interval': {
-      const createdDate = goal.created_at.split('T')[0]
-      if (!createdDate) return today
-      const daysDiff = Math.round(
-        (new Date(today).getTime() - new Date(createdDate).getTime()) / 86400000
-      )
-      const intervalDays = goal.frequency.interval_days
-      const periodsPassed = Math.floor(daysDiff / intervalDays)
-      const d = new Date(createdDate + 'T00:00:00')
-      d.setDate(d.getDate() + periodsPassed * intervalDays)
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    }
-  }
-}
+const isComplete = computed(() => isGoalComplete(props.goal, progress.value))
 
 function frequencyLabel(): string {
   switch (props.goal.frequency.type) {
@@ -122,7 +100,8 @@ async function handleIncrement() {
           <div class="min-w-0 flex-1">
             <div class="mb-1 flex items-center justify-between gap-2">
               <Text variant="body-sm" weight="500" class="min-w-0 truncate">
-                {{ currentProgress }}/{{ goal.target }}
+                <template v-if="isDown"> {{ value }}/{{ goal.target }} restantes </template>
+                <template v-else> {{ value }}/{{ goal.target }} </template>
                 <span v-if="goal.unit" class="text-ink-muted">{{ goal.unit }}</span>
               </Text>
               <Badge :variant="isComplete ? 'success' : 'default'" dot>
@@ -135,7 +114,7 @@ async function handleIncrement() {
             >
               <div
                 :style="{
-                  width: `${progressPercent}%`,
+                  width: `${percent}%`,
                   backgroundColor: isComplete ? undefined : goal.color,
                 }"
                 :class="[
@@ -148,6 +127,7 @@ async function handleIncrement() {
 
           <button
             data-testid="goal-increment-button"
+            :aria-label="isDown ? 'Descontar 1' : 'Sumar 1'"
             :disabled="isComplete"
             :class="[
               'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors duration-150',
@@ -157,7 +137,8 @@ async function handleIncrement() {
             ]"
             @click="handleIncrement"
           >
-            <Plus :size="16" />
+            <Minus v-if="isDown" :size="16" />
+            <Plus v-else :size="16" />
           </button>
         </div>
       </div>

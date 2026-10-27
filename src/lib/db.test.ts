@@ -73,6 +73,7 @@ const mockGoalRow = {
   color: '#ff5500',
   target: 10,
   unit: null,
+  direction: 'up',
   frequency_type: 'daily',
   interval_days: null,
   days_of_week: null,
@@ -321,6 +322,7 @@ describe('db.createGoal - shape hacia Rust', () => {
         title: 'Test',
         color: '#ff5500',
         target: 10,
+        direction: 'up',
         frequency: {
           type: 'daily',
           interval_days: null,

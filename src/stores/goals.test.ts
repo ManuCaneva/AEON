@@ -4,6 +4,7 @@ import {
   useGoalsStore,
   currentPeriodStart,
   currentProgress,
+  currentValue,
   progressPercent,
   isGoalComplete,
 } from './goals'
@@ -48,6 +49,7 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
     color: '#5e6ad2',
     target: 10,
     unit: 'pages',
+    direction: 'up',
     frequency: { type: 'daily' },
     sort_order: 0,
     created_at: now,
@@ -78,6 +80,7 @@ describe('goals store - createGoal', () => {
       color: '#5e6ad2',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'daily',
       interval_days: null,
       days_of_week: null,
@@ -119,6 +122,7 @@ describe('goals store - loadGoals + loadLogsForRange', () => {
       color: '#5e6ad2',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'daily',
       interval_days: null,
       days_of_week: null,
@@ -221,6 +225,47 @@ describe('goals store - incrementLog', () => {
 
     expect(store.logs).toHaveLength(1)
     expect(store.logs[0].amount).toBe(1)
+  })
+
+  it('serializa clicks rápidos: no pierde montos ni duplica logs', async () => {
+    const store = useGoalsStore()
+    const goalId = '11111111-1111-1111-1111-111111111111'
+    const today = todayLocalDate()
+
+    store.logs = []
+
+    // Simula el upsert real de SQLite: ON CONFLICT(goal_id, log_date) conserva
+    // el id de la fila existente y pisa amount con el valor entrante.
+    let dbRow: { id: string; amount: number } | null = null
+    vi.mocked(db.upsertGoalLog).mockImplementation(async (draft, id, created_at) => {
+      await new Promise((r) => setTimeout(r, 5))
+      if (dbRow) {
+        dbRow = { id: dbRow.id, amount: draft.amount ?? 1 }
+      } else {
+        dbRow = { id, amount: draft.amount ?? 1 }
+      }
+      return {
+        id: dbRow.id,
+        goal_id: draft.goal_id,
+        log_date: draft.log_date ?? today,
+        amount: dbRow.amount,
+        note: null,
+        created_at,
+      }
+    })
+
+    await Promise.all([
+      store.incrementLog(goalId, 1),
+      store.incrementLog(goalId, 1),
+      store.incrementLog(goalId, 1),
+    ])
+
+    const sentAmounts = vi.mocked(db.upsertGoalLog).mock.calls.map((c) => c[0].amount)
+    expect(sentAmounts).toEqual([1, 2, 3])
+    expect(store.logs).toHaveLength(1)
+    expect(store.logs[0].amount).toBe(3)
+    expect(store.logs[0].log_date).toBe(today)
+    expect(dbRow).toMatchObject({ amount: 3 })
   })
 })
 
@@ -422,5 +467,52 @@ describe('isGoalComplete', () => {
   it('should return false if progress < target', () => {
     const goal = makeGoal({ target: 10 })
     expect(isGoalComplete(goal, 5)).toBe(false)
+  })
+})
+
+describe('objetivos de descontar', () => {
+  const downGoal = () => makeGoal({ direction: 'down' })
+
+  it('currentValue muestra lo que queda de la meta', () => {
+    expect(currentValue(downGoal(), 3)).toBe(7)
+    expect(currentValue(downGoal(), 10)).toBe(0)
+    expect(currentValue(downGoal(), 15)).toBe(0)
+    expect(currentValue(makeGoal({ direction: 'up' }), 3)).toBe(3)
+  })
+
+  it('progressPercent mide el avance hacia completar en ambos modos', () => {
+    expect(progressPercent(downGoal(), 3)).toBe(0.3)
+    expect(progressPercent(downGoal(), 10)).toBe(1)
+    expect(progressPercent(downGoal(), 15)).toBe(1)
+  })
+
+  it('isGoalComplete al llegar a la meta', () => {
+    expect(isGoalComplete(downGoal(), 10)).toBe(true)
+    expect(isGoalComplete(downGoal(), 11)).toBe(true)
+    expect(isGoalComplete(downGoal(), 9)).toBe(false)
+  })
+
+  it('currentProgress suma los montos del período sin importar la dirección', () => {
+    const today = todayLocalDate()
+    const goal = downGoal()
+    const logs = [
+      {
+        id: 'a',
+        goal_id: goal.id,
+        log_date: today,
+        amount: 3,
+        note: null,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'b',
+        goal_id: goal.id,
+        log_date: addDays(today, -1),
+        amount: 99,
+        note: null,
+        created_at: new Date().toISOString(),
+      },
+    ]
+    expect(currentProgress(goal, logs, today)).toBe(3)
   })
 })

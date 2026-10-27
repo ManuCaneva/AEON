@@ -411,6 +411,7 @@ export async function createGoal(
       color: row.color,
       target: validated.target,
       unit: row.unit,
+      direction: validated.direction ?? 'up',
       frequency: {
         type: row.frequency_type,
         interval_days: row.interval_days,
@@ -445,6 +446,7 @@ export async function updateGoal(
       color: row.color,
       target: validated.target,
       unit: row.unit ?? undefined,
+      direction: validated.direction,
       frequency: validated.frequency
         ? {
             type: validated.frequency.type,
