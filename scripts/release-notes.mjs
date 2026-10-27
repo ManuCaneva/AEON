@@ -33,6 +33,7 @@ import { validateNotes } from '../src/lib/update/notes.ts'
 import {
   buildVersionEntry,
   extractVersionBody,
+  extractVersionEntry,
   upsertVersionEntry,
 } from '../src/lib/update/changelog.ts'
 import { composeReleaseBody } from '../src/lib/update/releaseBody.ts'
@@ -159,6 +160,13 @@ async function generate() {
   const commitsPath = argValue('--commits')
   if (!commitsPath) fail('Uso: generate --commits <archivo de subjects>')
 
+  const version = readVersion()
+  const changelog = existsSync(CHANGELOG_PATH) ? readFileSync(CHANGELOG_PATH, 'utf8') : ''
+  if (extractVersionEntry(changelog, version) !== null) {
+    console.log(`docs/CHANGELOG.md ya tiene la sección de ${version}: no se regenera.`)
+    return
+  }
+
   const subjects = readFileSync(resolve(commitsPath), 'utf8')
     .split('\n')
     .filter((line) => line.trim() !== '')
@@ -178,7 +186,6 @@ async function generate() {
     return
   }
 
-  const version = readVersion()
   const date = new Date().toISOString().slice(0, 10)
   const dryRun = process.argv.includes('--dry-run')
 
@@ -204,7 +211,6 @@ async function generate() {
     return
   }
 
-  const changelog = existsSync(CHANGELOG_PATH) ? readFileSync(CHANGELOG_PATH, 'utf8') : ''
   writeFileSync(CHANGELOG_PATH, upsertVersionEntry(changelog, entry) + '\n')
   console.log('docs/CHANGELOG.md actualizado')
 }

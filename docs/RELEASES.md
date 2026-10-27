@@ -39,8 +39,10 @@ Las novedades se generan solas en el PR a `main`:
 
 2. El resultado queda en **`docs/CHANGELOG.md`** como una sección
    `## <versión> — <fecha>`, commiteada a la rama del PR. **El único paso humano es
-   mirar ese diff** (y editarlo si querés). Se regenera en cada push al PR; las
-   ediciones finales se hacen después del último push.
+   mirar ese diff** (y editarlo si querés). Se escribe **una sola vez por versión**:
+   los siguientes pushes respetan la sección existente, incluidas las ediciones
+   manuales. Para regenerarla, borrá la sección completa de esa versión y pusheá.
+   Las ejecuciones se serializan por PR para evitar generaciones simultáneas.
 3. Al mergear, **`release.yml`** arma el body de la release con esa sección + el aviso
    de SmartScreen (`scripts/release-notes.mjs extract`). Eso viaja a `latest.json.notes`
    y de ahí a `Update.body` en la app.
