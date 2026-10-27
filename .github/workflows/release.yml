@@ -103,6 +103,7 @@ jobs:
       # genera las notas desde los PRs.
       - name: Componer notas de la release
         id: notes
+        shell: bash
         run: node --experimental-strip-types scripts/release-notes.mjs extract --github-output >> "$GITHUB_OUTPUT"
 
       - name: Build and release
