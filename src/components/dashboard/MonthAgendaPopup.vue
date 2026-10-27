@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import { monthGridFull, formatYyyyMmDd } from '@/lib/calendarDates'
 import { colorWithAlpha } from '@/lib/scheduleColors'
+import { fitScale } from '@/lib/fitScale'
 import type { MonthAgendaByDate, MonthAgendaItem } from '@/lib/monthAgenda'
 
 const props = defineProps<{
@@ -46,9 +47,40 @@ watch(
     if (open) {
       viewYear.value = props.year
       viewMonth.value = props.month
+      void nextTick(() => measure())
     }
   }
 )
+
+// Escala uniforme para que el popup entre en pantallas bajas sin scroll.
+const contentEl = ref<HTMLElement | null>(null)
+const zoom = ref(1)
+const zoomStyle = computed(() => ({ zoom: zoom.value }))
+
+function measure(): void {
+  const el = contentEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const current = zoom.value || 1
+  // Margen 48 (vs los 32 del modal) para absorber el redondeo del zoom sin scroll.
+  zoom.value = fitScale(
+    rect.width / current,
+    rect.height / current,
+    window.innerWidth,
+    window.innerHeight,
+    48
+  )
+}
+
+function onResize(): void {
+  if (props.open) measure()
+}
+
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  if (props.open) void nextTick(() => measure())
+})
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 
 const title = computed(() => {
   const name = MONTHS_ES[viewMonth.value]
@@ -93,7 +125,7 @@ function itemStyle(color: string): Record<string, string> {
 
 <template>
   <Modal :open="props.open" size="xl" @close="emit('close')">
-    <template #header>
+    <div ref="contentEl" class="flex flex-col" :style="zoomStyle">
       <div
         class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-3"
       >
@@ -129,62 +161,62 @@ function itemStyle(color: string): Record<string, string> {
           Hoy
         </button>
       </div>
-    </template>
 
-    <div class="min-h-0 flex-1 overflow-y-auto p-4">
-      <div class="grid grid-cols-7 border-b border-hairline pb-1.5">
-        <span
-          v-for="label in WEEKDAY_LABELS"
-          :key="label"
-          class="px-1 text-[10px] font-medium uppercase tracking-wider text-ink-tertiary"
-          data-testid="month-agenda-weekday"
-        >
-          {{ label }}
-        </span>
-      </div>
-      <div class="grid grid-cols-7">
-        <template v-for="(week, wi) in grid" :key="wi">
-          <div
-            v-for="(cell, di) in week"
-            :key="cell.date"
-            class="flex h-[118px] min-w-0 cursor-pointer flex-col gap-[2px] border-b border-r border-hairline/60 p-1 transition-colors"
-            :class="[
-              di === 6 ? 'border-r-0' : '',
-              wi === 5 ? 'border-b-0' : '',
-              cell.date === todayDate ? 'bg-accent-purple-tint/60' : 'hover:bg-surface-3/40',
-              cell.inMonth ? '' : 'opacity-40',
-            ]"
-            data-testid="month-agenda-cell"
-            :data-date="cell.date"
-            @click="emit('select-day', cell.date)"
+      <div class="min-h-0 flex-1 overflow-hidden p-4">
+        <div class="grid grid-cols-7 border-b border-hairline pb-1.5">
+          <span
+            v-for="label in WEEKDAY_LABELS"
+            :key="label"
+            class="px-1 text-[10px] font-medium uppercase tracking-wider text-ink-tertiary"
+            data-testid="month-agenda-weekday"
           >
-            <span
-              class="px-0.5 text-[11px]"
-              :class="
-                cell.date === todayDate ? 'font-semibold text-accent-purple' : 'text-ink-subtle'
-              "
-              data-testid="month-agenda-daynum"
-            >
-              {{ cell.dayOfMonth }}
-            </span>
+            {{ label }}
+          </span>
+        </div>
+        <div class="grid grid-cols-7">
+          <template v-for="(week, wi) in grid" :key="wi">
             <div
-              v-for="item in visibleItems(cell.date)"
-              :key="item.id"
-              class="truncate rounded-[3px] px-1 py-[1px] text-[10px] leading-[14px] text-ink"
-              :style="itemStyle(item.color)"
-              data-testid="month-agenda-item"
+              v-for="(cell, di) in week"
+              :key="cell.date"
+              class="flex h-[118px] min-w-0 cursor-pointer flex-col gap-[2px] border-b border-r border-hairline/60 p-1 transition-colors"
+              :class="[
+                di === 6 ? 'border-r-0' : '',
+                wi === 5 ? 'border-b-0' : '',
+                cell.date === todayDate ? 'bg-accent-purple-tint/60' : 'hover:bg-surface-3/40',
+                cell.inMonth ? '' : 'opacity-40',
+              ]"
+              data-testid="month-agenda-cell"
+              :data-date="cell.date"
+              @click="emit('select-day', cell.date)"
             >
-              {{ item.title }}
+              <span
+                class="px-0.5 text-[11px]"
+                :class="
+                  cell.date === todayDate ? 'font-semibold text-accent-purple' : 'text-ink-subtle'
+                "
+                data-testid="month-agenda-daynum"
+              >
+                {{ cell.dayOfMonth }}
+              </span>
+              <div
+                v-for="item in visibleItems(cell.date)"
+                :key="item.id"
+                class="truncate rounded-[3px] px-1 py-[1px] text-[10px] leading-[14px] text-ink"
+                :style="itemStyle(item.color)"
+                data-testid="month-agenda-item"
+              >
+                {{ item.title }}
+              </div>
+              <span
+                v-if="overflowCount(cell.date) > 0"
+                class="px-1 text-[10px] text-ink-tertiary"
+                data-testid="month-agenda-overflow"
+              >
+                +{{ overflowCount(cell.date) }} más
+              </span>
             </div>
-            <span
-              v-if="overflowCount(cell.date) > 0"
-              class="px-1 text-[10px] text-ink-tertiary"
-              data-testid="month-agenda-overflow"
-            >
-              +{{ overflowCount(cell.date) }} más
-            </span>
-          </div>
-        </template>
+          </template>
+        </div>
       </div>
     </div>
   </Modal>
