@@ -183,9 +183,10 @@ Sobre ese fondo, los paneles ganan translucidez con tres clases en `src/styles/t
 |---|---|---|
 | `.glass-strong` | `bg-surface-1/65` + hairline | Sidebar, panel contenedor de contenido |
 | `.glass-soft` | `rgb(var(--color-surface-1) / var(--glass-widget-alpha))` + hairline, **sin blur** | Widgets del dashboard (Container `glass`). El alpha lo controla el slider "Translucidez de los widgets" en Settings → Fondo (rango 0.5–1, default 0.8) |
-| `.glass-overlay` | `bg-surface-1/80` + `backdrop-blur-md` | Overlays: modales, context menus, dropdown de temas |
+| `.glass-overlay` | `bg-surface-1/0.95` + hairline; con `backdrop-filter` suma `blur(12px)` | Overlays: modales, context menus, dropdown de temas |
+| `.glass` | `bg-surface-2/0.9` + hairline; con `backdrop-filter` suma `blur(4px)` | Chips y superficies chicas sobre contenido |
 
-Los overlays usan blur real porque son chicos y flotan sobre contenido; los widgets no (el fondo ya llega pre-borroso). Todo el color sale de tokens CSS vars, así el glass se adapta a los tres temas sin tocar valores. El usuario puede quitar el wallpaper desde Settings y vuelve al gradiente.
+Los overlays usan blur real porque son chicos y flotan sobre contenido; los widgets no (el fondo ya llega pre-borroso). **La legibilidad nunca depende de `backdrop-filter`**: cada clase declara un fondo legible por sí solo (alpha 0.95/0.9, idéntico en todas las plataformas) y el blur solo suma frosting dentro de un `@supports (backdrop-filter: …)`. El WebKitGTK que empaqueta la AppImage (build de `ubuntu-24.04`) parsea `backdrop-filter` pero no siempre lo renderiza, y `@supports` solo ve el parseo: si el alpha bajara "cuando hay soporte", los popups volverían a ser transparentes exactamente en los runtimes donde el blur no se dibuja. Los valores del blur son literales (WebKit no soporta `var()` dentro de `backdrop-filter`). El test `src/styles/glassFallback.test.ts` fija la regla. Todo el color sale de tokens CSS vars, así el glass se adapta a los tres temas sin tocar valores. El usuario puede quitar el wallpaper desde Settings y vuelve al gradiente.
 
 ## Motion
 
