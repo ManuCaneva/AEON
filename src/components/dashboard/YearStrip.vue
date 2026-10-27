@@ -61,6 +61,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'select-day': [date: string]
+  'month-click': [month: number]
 }>()
 
 const MAX_DOTS = 4
@@ -228,9 +229,10 @@ onUnmounted(() => {
           <div
             v-for="span in strip.spans"
             :key="span.month"
-            class="ys__month"
+            class="ys__month cursor-pointer"
             data-testid="strip-month"
             :style="{ gridColumn: `${span.startCol + 2} / span ${span.span}` }"
+            @click="emit('month-click', span.month)"
           >
             {{ shortMonthLabel(monthNames[span.month]) }}
           </div>

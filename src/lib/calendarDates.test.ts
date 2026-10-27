@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   monthGrid,
+  monthGridFull,
   formatYyyyMmDd,
   formatLongDateEs,
   yearBounds,
@@ -116,6 +117,43 @@ describe('calendarDates', () => {
       // El primer día (dec 1) es martes
       expect(grid[0][2].dayOfMonth).toBe(1)
       expect(grid[0][2].date).toBe('2026-12-01')
+    })
+  })
+
+  describe('monthGridFull', () => {
+    it('devuelve 42 celdas con fecha real también fuera del mes (enero 2025)', () => {
+      const grid = monthGridFull(2025, 0)
+      expect(grid).toHaveLength(6)
+      for (const week of grid) expect(week).toHaveLength(7)
+      // Enero 2025 empieza miércoles: la grilla arranca el domingo anterior.
+      expect(grid[0][0]).toEqual({ date: '2024-12-29', dayOfMonth: 29, inMonth: false })
+      expect(grid[0][3]).toEqual({ date: '2025-01-01', dayOfMonth: 1, inMonth: true })
+      // Y termina en febrero.
+      expect(grid[5][6]).toEqual({ date: '2025-02-08', dayOfMonth: 8, inMonth: false })
+    })
+
+    it('la primera columna son domingos', () => {
+      const grid = monthGridFull(2025, 0)
+      for (const week of grid) {
+        const [y, m, d] = week[0].date.split('-').map(Number)
+        expect(new Date(y, m - 1, d).getDay()).toBe(0)
+      }
+    })
+
+    it('inMonth marca exactamente los días del mes', () => {
+      const grid = monthGridFull(2025, 0)
+      const inMonth = grid.flat().filter((c) => c.inMonth)
+      expect(inMonth).toHaveLength(31)
+      for (const cell of grid.flat()) {
+        expect(cell.inMonth).toBe(cell.date.startsWith('2025-01-'))
+      }
+    })
+
+    it('dayOfMonth coincide con la fecha de cada celda', () => {
+      for (const cell of monthGridFull(2026, 5).flat()) {
+        const [y, m, d] = cell.date.split('-').map(Number)
+        expect(new Date(y, m - 1, d).getDate()).toBe(cell.dayOfMonth)
+      }
     })
   })
 })

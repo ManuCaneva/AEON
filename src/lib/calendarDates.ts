@@ -63,3 +63,38 @@ export function monthGrid(year: number, month: number, weekStartsOn = 0): MonthC
   }
   return weeks
 }
+
+export interface MonthGridFullCell {
+  date: string
+  dayOfMonth: number
+  inMonth: boolean
+}
+
+/**
+ * Como `monthGrid`, pero todas las celdas traen fecha real (también las de los
+ * meses vecinos) y `inMonth` marca las que no son parte del mes. Pensada para
+ * la grilla del popup mensual: los días adyacentes se muestran atenuados con
+ * sus eventos. Arranca en domingo por defecto (weekStartsOn = 0).
+ */
+export function monthGridFull(
+  year: number,
+  month: number,
+  weekStartsOn = 0
+): MonthGridFullCell[][] {
+  const weeks: MonthGridFullCell[][] = []
+  const first = new Date(year, month, 1)
+  const cursor = new Date(year, month, 1 - ((first.getDay() - weekStartsOn + 7) % 7))
+  for (let w = 0; w < 6; w++) {
+    const week: MonthGridFullCell[] = []
+    for (let d = 0; d < 7; d++) {
+      week.push({
+        date: formatYyyyMmDd(cursor),
+        dayOfMonth: cursor.getDate(),
+        inMonth: cursor.getMonth() === month && cursor.getFullYear() === year,
+      })
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    weeks.push(week)
+  }
+  return weeks
+}

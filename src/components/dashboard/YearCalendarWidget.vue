@@ -9,6 +9,8 @@ import YearCalendarSettingsModal from '@/components/dashboard/YearCalendarSettin
 import Container from '@/components/ui/Container.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
+import MonthAgendaPopup from '@/components/dashboard/MonthAgendaPopup.vue'
+import { buildMonthAgenda } from '@/lib/monthAgenda'
 import Text from '@/components/ui/Text.vue'
 import { ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-vue-next'
 import { computeScrollableLayout, colsForItemWidth, type LayoutResult } from '@/lib/calendarLayout'
@@ -67,6 +69,32 @@ const lastMeasured = ref<{ w: number; h: number } | null>(null)
 function openDayModal(date: string) {
   selectedDate.value = date
   showDayModal.value = true
+}
+
+// Popup de mes (agenda mensual): el índice del mes clickeado o null si está cerrado.
+const monthPopup = ref<number | null>(null)
+
+const agendaByDate = computed(() =>
+  buildMonthAgenda({
+    exams: exams.exams,
+    tasks: tasks.tasks,
+    events: store.events,
+    representedEventKeys: new Set<string>([
+      ...exams.linkedEventKeys,
+      ...tasks.representedEventKeys,
+    ]),
+    examColor: exams.colorFor,
+    taskColor: tasks.colorFor,
+  })
+)
+
+function openMonthPopup(month: number) {
+  monthPopup.value = month
+}
+
+function onPopupSelectDay(date: string) {
+  monthPopup.value = null
+  openDayModal(date)
 }
 
 let resizeObserver: ResizeObserver | null = null
@@ -393,6 +421,7 @@ watch(
           :overlay-by-date="exams.overlayByDate"
           :month-names="MONTH_NAMES"
           @select-day="openDayModal"
+          @month-click="openMonthPopup"
         />
         <template v-else>
           <div v-if="layout" class="ycw__grid-header">
@@ -421,6 +450,7 @@ watch(
                 :overlay-by-date="exams.overlayByDate"
                 :show-header="false"
                 @select-day="openDayModal"
+                @month-click="openMonthPopup"
               />
             </div>
           </div>
@@ -461,6 +491,14 @@ watch(
         </div>
       </footer>
     </div>
+    <MonthAgendaPopup
+      :open="monthPopup !== null"
+      :year="store.currentYear"
+      :month="monthPopup ?? 0"
+      :agenda-by-date="agendaByDate"
+      @close="monthPopup = null"
+      @select-day="onPopupSelectDay"
+    />
     <DayDetailsModal :open="showDayModal" :date="selectedDate" @close="showDayModal = false" />
     <YearCalendarSettingsModal
       :open="showSettings"

@@ -4,7 +4,7 @@ import { onMounted, onUnmounted } from 'vue'
 const props = withDefaults(
   defineProps<{
     open: boolean
-    size?: 'sm' | 'md' | 'lg'
+    size?: 'sm' | 'md' | 'lg' | 'xl'
   }>(),
   { size: 'md' }
 )
@@ -33,7 +33,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
       <div
         :class="[
           'glass-overlay flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl shadow-2xl ring-1 ring-hairline-strong/20',
-          size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : 'max-w-md',
+          size === 'sm'
+            ? 'max-w-sm'
+            : size === 'lg'
+              ? 'max-w-2xl'
+              : size === 'xl'
+                ? 'max-w-5xl'
+                : 'max-w-md',
         ]"
         role="dialog"
         aria-modal="true"
