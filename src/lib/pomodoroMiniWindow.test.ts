@@ -2,17 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { currentMonitor, type Monitor } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow, type WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {
+  closePomodoroMiniWindow,
   flushPomodoroMiniWindowClosed,
+  getPomodoroMiniOrbRect,
   isPomodoroMiniWindow,
   openPomodoroMiniWindow,
   restorePomodoroMiniWindow,
+  setPomodoroMiniGeometry,
+  setPomodoroMiniOrbOffset,
+  startDraggingPomodoroMiniWindow,
   trackPomodoroMiniWindow,
-  POMODORO_MINI_HEIGHT,
   POMODORO_MINI_LABEL,
-  POMODORO_MINI_MIN_HEIGHT,
-  POMODORO_MINI_MIN_WIDTH,
-  POMODORO_MINI_WIDTH,
 } from './pomodoroMiniWindow'
+import {
+  POMODORO_ORB_DEFAULT_DIAMETER,
+  POMODORO_ORB_MIN_DIAMETER,
+  POMODORO_PILL_GAP,
+  POMODORO_PILL_HEIGHT,
+} from './pomodoroMiniLayout'
 import * as db from '@/lib/db'
 
 const { constructions, windows, getByLabel } = vi.hoisted(() => ({
@@ -36,6 +43,12 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     options: Record<string, unknown>
     scaleFactorValue = 1
     handlers = new Map<string, (event: unknown) => unknown>()
+    setSize = vi.fn().mockResolvedValue(undefined)
+    setPosition = vi.fn().mockResolvedValue(undefined)
+    startDragging = vi.fn().mockResolvedValue(undefined)
+    close = vi.fn().mockResolvedValue(undefined)
+    outerPosition = vi.fn()
+    outerSize = vi.fn()
 
     constructor(label: string, options: Record<string, unknown>) {
       this.label = label
@@ -128,7 +141,7 @@ function resetFakes(): void {
     })
 }
 
-describe('ventana mini del pomodoro', () => {
+describe('ventana de la mascota del pomodoro', () => {
   beforeEach(() => {
     constructions.length = 0
     windows.length = 0
@@ -139,7 +152,7 @@ describe('ventana mini del pomodoro', () => {
     vi.mocked(db.saveConfig).mockReset().mockResolvedValue(undefined)
   })
 
-  it('crea la ventana mini redimensionable, con mínimos, siempre arriba y decoración del sistema', async () => {
+  it('crea la mascota como disco cuadrado, sin decoraciones, transparente, siempre arriba y fuera de la taskbar', async () => {
     getByLabel.mockResolvedValue(null)
     vi.mocked(currentMonitor).mockResolvedValue(null)
 
@@ -151,25 +164,35 @@ describe('ventana mini del pomodoro', () => {
       options: expect.objectContaining({
         url: 'index.html',
         title: 'AEON — Pomodoro',
-        width: POMODORO_MINI_WIDTH,
-        height: POMODORO_MINI_HEIGHT,
-        minWidth: POMODORO_MINI_MIN_WIDTH,
-        minHeight: POMODORO_MINI_MIN_HEIGHT,
-        resizable: true,
+        width: POMODORO_ORB_DEFAULT_DIAMETER,
+        height: POMODORO_ORB_DEFAULT_DIAMETER,
+        minWidth: POMODORO_ORB_MIN_DIAMETER,
+        minHeight: POMODORO_ORB_MIN_DIAMETER,
+        resizable: false,
         alwaysOnTop: true,
-        decorations: true,
+        decorations: false,
+        transparent: true,
+        shadow: false,
+        skipTaskbar: true,
         focus: true,
       }),
     })
   })
 
-  it('la mini es chica de verdad: default de 210×224 y un mínimo de 140×150', () => {
-    expect(POMODORO_MINI_WIDTH).toBe(210)
-    expect(POMODORO_MINI_HEIGHT).toBe(224)
-    expect(POMODORO_MINI_MIN_WIDTH).toBe(140)
-    expect(POMODORO_MINI_MIN_HEIGHT).toBe(150)
-    expect(POMODORO_MINI_MIN_WIDTH).toBeLessThan(POMODORO_MINI_WIDTH)
-    expect(POMODORO_MINI_MIN_HEIGHT).toBeLessThan(POMODORO_MINI_HEIGHT)
+  it('no impone máximo de ventana: la pastilla necesita crecer más allá del disco', async () => {
+    getByLabel.mockResolvedValue(null)
+    vi.mocked(currentMonitor).mockResolvedValue(null)
+
+    await openPomodoroMiniWindow()
+
+    expect(constructions[0].options.maxWidth).toBeUndefined()
+    expect(constructions[0].options.maxHeight).toBeUndefined()
+  })
+
+  it('la mascota es chica de verdad: default de 200px y un mínimo de 140px', () => {
+    expect(POMODORO_ORB_DEFAULT_DIAMETER).toBe(200)
+    expect(POMODORO_ORB_MIN_DIAMETER).toBe(140)
+    expect(POMODORO_ORB_MIN_DIAMETER).toBeLessThan(POMODORO_ORB_DEFAULT_DIAMETER)
   })
 
   it('si la ventana ya existe la enfoca y no crea una segunda', async () => {
@@ -194,8 +217,8 @@ describe('ventana mini del pomodoro', () => {
     await openPomodoroMiniWindow()
 
     expect(constructions[0].options).toMatchObject({
-      x: 1920 + 2560 - POMODORO_MINI_WIDTH,
-      y: 0 + 1440 - POMODORO_MINI_HEIGHT,
+      x: 1920 + 2560 - POMODORO_ORB_DEFAULT_DIAMETER,
+      y: 0 + 1440 - POMODORO_ORB_DEFAULT_DIAMETER,
     })
   })
 
@@ -214,8 +237,8 @@ describe('ventana mini del pomodoro', () => {
     expect(sizeToLogical).toHaveBeenCalledWith(2)
     expect(toLogical).toHaveBeenCalledWith(2)
     expect(constructions[0].options).toMatchObject({
-      x: 1280 - POMODORO_MINI_WIDTH,
-      y: 720 - POMODORO_MINI_HEIGHT,
+      x: 1280 - POMODORO_ORB_DEFAULT_DIAMETER,
+      y: 720 - POMODORO_ORB_DEFAULT_DIAMETER,
     })
   })
 
@@ -242,7 +265,7 @@ describe('ventana mini del pomodoro', () => {
   })
 })
 
-describe('persistencia de la ventana mini entre sesiones', () => {
+describe('persistencia de la mascota entre sesiones', () => {
   beforeEach(resetFakes)
 
   it('si estaba abierta al cerrar la app, la reabre en la posición donde quedó', async () => {
@@ -264,28 +287,28 @@ describe('persistencia de la ventana mini entre sesiones', () => {
 
     expect(windows).toHaveLength(1)
     expect(windows[0].options).toMatchObject({
-      x: 1920 + 2560 - POMODORO_MINI_WIDTH,
-      y: 0 + 1440 - POMODORO_MINI_HEIGHT,
+      x: 1920 + 2560 - POMODORO_ORB_DEFAULT_DIAMETER,
+      y: 0 + 1440 - POMODORO_ORB_DEFAULT_DIAMETER,
     })
   })
 
-  it('reabrir la mini con tamaño guardado lo respeta en vez del default', async () => {
+  it('reabrir con diámetro guardado lo respeta, siempre como cuadrado', async () => {
     persistMini({ isOpen: true, x: 500, y: 400, width: 160, height: 180 })
 
     await restorePomodoroMiniWindow()
 
     expect(windows).toHaveLength(1)
-    expect(windows[0].options).toMatchObject({ width: 160, height: 180 })
+    expect(windows[0].options).toMatchObject({ width: 160, height: 160 })
   })
 
-  it('un tamaño guardado imposible se recorta al mínimo en vez de crear una mini diminuta', async () => {
+  it('un diámetro guardado imposible se recorta al mínimo en vez de crear una mini diminuta', async () => {
     persistMini({ isOpen: true, x: 500, y: 400, width: 40, height: 20 })
 
     await restorePomodoroMiniWindow()
 
     expect(windows[0].options).toMatchObject({
-      width: POMODORO_MINI_MIN_WIDTH,
-      height: POMODORO_MINI_MIN_HEIGHT,
+      width: POMODORO_ORB_MIN_DIAMETER,
+      height: POMODORO_ORB_MIN_DIAMETER,
     })
   })
 
@@ -314,7 +337,7 @@ describe('persistencia de la ventana mini entre sesiones', () => {
     expect(getByLabel).not.toHaveBeenCalled()
   })
 
-  it('la restauración no roba el foco: con la mini ya abierta no la muestra ni la enfoca', async () => {
+  it('la restauración no roba el foco: con la mascota ya abierta no la muestra ni la enfoca', async () => {
     persistMini({ isOpen: true, x: 500, y: 400 })
     const show = vi.fn().mockResolvedValue(undefined)
     const setFocus = vi.fn().mockResolvedValue(undefined)
@@ -322,7 +345,7 @@ describe('persistencia de la ventana mini entre sesiones', () => {
 
     await restorePomodoroMiniWindow()
 
-    // Al recrear la ventana principal el foco no rebota a la mini.
+    // Al recrear la ventana principal el foco no rebota a la mascota.
     expect(show).not.toHaveBeenCalled()
     expect(setFocus).not.toHaveBeenCalled()
     expect(constructions).toHaveLength(0)
@@ -383,7 +406,7 @@ describe('persistencia de la ventana mini entre sesiones', () => {
     ])
   })
 
-  it('abrir la mini la deja marcada como abierta, conservando la posición guardada', async () => {
+  it('abrir la mascota la deja marcada como abierta, conservando la posición guardada', async () => {
     persistMini({ isOpen: false, x: 500, y: 400 })
 
     await openPomodoroMiniWindow()
@@ -391,7 +414,7 @@ describe('persistencia de la ventana mini entre sesiones', () => {
     expect(persistedState()).toEqual({ isOpen: true, x: 500, y: 400, width: null, height: null })
   })
 
-  it('al abrir la mini con posición guardada la respeta en vez de la esquina por defecto', async () => {
+  it('al abrirla con posición guardada la respeta en vez de la esquina por defecto', async () => {
     persistMini({ isOpen: false, x: 500, y: 400 })
     vi.mocked(currentMonitor).mockResolvedValue(
       monitorWith({ x: 1920, y: 0, width: 2560, height: 1440 })
@@ -412,6 +435,12 @@ function registrarMiniActual() {
     scaleFactorValue: 1,
     handlers,
     scaleFactor: () => Promise.resolve(mini.scaleFactorValue),
+    setSize: vi.fn().mockResolvedValue(undefined),
+    setPosition: vi.fn().mockResolvedValue(undefined),
+    startDragging: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    outerPosition: vi.fn(),
+    outerSize: vi.fn(),
     onMoved: (handler: Handler) => {
       handlers.set('tauri://move', handler)
       return Promise.resolve(() => {})
@@ -431,7 +460,7 @@ function registrarMiniActual() {
   return mini
 }
 
-describe('ciclo de vida de la ventana mini', () => {
+describe('ciclo de vida de la mascota', () => {
   beforeEach(() => {
     resetFakes()
     vi.useFakeTimers()
@@ -441,7 +470,7 @@ describe('ciclo de vida de la ventana mini', () => {
     vi.useRealTimers()
   })
 
-  it('persiste la posición al mover la mini, con una sola escritura por arrastre', async () => {
+  it('persiste la posición al mover la mascota, con una sola escritura por arrastre', async () => {
     const mini = registrarMiniActual()
     mini.scaleFactorValue = 2
     const toLogical = vi.fn().mockReturnValue({ x: 33, y: 44 })
@@ -457,23 +486,24 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(1)
   })
 
-  it('persiste el tamaño al redimensionar la mini, con una sola escritura por gesto', async () => {
+  it('persiste el diámetro al redimensionar, con una sola escritura por gesto', async () => {
     const mini = registrarMiniActual()
-    const toLogical = vi.fn().mockReturnValue({ width: 160, height: 180 })
+    const toLogical = vi.fn().mockReturnValue({ width: 175, height: 229 })
 
     mini.emit('tauri://resize', { toLogical })
     await vi.advanceTimersByTimeAsync(100)
     mini.emit('tauri://resize', { toLogical })
     await vi.advanceTimersByTimeAsync(250)
 
-    expect(persistedState()).toEqual({ isOpen: true, x: null, y: null, width: 160, height: 180 })
+    // El alto de la ventana incluye la pastilla: el ancho es el disco.
+    expect(persistedState()).toEqual({ isOpen: true, x: null, y: null, width: 175, height: 175 })
     expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(1)
   })
 
-  it('mover y redimensionar en el mismo gesto guardan posición y tamaño juntos', async () => {
+  it('mover y redimensionar en el mismo gesto guardan posición y diámetro juntos', async () => {
     const mini = registrarMiniActual()
 
-    mini.emit('tauri://resize', { toLogical: () => ({ width: 150, height: 160 }) })
+    mini.emit('tauri://resize', { toLogical: () => ({ width: 150, height: 204 }) })
     mini.emit('tauri://move', { toLogical: () => ({ x: 12, y: 34 }) })
     await vi.advanceTimersByTimeAsync(250)
 
@@ -482,9 +512,46 @@ describe('ciclo de vida de la ventana mini', () => {
       x: 12,
       y: 34,
       width: 150,
-      height: 160,
+      height: 150,
     })
     expect(vi.mocked(db.saveConfig).mock.calls).toHaveLength(1)
+  })
+
+  it('la posición persistida es la del disco: corrige el offset de la pastilla flipada', async () => {
+    const mini = registrarMiniActual()
+    const pillSpace = POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT
+
+    // Pastilla arriba: la ventana está `pillSpace` más alta que el disco.
+    setPomodoroMiniOrbOffset(pillSpace)
+    mini.emit('tauri://move', { toLogical: () => ({ x: 10, y: 46 }) })
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(persistedState()).toEqual({
+      isOpen: true,
+      x: 10,
+      y: 46 + pillSpace,
+      width: null,
+      height: null,
+    })
+  })
+
+  it('el offset se captura al moverse, no al persistir: un cambio posterior no corrompe la posición', async () => {
+    const mini = registrarMiniActual()
+    const pillSpace = POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT
+
+    setPomodoroMiniOrbOffset(pillSpace)
+    mini.emit('tauri://move', { toLogical: () => ({ x: 10, y: 46 }) })
+    // La pastilla se cierra antes de que venza el debounce.
+    setPomodoroMiniOrbOffset(0)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(persistedState()).toEqual({
+      isOpen: true,
+      x: 10,
+      y: 46 + pillSpace,
+      width: null,
+      height: null,
+    })
   })
 
   it('el seguimiento solo escucha movimiento y tamaño: el cierre lo coordina el store', () => {
@@ -495,7 +562,7 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(mini.handlers.has('tauri://close-requested')).toBe(false)
   })
 
-  it('la X del usuario la marca cerrada y guarda la última posición movida', async () => {
+  it('el botón de cerrar la marca cerrada y guarda la última posición movida', async () => {
     const mini = registrarMiniActual()
 
     mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
@@ -504,16 +571,26 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(persistedState()).toEqual({ isOpen: false, x: 700, y: 500, width: null, height: null })
   })
 
-  it('la X guarda también el último tamaño redimensionado', async () => {
+  it('el cierre guarda también el último diámetro redimensionado', async () => {
     const mini = registrarMiniActual()
 
-    mini.emit('tauri://resize', { toLogical: () => ({ width: 140, height: 150 }) })
+    mini.emit('tauri://resize', { toLogical: () => ({ width: 140, height: 194 }) })
     await flushPomodoroMiniWindowClosed()
 
-    expect(persistedState()).toEqual({ isOpen: false, x: null, y: null, width: 140, height: 150 })
+    expect(persistedState()).toEqual({ isOpen: false, x: null, y: null, width: 140, height: 140 })
   })
 
-  it('cerrar la app con la mini abierta no la marca cerrada: la próxima sesión la reabre donde quedó', async () => {
+  it('cerrar con el botón de la pastilla persiste el cierre y destruye la ventana', async () => {
+    const mini = registrarMiniActual()
+    mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
+
+    await closePomodoroMiniWindow()
+
+    expect(persistedState()).toEqual({ isOpen: false, x: 700, y: 500, width: null, height: null })
+    expect(mini.close).toHaveBeenCalledOnce()
+  })
+
+  it('cerrar la app con la mascota abierta no la marca cerrada: la próxima sesión la reabre donde quedó', async () => {
     const mini = registrarMiniActual()
     mini.emit('tauri://move', { toLogical: () => ({ x: 700, y: 500 }) })
     await vi.advanceTimersByTimeAsync(250)
@@ -529,18 +606,18 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(windows[0].options).toMatchObject({ x: 700, y: 500 })
   })
 
-  it('la sesión siguiente la reabre con el tamaño que le dejó el usuario', async () => {
+  it('la sesión siguiente la reabre con el diámetro que le dejó el usuario', async () => {
     const mini = registrarMiniActual()
-    mini.emit('tauri://resize', { toLogical: () => ({ width: 175, height: 190 }) })
+    mini.emit('tauri://resize', { toLogical: () => ({ width: 275, height: 329 }) })
     await vi.advanceTimersByTimeAsync(250)
 
     await restorePomodoroMiniWindow()
 
     expect(windows).toHaveLength(1)
-    expect(windows[0].options).toMatchObject({ width: 175, height: 190 })
+    expect(windows[0].options).toMatchObject({ width: 275, height: 275 })
   })
 
-  it('tras cerrarla con la X, al reabrirla vuelve a seguir su posición', async () => {
+  it('tras cerrarla, al reabrirla vuelve a seguir su posición', async () => {
     registrarMiniActual()
     await flushPomodoroMiniWindowClosed()
 
@@ -552,7 +629,7 @@ describe('ciclo de vida de la ventana mini', () => {
     expect(persistedState()).toEqual({ isOpen: true, x: 10, y: 20, width: null, height: null })
   })
 
-  it('si el usuario la cerró con la X, la próxima restauración no la reabre', async () => {
+  it('si el usuario la cerró, la próxima restauración no la reabre', async () => {
     registrarMiniActual()
     await flushPomodoroMiniWindowClosed()
 
@@ -560,5 +637,60 @@ describe('ciclo de vida de la ventana mini', () => {
 
     expect(windows).toHaveLength(0)
     expect(getByLabel).not.toHaveBeenCalled()
+  })
+})
+
+describe('geometría de la ventana en vivo', () => {
+  beforeEach(() => {
+    resetFakes()
+    setPomodoroMiniOrbOffset(0)
+  })
+
+  it('setPomodoroMiniGeometry mueve y redimensiona la ventana a la geometría del disco', async () => {
+    const mini = registrarMiniActual()
+
+    await setPomodoroMiniGeometry({ x: 10, y: 20, width: 200, height: 254 })
+
+    expect(mini.setSize).toHaveBeenCalledOnce()
+    expect(mini.setSize.mock.calls[0][0]).toMatchObject({ width: 200, height: 254 })
+    expect(mini.setPosition).toHaveBeenCalledOnce()
+    expect(mini.setPosition.mock.calls[0][0]).toMatchObject({ x: 10, y: 20 })
+  })
+
+  it('el arrastre nativo mueve la ventana con el disco', async () => {
+    const mini = registrarMiniActual()
+
+    startDraggingPomodoroMiniWindow()
+
+    expect(mini.startDragging).toHaveBeenCalledOnce()
+  })
+
+  it('getPomodoroMiniOrbRect devuelve el disco actual, corregido por el offset de la pastilla', async () => {
+    const mini = registrarMiniActual()
+    const pillSpace = POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT
+    const scale = 2
+    mini.scaleFactorValue = scale
+    mini.outerPosition.mockReturnValue({
+      toLogical: (s: number) => {
+        expect(s).toBe(scale)
+        return { x: 10, y: 46 }
+      },
+    })
+    mini.outerSize.mockReturnValue({
+      toLogical: (s: number) => {
+        expect(s).toBe(scale)
+        return { width: 160, height: 214 }
+      },
+    })
+
+    setPomodoroMiniOrbOffset(pillSpace)
+    await expect(getPomodoroMiniOrbRect()).resolves.toEqual({
+      x: 10,
+      y: 46 + pillSpace,
+      diameter: 160,
+    })
+
+    setPomodoroMiniOrbOffset(0)
+    await expect(getPomodoroMiniOrbRect()).resolves.toEqual({ x: 10, y: 46, diameter: 160 })
   })
 })

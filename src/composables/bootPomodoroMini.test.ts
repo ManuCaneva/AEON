@@ -57,6 +57,12 @@ const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
         await Promise.all((handlers.get(event) ?? []).map((handler) => handler({ payload })))
       },
       scaleFactor: () => Promise.resolve(1),
+      outerPosition: () => Promise.resolve({ toLogical: () => ({ x: 0, y: 0 }) }),
+      outerSize: () => Promise.resolve({ toLogical: () => ({ width: 200, height: 200 }) }),
+      setSize: vi.fn().mockResolvedValue(undefined),
+      setPosition: vi.fn().mockResolvedValue(undefined),
+      startDragging: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
       onMoved: (handler: Handler) => registrar('tauri://move', handler),
       onResized: (handler: Handler) => registrar('tauri://resize', handler),
       onCloseRequested: (handler: Handler) => registrar('tauri://close-requested', handler),
@@ -70,10 +76,38 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   WebviewWindow: { getByLabel: vi.fn().mockResolvedValue(null) },
 }))
 
+vi.mock('@tauri-apps/api/window', () => ({
+  currentMonitor: vi.fn().mockResolvedValue({
+    scaleFactor: 1,
+    size: { toLogical: () => ({ width: 1920, height: 1080 }) },
+    position: { toLogical: () => ({ x: 0, y: 0 }) },
+  }),
+}))
+
 function countdown(): string {
   return (
     document.querySelector('[data-testid="pomodoro-mini-countdown"]')?.textContent?.trim() ?? ''
   )
+}
+
+/** Vacía los microtasks del flujo async de hover (compatible con fake timers). */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+}
+
+/** Trae el cursor al disco: muestra la pastilla de opciones. */
+async function hoverDisco(): Promise<void> {
+  document
+    .querySelector('[data-testid="pomodoro-mini-circle-area"]')
+    ?.dispatchEvent(new MouseEvent('mouseenter'))
+  await settle()
+  expect(document.querySelector('[data-testid="pomodoro-pill"]')).not.toBeNull()
+}
+
+function clickEn(testId: string): void {
+  document
+    .querySelector(`[data-testid="${testId}"]`)
+    ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
 /** Último estado de la ventana mini escrito en la config. */
@@ -149,17 +183,36 @@ describe('arranque de la ventana mini', () => {
     expect(useExamsStore).not.toHaveBeenCalled()
   })
 
-  it('el título de la mini pide la página Pomodoro en la ventana principal, con click y teclado', async () => {
+  it('el botón de la pastilla pide la página Pomodoro en la ventana principal', async () => {
     await bootPomodoroMini()
-    const header = document.querySelector('[data-testid="pomodoro-mini-header"]')
-    const title = document.querySelector('[data-testid="pomodoro-mini-header-title"]')
+    await hoverDisco()
 
-    header?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    title?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    title?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-    title?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+    clickEn('pomodoro-pill-go')
 
-    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(4)
+    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(1)
+  })
+
+  it('el botón de cerrar de la pastilla persiste el cierre y destruye la ventana', async () => {
+    await bootPomodoroMini()
+    await hoverDisco()
+
+    clickEn('pomodoro-pill-close')
+    await settle()
+
+    expect(estadoDeVentanaPersistido()).toEqual({
+      isOpen: false,
+      x: null,
+      y: null,
+      width: null,
+      height: null,
+    })
+    expect(ventanaMini.close).toHaveBeenCalledOnce()
+  })
+
+  it('la mascota se monta sobre fondo transparente: la ventana es solo el disco', async () => {
+    await bootPomodoroMini()
+
+    expect(document.documentElement.classList.contains('orb-window')).toBe(true)
   })
 
   it('el disco y los controles de la mini no piden navegación', async () => {

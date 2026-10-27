@@ -1,18 +1,18 @@
 import { z } from 'zod'
 
 /**
- * Estado persistido de la ventana mini del pomodoro: si el usuario la dejó
- * abierta, dónde quedó y qué tamaño le dio. Vive en la tabla `config` como
+ * Estado persistido de la mascota del pomodoro: si el usuario la dejó abierta,
+ * dónde quedó el disco y qué diámetro le dio. Vive en la tabla `config` como
  * JSON validado acá. El tamaño es opcional: los estados guardados cuando la
- * mini era fija siguen siendo válidos y conservan el default.
+ * mini era rectangular siguen siendo válidos (el ancho pasa a ser el diámetro).
  */
 export const PomodoroMiniWindowStateSchema = z.object({
-  /** true si la mini quedó abierta: se reabre sola en el próximo arranque. */
+  /** true si la mascota quedó abierta: se reabre sola en el próximo arranque. */
   isOpen: z.boolean().default(false),
-  /** Última posición guardada en píxeles lógicos; null = nunca se movió. */
+  /** Última posición del disco guardada en píxeles lógicos; null = nunca se movió. */
   x: z.number().finite().nullable().default(null),
   y: z.number().finite().nullable().default(null),
-  /** Último tamaño guardado en píxeles lógicos; null = nunca se redimensionó. */
+  /** Último diámetro guardado en píxeles lógicos; null = nunca se redimensionó. */
   width: z.number().finite().positive().nullable().default(null),
   height: z.number().finite().positive().nullable().default(null),
 })
