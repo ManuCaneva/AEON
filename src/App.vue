@@ -20,7 +20,9 @@ import ExamFormModal from '@/components/exams/ExamFormModal.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
 import UpdateModal from '@/components/layout/UpdateModal.vue'
+import WhatsNewModal from '@/components/layout/WhatsNewModal.vue'
 import { useUpdater } from '@/composables/useUpdater'
+import { useWhatsNew } from '@/composables/useWhatsNew'
 import { useDesktopEntry } from '@/composables/useDesktopEntry'
 import { onShowPomodoroInMain, requestsPomodoroView } from '@/lib/pomodoroMainWindow'
 import { restorePomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
@@ -35,11 +37,20 @@ const pomodoro = usePomodoroStore()
 const {
   status: updateStatus,
   progress: updateProgress,
+  notes: updateNotes,
   checkForUpdate,
   update: applyUpdate,
   dismiss: dismissUpdate,
   dismissForever: dismissUpdateForever,
 } = useUpdater()
+
+const {
+  visible: whatsNewVisible,
+  version: whatsNewVersion,
+  notes: whatsNewNotes,
+  checkPending: checkWhatsNew,
+  close: closeWhatsNew,
+} = useWhatsNew()
 
 const { ensureDesktopEntry } = useDesktopEntry()
 
@@ -66,6 +77,7 @@ onMounted(async () => {
   // ventana mini abierta, se reabre donde quedó sin esperar al temporizador.
   void restorePomodoroMiniWindow()
   void registerDesktopIntegration()
+  checkWhatsNew()
   ui.loadWallpaper()
   await habits.loadInitialData()
   await tasks.loadTasks()
@@ -120,9 +132,18 @@ onBeforeUnmount(() => {
       :open="updateStatus !== 'idle'"
       :status="updateStatus"
       :progress="updateProgress"
+      :notes="updateNotes"
       @update="applyUpdate"
       @dismiss="dismissUpdate"
       @dismiss-forever="dismissUpdateForever"
+    />
+
+    <WhatsNewModal
+      v-if="whatsNewNotes"
+      :open="whatsNewVisible"
+      :version="whatsNewVersion ?? ''"
+      :notes="whatsNewNotes"
+      @close="closeWhatsNew"
     />
   </div>
 </template>

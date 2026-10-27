@@ -19,6 +19,33 @@ Commit, PR a `main`, y mergealo. Con eso alcanza: no hay que pushear tags a mano
 
 `latest.json` es lo que consulta la app instalada para ofrecerse la actualización.
 
+## Novedades de cada release
+
+Las novedades se generan solas en el PR a `main`:
+
+1. **`release-notes.yml`** junta los commits `feat`/`fix`/`perf` del PR (lo interno —
+   chore, docs, test, refactor — ni llega al prompt) y le pide a la IA que redacte el
+   resumen. Las reglas de estilo viven en `scripts/release-notes-prompt.md`
+   (máx 5 bullets de una línea, lenguaje de usuario, voseo, categoría
+   nuevo/arreglado/mejorado). La validación dura es `validateNotes` en
+   `src/lib/update/notes.ts`.
+2. El resultado queda en **`docs/CHANGELOG.md`** como una sección
+   `## <versión> — <fecha>`, commiteada a la rama del PR. **El único paso humano es
+   mirar ese diff** (y editarlo si querés). Se regenera en cada push al PR; las
+   ediciones finales se hacen después del último push.
+3. Al mergear, **`release.yml`** arma el body de la release con esa sección + el aviso
+   de SmartScreen (`scripts/release-notes.mjs extract`). Eso viaja a `latest.json.notes`
+   y de ahí a `Update.body` en la app.
+
+Si la IA falla, comenta el problema en el PR y no bloquea el merge. Si el merge entra
+sin sección en el changelog, la release sale con auto-notas de GitHub (fallback).
+
+### Qué ve el usuario
+
+- **Antes de actualizar**: la sección "Qué hay de nuevo" del modal de actualización.
+- **Después de actualizar**: el modal "Novedades de la versión X" al abrir la app, una
+  sola vez por versión.
+
 ## Reglas
 
 - La versión vive en **tres archivos** (`package.json`, `src-tauri/Cargo.toml`,
