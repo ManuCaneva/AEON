@@ -40,8 +40,8 @@ describe('PomodoroPill', () => {
     })
     expect(wrapper.emitted('resize-start')).toHaveLength(1)
 
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 130, clientY: 40 }))
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 145, clientY: 25 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 130, clientY: 40, buttons: 1 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 145, clientY: 25, buttons: 1 }))
 
     expect(wrapper.emitted('resize')).toEqual([[{ x: 30, y: -10 }], [{ x: 45, y: -25 }]])
 
@@ -87,6 +87,39 @@ describe('PomodoroPill', () => {
     expect(wrapper.emitted('resize-start')).toBeUndefined()
     expect(wrapper.emitted('go')).toBeUndefined()
     expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('si el mouseup se pierde, el mouse vuelve sin botón y el gesto se cierra solo', async () => {
+    const wrapper = mount(PomodoroPill)
+
+    await wrapper.get('[data-testid="pomodoro-pill-resize"]').trigger('mousedown', {
+      button: 0,
+      clientX: 100,
+      clientY: 50,
+    })
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 130, clientY: 40, buttons: 1 }))
+    expect(wrapper.emitted('resize')).toHaveLength(1)
+
+    // El puntero salió de la ventana con el botón apretado y el mouseup nunca
+    // llegó: el siguiente move sin botón cierra el gesto en vez de estirarlo.
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 30 }))
+    expect(wrapper.emitted('resize-end')).toHaveLength(1)
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 170, clientY: 20, buttons: 1 }))
+    expect(wrapper.emitted('resize')).toHaveLength(1)
+  })
+
+  it('si la ventana pierde el foco en pleno gesto, el gesto termina', async () => {
+    const wrapper = mount(PomodoroPill)
+
+    await wrapper.get('[data-testid="pomodoro-pill-resize"]').trigger('mousedown', {
+      button: 0,
+      clientX: 100,
+      clientY: 50,
+    })
+    window.dispatchEvent(new Event('blur'))
+
+    expect(wrapper.emitted('resize-end')).toHaveLength(1)
   })
 
   it('al desmontar en pleno gesto, el documento deja de mover el tamaño', async () => {

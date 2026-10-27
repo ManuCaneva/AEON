@@ -27,11 +27,19 @@ function onMouseDown(event: MouseEvent): void {
   gesto = { x: event.clientX, y: event.clientY }
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('blur', onMouseUp)
   emit('resize-start')
 }
 
 function onMouseMove(event: MouseEvent): void {
   if (gesto === null) return
+  // El mouseup puede perderse (el puntero sale de la ventana con el botón
+  // apretado): un move sin botón apretado cierra el gesto en vez de dejarlo
+  // estirando la ventana para siempre.
+  if (event.buttons === 0) {
+    onMouseUp()
+    return
+  }
   emit('resize', { x: event.clientX - gesto.x, y: event.clientY - gesto.y })
 }
 
@@ -40,12 +48,14 @@ function onMouseUp(): void {
   gesto = null
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('blur', onMouseUp)
   emit('resize-end')
 }
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('blur', onMouseUp)
 })
 
 function controlClass(extra: string): string {

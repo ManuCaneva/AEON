@@ -11,7 +11,7 @@
  */
 
 /** Límites del disco en píxeles lógicos: por debajo el contador no entra. */
-export const POMODORO_ORB_MIN_DIAMETER = 140
+export const POMODORO_ORB_MIN_DIAMETER = 80
 export const POMODORO_ORB_MAX_DIAMETER = 480
 export const POMODORO_ORB_DEFAULT_DIAMETER = 200
 

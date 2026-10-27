@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs'
 
 /**
  * Contrato del escalado de la ventana mini, que ahora se puede achicar hasta
- * 140×150. Los container queries bajan el contador y compactan los controles
- * para que el disco respire en todo el rango 140–210 px, sin dejar de respetar
- * la escala de Configuración (`--text-scale`).
+ * 80 px de diámetro. Los container queries bajan el contador y compactan los
+ * controles para que el disco respire en todo el rango 80–210 px, sin dejar de
+ * respetar la escala de Configuración (`--text-scale`).
  */
-describe('layout de la ventana mini (140–210 px)', () => {
+describe('layout de la ventana mini (80–210 px)', () => {
   const css = readFileSync('src/styles/tailwind.css', 'utf-8')
 
   it('el contenedor de la mini dispara los tiers: el disco mide el área disponible', () => {
@@ -27,5 +27,13 @@ describe('layout de la ventana mini (140–210 px)', () => {
     expect(tier).not.toBeNull()
     expect(tier![0]).toMatch(/\.pomodoro-countdown\s*\{[^}]*var\(--text-scale\)/)
     expect(tier![0]).toMatch(/\.pomodoro-btn\s*\{[^}]*width:/)
+  })
+
+  it('hasta 130 px el disco respira en el mínimo de 80 px', () => {
+    const tier = css.match(/@container \(max-width: 130px\)\s*\{[\s\S]*?\n\}/)
+    expect(tier).not.toBeNull()
+    expect(tier![0]).toMatch(/\.pomodoro-countdown\s*\{[^}]*var\(--text-scale\)/)
+    expect(tier![0]).toMatch(/\.pomodoro-btn\s*\{[^}]*width:/)
+    expect(tier![0]).toMatch(/\.pomodoro-controls\s*\{[^}]*gap:/)
   })
 })

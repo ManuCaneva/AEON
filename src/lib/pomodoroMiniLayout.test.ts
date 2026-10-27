@@ -20,7 +20,7 @@ describe('constantes de la mascota', () => {
   it('el rango de diámetro tiene default dentro de los límites', () => {
     expect(POMODORO_ORB_MIN_DIAMETER).toBeLessThan(POMODORO_ORB_DEFAULT_DIAMETER)
     expect(POMODORO_ORB_DEFAULT_DIAMETER).toBeLessThan(POMODORO_ORB_MAX_DIAMETER)
-    expect(POMODORO_ORB_MIN_DIAMETER).toBe(140)
+    expect(POMODORO_ORB_MIN_DIAMETER).toBe(80)
     expect(POMODORO_ORB_DEFAULT_DIAMETER).toBe(200)
     expect(POMODORO_ORB_MAX_DIAMETER).toBe(480)
   })
@@ -147,7 +147,7 @@ describe('resizedOrbAroundCenter', () => {
   })
 
   it('achicar también conserva el centro', () => {
-    const next = resizedOrbAroundCenter(orb, 100)
+    const next = resizedOrbAroundCenter(orb, 10)
     expect(next.x + next.diameter / 2).toBe(180)
     expect(next.y + next.diameter / 2).toBe(280)
     expect(next.diameter).toBe(POMODORO_ORB_MIN_DIAMETER)

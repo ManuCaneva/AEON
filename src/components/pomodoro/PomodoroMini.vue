@@ -12,6 +12,7 @@ import {
   POMODORO_PILL_HEIGHT,
   type OrbRect,
   type PillPlacement,
+  type WindowRect,
 } from '@/lib/pomodoroMiniLayout'
 import {
   currentLogicalMonitorRect,
@@ -25,10 +26,11 @@ import {
  * La mascota del pomodoro: solo el disco, flotando siempre arriba. La ventana
  * del sistema es el cuadrado del disco; la pastilla de opciones vive en una
  * franja que se expande bajo el disco al hacer hover (o sobre él si abajo no
- * entra en el monitor) y se oculta al salir, con una gracia para poder entrar
- * a la pastilla. El disco entero arrastra la ventana; los botones del
- * temporizador no. Todo cambio de geometría pasa por `setPomodoroMiniGeometry`
- * con el offset de la pastilla ya publicado.
+ * entra en el monitor, y en ese caso la pastilla se dibuja encima con el disco
+ * fijo) y se oculta al salir, con una gracia para poder entrar a la pastilla.
+ * El disco entero arrastra la ventana; los botones del temporizador no. Todo
+ * cambio de geometría pasa por `setPomodoroMiniGeometry` con el offset de la
+ * pastilla ya publicado.
  */
 const emit = defineEmits<{ go: []; close: [] }>()
 
@@ -36,6 +38,8 @@ const emit = defineEmits<{ go: []; close: [] }>()
 const PILL_HIDE_DELAY_MS = 300
 
 const pillVisible = ref(false)
+/** Colocación vigente de la pastilla: reactiva porque decide el orden de dibujo. */
+const placement = ref<PillPlacement>('none')
 
 let ocultarTimer: ReturnType<typeof setTimeout> | undefined
 let resizing = false
@@ -43,9 +47,12 @@ let hovering = false
 
 /** Disco actual: la geometría que la pastilla preserva al expandirse. */
 let disco: OrbRect | null = null
-let placement: PillPlacement = 'none'
 /** Disco al inicio del gesto de resize: el delta se acumula desde acá. */
 let gestoBase: OrbRect | null = null
+
+/** Escrituras de resize acotadas: una en vuelo y solo la más nueva pendiente. */
+let escribiendo = false
+let pendiente: WindowRect | null = null
 
 function cancelarOcultamiento(): void {
   if (ocultarTimer !== undefined) {
@@ -63,26 +70,74 @@ function programarOcultamiento(): void {
   }, PILL_HIDE_DELAY_MS)
 }
 
+/**
+ * Aplica una geometría sin encolar IPCs: mientras una escritura está en vuelo,
+ * solo se recuerda la más nueva. Un gesto de resize a 60Hz escribe a la
+ * velocidad de la ventana, no a la del mouse.
+ */
+function aplicarGeometria(rect: WindowRect): void {
+  pendiente = rect
+  if (escribiendo) return
+  escribiendo = true
+  void drenarGeometria()
+}
+
+async function drenarGeometria(): Promise<void> {
+  try {
+    while (pendiente !== null) {
+      const objetivo = pendiente
+      pendiente = null
+      try {
+        await setPomodoroMiniGeometry(objetivo)
+      } catch {
+        // Una escritura rechazada no bloquea las siguientes.
+      }
+    }
+  } finally {
+    escribiendo = false
+  }
+}
+
+/** Vuelve la ventana al disco solo: estado primero, geometría best-effort. */
+async function revertirExpansion(): Promise<void> {
+  placement.value = 'none'
+  setPomodoroMiniOrbOffset(0)
+  if (disco === null) return
+  try {
+    await setPomodoroMiniGeometry(orbWindowRect(disco, 'none'))
+  } catch {
+    // Colapsar es best-effort: el estado ya quedó cerrado.
+  }
+}
+
 async function mostrarPill(): Promise<void> {
   cancelarOcultamiento()
   if (pillVisible.value) return
-  const rect = await getPomodoroMiniOrbRect()
-  // El cursor pudo salirse mientras se leía la geometría.
-  if (!hovering) return
-  disco = rect
-  placement = choosePillPlacement(disco, await currentLogicalMonitorRect())
-  setPomodoroMiniOrbOffset(orbOffsetY(placement))
-  await setPomodoroMiniGeometry(orbWindowRect(disco, placement))
-  if (!hovering) return
-  pillVisible.value = true
+  try {
+    const rect = await getPomodoroMiniOrbRect()
+    // El cursor pudo salirse mientras se leía la geometría.
+    if (!hovering) return
+    disco = rect
+    placement.value = choosePillPlacement(disco, await currentLogicalMonitorRect())
+    setPomodoroMiniOrbOffset(orbOffsetY(placement.value))
+    await setPomodoroMiniGeometry(orbWindowRect(disco, placement.value))
+    if (!hovering) {
+      await revertirExpansion()
+      return
+    }
+    pillVisible.value = true
+  } catch {
+    // Sin geometría confiable no hay pastilla que expandir: el estado queda
+    // limpio (offset sin marcar) y el próximo hover vuelve a intentar.
+    await revertirExpansion()
+  }
 }
 
 async function ocultarPill(): Promise<void> {
-  if (!pillVisible.value) return
+  const estabaExpandido = placement.value !== 'none'
   pillVisible.value = false
-  placement = 'none'
-  setPomodoroMiniOrbOffset(0)
-  if (disco !== null) await setPomodoroMiniGeometry(orbWindowRect(disco, 'none'))
+  if (!estabaExpandido) return
+  await revertirExpansion()
 }
 
 function onHoverStart(): void {
@@ -110,7 +165,7 @@ function onResizeStart(): void {
 function onResize(delta: { x: number; y: number }): void {
   if (gestoBase === null) return
   disco = resizedOrbAroundCenter(gestoBase, resizedDiameter(gestoBase.diameter, delta.x, delta.y))
-  void setPomodoroMiniGeometry(orbWindowRect(disco, placement))
+  aplicarGeometria(orbWindowRect(disco, placement.value))
 }
 
 function onResizeEnd(): void {
@@ -123,7 +178,10 @@ function onResizeEnd(): void {
   <div
     data-testid="pomodoro-mini"
     class="pomodoro-orb container-widget flex h-screen w-full select-none flex-col items-center overflow-hidden"
-    style="container-type: inline-size"
+    :style="{
+      'container-type': 'inline-size',
+      flexDirection: placement === 'above' ? 'column-reverse' : 'column',
+    }"
   >
     <div
       data-testid="pomodoro-mini-circle-area"
@@ -141,7 +199,8 @@ function onResizeEnd(): void {
       class="flex w-full shrink-0 items-end justify-center"
       :style="{
         height: `${POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT}px`,
-        paddingTop: `${POMODORO_PILL_GAP}px`,
+        paddingTop: placement === 'above' ? 0 : `${POMODORO_PILL_GAP}px`,
+        paddingBottom: placement === 'above' ? `${POMODORO_PILL_GAP}px` : 0,
       }"
       @mouseenter="onHoverStart"
       @mouseleave="onHoverEnd"

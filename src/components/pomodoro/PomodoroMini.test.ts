@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PomodoroMini from './PomodoroMini.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
@@ -41,6 +41,10 @@ const windowFakes = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/pomodoroMiniWindow', () => windowFakes)
+
+// Cada test desmonta su wrapper: los gestos de resize escuchan en `document` y
+// una instancia viva filtraría eventos de un test al siguiente.
+enableAutoUnmount(afterEach)
 
 /** Disco con el que responde la ventana en los tests. */
 const DISCO = { x: 100, y: 200, diameter: 200 }
@@ -131,6 +135,13 @@ describe('PomodoroMini', () => {
       width: 200,
       height: 200 + PILL_SPACE,
     })
+    // La pastilla se dibuja ENCIMA del disco y el disco queda donde estaba.
+    expect(wrapper.get('[data-testid="pomodoro-mini"]').attributes('style')).toContain(
+      'column-reverse'
+    )
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill-area"]').attributes('style')).toContain(
+      'padding-bottom'
+    )
   })
 
   it('al salir el cursor la pastilla se oculta tras la gracia, restaurando la geometría', async () => {
@@ -204,7 +215,7 @@ describe('PomodoroMini', () => {
       clientX: 300,
       clientY: 400,
     })
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 330, clientY: 390 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 330, clientY: 390, buttons: 1 }))
     await settle(wrapper)
 
     // Delta {+30, -10} → +40 de diámetro, con el centro del disco fijo.
@@ -235,7 +246,7 @@ describe('PomodoroMini', () => {
       clientX: 300,
       clientY: 400,
     })
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 0, clientY: 700 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 0, clientY: 700, buttons: 1 }))
     await settle(wrapper)
 
     const llamadas = windowFakes.setPomodoroMiniGeometry.mock.calls
@@ -245,6 +256,58 @@ describe('PomodoroMini', () => {
     // El centro del disco sigue fijo.
     expect(ultimo.x + ultimo.width / 2).toBe(200)
     expect(ultimo.y + (ultimo.height - PILL_SPACE) / 2).toBe(300)
+  })
+
+  it('una ráfaga de resize escribe una geometría por vez y siempre termina en la última', async () => {
+    const wrapper = mount(PomodoroMini)
+    await mostrarPill(wrapper)
+    windowFakes.setPomodoroMiniGeometry.mockClear()
+    let liberarPrimeraEscritura: () => void = () => {}
+    windowFakes.setPomodoroMiniGeometry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          liberarPrimeraEscritura = resolve
+        })
+    )
+
+    await wrapper.get('[data-testid="pomodoro-pill-resize"]').trigger('mousedown', {
+      button: 0,
+      clientX: 300,
+      clientY: 400,
+    })
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 310, clientY: 400, buttons: 1 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 320, clientY: 400, buttons: 1 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 330, clientY: 400, buttons: 1 }))
+    await settle(wrapper)
+
+    // La primera escritura sigue en vuelo: los moves intermedios no encolan IPCs.
+    expect(windowFakes.setPomodoroMiniGeometry).toHaveBeenCalledTimes(1)
+    expect(windowFakes.setPomodoroMiniGeometry.mock.calls[0][0]).toMatchObject({ width: 210 })
+
+    liberarPrimeraEscritura()
+    await settle(wrapper)
+
+    // Al liberarse, aplica el delta más nuevo (no el intermedio) y descansa.
+    expect(windowFakes.setPomodoroMiniGeometry).toHaveBeenCalledTimes(2)
+    expect(windowFakes.setPomodoroMiniGeometry.mock.calls[1][0]).toMatchObject({ width: 230 })
+    await settle(wrapper)
+    expect(windowFakes.setPomodoroMiniGeometry).toHaveBeenCalledTimes(2)
+  })
+
+  it('si la geometría falla, el hover se recupera en el próximo intento sin romper el offset', async () => {
+    windowFakes.getPomodoroMiniOrbRect.mockRejectedValueOnce(new Error('sin geometría'))
+    const wrapper = mount(PomodoroMini)
+
+    await wrapper.get('[data-testid="pomodoro-mini-circle-area"]').trigger('mouseenter')
+    await settle(wrapper)
+
+    expect(wrapper.find('[data-testid="pomodoro-mini-pill-area"]').exists()).toBe(false)
+    expect(windowFakes.setPomodoroMiniOrbOffset).toHaveBeenLastCalledWith(0)
+
+    await wrapper.get('[data-testid="pomodoro-mini-circle-area"]').trigger('mouseenter')
+    await settle(wrapper)
+
+    expect(wrapper.find('[data-testid="pomodoro-mini-pill-area"]').exists()).toBe(true)
   })
 
   it('la cuenta regresiva sigue al store compartido, sin reloj propio', async () => {

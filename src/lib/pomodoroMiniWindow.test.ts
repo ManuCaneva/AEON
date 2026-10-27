@@ -168,7 +168,7 @@ describe('ventana de la mascota del pomodoro', () => {
         height: POMODORO_ORB_DEFAULT_DIAMETER,
         minWidth: POMODORO_ORB_MIN_DIAMETER,
         minHeight: POMODORO_ORB_MIN_DIAMETER,
-        resizable: false,
+        resizable: true,
         alwaysOnTop: true,
         decorations: false,
         transparent: true,
@@ -189,10 +189,19 @@ describe('ventana de la mascota del pomodoro', () => {
     expect(constructions[0].options.maxHeight).toBeUndefined()
   })
 
-  it('la mascota es chica de verdad: default de 200px y un mínimo de 140px', () => {
+  it('la mascota es chica de verdad: default de 200px y un mínimo de 80px', () => {
     expect(POMODORO_ORB_DEFAULT_DIAMETER).toBe(200)
-    expect(POMODORO_ORB_MIN_DIAMETER).toBe(140)
+    expect(POMODORO_ORB_MIN_DIAMETER).toBe(80)
     expect(POMODORO_ORB_MIN_DIAMETER).toBeLessThan(POMODORO_ORB_DEFAULT_DIAMETER)
+  })
+
+  it('la ventana se crea redimensionable: con hints fijos el WM clampaba todo resize programático', async () => {
+    getByLabel.mockResolvedValue(null)
+    vi.mocked(currentMonitor).mockResolvedValue(null)
+
+    await openPomodoroMiniWindow()
+
+    expect(constructions[0].options.resizable).toBe(true)
   })
 
   it('si la ventana ya existe la enfoca y no crea una segunda', async () => {
@@ -655,6 +664,18 @@ describe('geometría de la ventana en vivo', () => {
     expect(mini.setSize.mock.calls[0][0]).toMatchObject({ width: 200, height: 254 })
     expect(mini.setPosition).toHaveBeenCalledOnce()
     expect(mini.setPosition.mock.calls[0][0]).toMatchObject({ x: 10, y: 20 })
+  })
+
+  it('tamaño y posición salen en paralelo: uno colgado no frena al otro', async () => {
+    const mini = registrarMiniActual()
+    mini.setSize.mockImplementation(() => new Promise(() => {}))
+    mini.setPosition.mockImplementation(() => new Promise(() => {}))
+
+    void setPomodoroMiniGeometry({ x: 10, y: 20, width: 200, height: 254 })
+    await Promise.resolve()
+
+    expect(mini.setSize).toHaveBeenCalledOnce()
+    expect(mini.setPosition).toHaveBeenCalledOnce()
   })
 
   it('el arrastre nativo mueve la ventana con el disco', async () => {

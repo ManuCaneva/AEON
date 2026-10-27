@@ -107,7 +107,11 @@ async function showPomodoroMiniWindow(
     height: diameter,
     minWidth: POMODORO_ORB_MIN_DIAMETER,
     minHeight: POMODORO_ORB_MIN_DIAMETER,
-    resizable: false,
+    // Redimensionable a propósito: con hints fijos (min=max) algunos WMs —
+    // Wayland sobre todo— clampan también el resize programático y la ventana
+    // no puede crecer para la pastilla. Sin decoraciones no hay bordes que el
+    // usuario pueda estirar; el tamaño lo maneja el disco.
+    resizable: true,
     alwaysOnTop: true,
     decorations: false,
     transparent: true,
@@ -122,6 +126,8 @@ async function showPomodoroMiniWindow(
  * Geometría en vivo de la ventana: mueve y redimensiona a la vez. Es el único
  * camino por el que cambia la geometría (el resize del disco y la expansión de
  * la pastilla), así la ventana no depende de bordes del sistema que ya no tiene.
+ * Tamaño y posición salen en paralelo: uno colgado no frena al otro y un gesto
+ * de resize no acumula dos round-trips de IPC por movimiento de mouse.
  */
 export async function setPomodoroMiniGeometry(rect: {
   x: number
@@ -130,8 +136,10 @@ export async function setPomodoroMiniGeometry(rect: {
   height: number
 }): Promise<void> {
   const win = getCurrentWebviewWindow()
-  await win.setSize(new PhysicalSize(Math.round(rect.width), Math.round(rect.height)))
-  await win.setPosition(new PhysicalPosition(Math.round(rect.x), Math.round(rect.y)))
+  await Promise.all([
+    win.setSize(new PhysicalSize(Math.round(rect.width), Math.round(rect.height))),
+    win.setPosition(new PhysicalPosition(Math.round(rect.x), Math.round(rect.y))),
+  ])
 }
 
 /** Arrastre nativo de la ventana: el disco entero es el asidero. */
