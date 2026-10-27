@@ -22,6 +22,7 @@ export const GoalSchema = z.object({
   color: hexColor,
   target: z.number().int().min(1),
   unit: z.string().trim().max(30).nullable().default(null),
+  direction: z.enum(['up', 'down']).default('up'),
   frequency: GoalFrequencySchema,
   sort_order: z.number().int().default(0),
   created_at: isoTimestamp,
@@ -40,18 +41,21 @@ export const GoalLogSchema = z.object({
 })
 export type GoalLog = z.infer<typeof GoalLogSchema>
 
-export const CreateGoalDraftSchema = z.object({
+const CreateGoalDraftObject = z.object({
   title: trimmed(1, 100),
   description: z.string().trim().max(500).nullable().optional(),
   color: hexColor,
   target: z.number().int().min(1),
+  direction: z.enum(['up', 'down']).optional(),
   unit: z.string().trim().max(20).nullable().optional(),
   frequency: GoalFrequencySchema,
   sort_order: z.number().int().optional(),
 })
+
+export const CreateGoalDraftSchema = CreateGoalDraftObject
 export type CreateGoalDraft = z.infer<typeof CreateGoalDraftSchema>
 
-export const UpdateGoalDraftSchema = CreateGoalDraftSchema.partial()
+export const UpdateGoalDraftSchema = CreateGoalDraftObject.partial()
 export type UpdateGoalDraft = z.infer<typeof UpdateGoalDraftSchema>
 
 export const CreateGoalLogDraftSchema = z.object({
@@ -69,6 +73,7 @@ export const GoalRowSchema = z.object({
   color: z.string(),
   target: z.number().int(),
   unit: z.string().nullable(),
+  direction: z.string(),
   frequency_type: z.string(),
   interval_days: z.number().int().nullable(),
   days_of_week: z.string().nullable(),
@@ -104,6 +109,7 @@ export function rowToGoal(row: GoalRow): Goal {
     color: row.color,
     target: row.target,
     unit: row.unit,
+    direction: row.direction === 'down' ? 'down' : 'up',
     frequency,
     sort_order: row.sort_order,
     created_at: normalizeTimestamp(row.created_at),
@@ -118,6 +124,7 @@ export function goalToRow(g: CreateGoalDraft | UpdateGoalDraft | Goal): {
   color?: string
   target?: number
   unit: string | null
+  direction: 'up' | 'down'
   frequency_type: 'daily' | 'weekly' | 'interval'
   interval_days: number | null
   days_of_week: null
@@ -131,6 +138,7 @@ export function goalToRow(g: CreateGoalDraft | UpdateGoalDraft | Goal): {
     ...('target' in g && g.target !== undefined ? { target: g.target } : {}),
     description: ('description' in g ? g.description : null) ?? null,
     unit: ('unit' in g ? g.unit : null) ?? null,
+    direction: ('direction' in g && g.direction ? g.direction : 'up') as 'up' | 'down',
     sort_order: 'sort_order' in g && g.sort_order !== undefined ? g.sort_order : 0,
   }
 

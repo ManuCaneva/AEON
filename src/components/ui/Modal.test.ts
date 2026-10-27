@@ -74,11 +74,12 @@ describe('Modal', () => {
     expect(mounted.emitted('close')).toBeUndefined()
   })
 
-  it('los tres tamaños mapean al max-width del design system', () => {
-    const cases: Array<[size: 'sm' | 'md' | 'lg', expected: string]> = [
+  it('los cuatro tamaños mapean al max-width del design system', () => {
+    const cases: Array<[size: 'sm' | 'md' | 'lg' | 'xl', expected: string]> = [
       ['sm', 'max-w-sm'],
       ['md', 'max-w-md'],
       ['lg', 'max-w-2xl'],
+      ['xl', 'max-w-5xl'],
     ]
 
     for (const [size, expected] of cases) {

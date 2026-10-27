@@ -6,8 +6,7 @@ import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { CALENDAR_COLORS, type CalendarEvent } from '@/schemas/calendar'
 import { eventKey } from '@/lib/entityEventLink'
-import { taskInAgenda } from '@/lib/taskAgenda'
-import type { Task } from '@/schemas/tasks'
+import { taskInAgenda, taskDay } from '@/lib/taskAgenda'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -48,26 +47,10 @@ const dayEvents = computed(() => store.events.filter((e) => e.date === props.dat
 // Exámenes del día: su propia fecha es la fuente de verdad.
 const dayExams = computed(() => exams.exams.filter((e) => e.date === props.date))
 
-// Evento vinculado a una tarea, buscado por el par (calendarId, id) sin mirar
-// el día: si el evento existe, su día manda sobre el vencimiento de la tarea.
-function taskEvent(task: Task): CalendarEvent | undefined {
-  const link = task.event_link
-  if (!link) return undefined
-  return store.events.find((e) => e.calendarId === link.calendarId && e.id === link.eventId)
-}
-
-// Día al que pertenece la tarea: el del evento si tiene vínculo resuelto; si
-// no, su vencimiento. Sin ninguno de los dos, no entra en ninguna agenda.
-function taskDay(task: Task): string | null {
-  const event = taskEvent(task)
-  return event ? event.date : task.due_date
-}
-
-// La agenda incluye las tareas del día que siguen activas y también las ya
-// completadas (que el store archiva al darlas por hechas). Una tarea archivada
-// sin completar fue descartada por el usuario: no se muestra.
+// Evento vinculado a una tarea y día de agendado: la resolución vive en
+// `@/lib/taskAgenda` y se comparte con la agenda mensual del popup de mes.
 const dayTasks = computed(() =>
-  tasks.tasks.filter((t) => taskInAgenda(t) && taskDay(t) === props.date)
+  tasks.tasks.filter((t) => taskInAgenda(t) && taskDay(t, store.events) === props.date)
 )
 
 // Eventos que ya representan a una entidad del día: se excluyen de «Otros»

@@ -114,6 +114,7 @@
       color: COLORS[i % COLORS.length],
       target: 30,
       unit: null,
+      direction: 'up',
       frequency_type: 'daily',
       interval_days: null,
       days_of_week: null,

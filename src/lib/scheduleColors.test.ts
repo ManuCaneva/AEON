@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { blockColorVar, blockColorRgb, blockColorTint } from './scheduleColors'
+import { blockColorVar, blockColorRgb, blockColorTint, colorWithAlpha } from './scheduleColors'
 
 describe('scheduleColors', () => {
   describe('blockColorVar', () => {
@@ -26,6 +26,26 @@ describe('scheduleColors', () => {
     it('devuelve el tinte translúcido como rgb(var(...) / alpha)', () => {
       expect(blockColorTint('lavender', 0.15)).toBe('rgb(var(--color-block-lavender) / 0.15)')
       expect(blockColorTint('bone', 1)).toBe('rgb(var(--color-block-bone) / 1)')
+    })
+  })
+
+  describe('colorWithAlpha', () => {
+    it('aplica alpha a un color de bloque rgb(var(...))', () => {
+      expect(colorWithAlpha('rgb(var(--color-block-green))', 0.26)).toBe(
+        'rgb(var(--color-block-green) / 0.26)'
+      )
+    })
+
+    it('convierte un hex de 6 dígitos a rgba', () => {
+      expect(colorWithAlpha('#7986cb', 0.4)).toBe('rgba(121, 134, 203, 0.4)')
+    })
+
+    it('convierte un hex corto a rgba', () => {
+      expect(colorWithAlpha('#abc', 0.5)).toBe('rgba(170, 187, 204, 0.5)')
+    })
+
+    it('devuelve el color tal cual si el formato es desconocido', () => {
+      expect(colorWithAlpha('tomato', 0.3)).toBe('tomato')
     })
   })
 })

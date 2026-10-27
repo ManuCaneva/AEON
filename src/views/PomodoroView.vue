@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import Text from '@/components/ui/Text.vue'
 import PomodoroSettingsPanel from '@/components/pomodoro/PomodoroSettingsPanel.vue'
+import PomodoroRing from '@/components/pomodoro/PomodoroRing.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import { openPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
@@ -19,7 +20,6 @@ const phaseLabel = computed(() => {
 })
 const durationMs = computed(() => getPhaseDurationMs(pomodoro.session.phase, pomodoro.settings))
 const progress = computed(() => getProgressFraction(pomodoro.remainingMs, durationMs.value))
-const progressPercent = computed(() => Math.round(progress.value * 100))
 
 const cycleDots = computed(() =>
   Array.from({ length: pomodoro.settings.longBreakInterval }, (_, index) => index)
@@ -60,28 +60,24 @@ function openMini() {
               <PictureInPicture2 :size="14" aria-hidden="true" />
             </IconButton>
           </div>
-          <div
+          <PomodoroRing
             data-testid="pomodoro-progress"
-            class="relative flex h-64 w-64 items-center justify-center rounded-full"
-            role="progressbar"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-valuenow="progressPercent"
-            :style="{
-              background: `conic-gradient(rgb(var(--color-primary)) ${progressPercent}%, rgb(var(--color-surface-3)) 0)`,
-            }"
+            class="h-64 w-64"
+            :phase="pomodoro.session.phase"
+            :progress="progress"
           >
             <div
               class="flex h-[calc(100%-12px)] w-[calc(100%-12px)] items-center justify-center rounded-full bg-surface-1"
             >
               <span
+                :key="pomodoro.session.phase"
                 data-testid="pomodoro-countdown"
-                class="font-mono text-5xl font-semibold tabular-nums tracking-tight"
+                class="pomodoro-fade-in font-mono text-5xl font-semibold tabular-nums tracking-tight"
               >
                 {{ formatRemainingTime(pomodoro.remainingMs) }}
               </span>
             </div>
-          </div>
+          </PomodoroRing>
 
           <div
             data-testid="pomodoro-cycle"

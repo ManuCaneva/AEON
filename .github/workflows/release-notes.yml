@@ -1,0 +1,72 @@
+name: Release notes
+
+# Redacta las novedades de la release cuando se abre o actualiza el PR a main.
+# La IA (cualquier endpoint compatible con OpenAI, Gemini por defecto) escribe
+# la sección en docs/CHANGELOG.md y la commitea a la rama del PR para que se
+# revise en el diff. Nunca bloquea el merge: si la IA falla, comenta el
+# problema y sigue.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      # Ref del head del PR: el commit del changelog vuelve a su rama.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # Si el tag de la versión ya existe, la release está publicada:
+      # no se pisa la sección de una versión que ya salió.
+      - name: Skip si la versión ya está publicada
+        id: guard
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "El tag v$VERSION ya existe: no se regenera el changelog."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recolectar commits del PR
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          git log --no-merges --format=%s "${{ github.event.pull_request.base.sha }}..HEAD" > /tmp/commits.txt
+          cat /tmp/commits.txt
+
+      - name: Generar novedades
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_API_KEY: ${{ secrets.RELEASE_NOTES_API_KEY }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node --experimental-strip-types scripts/release-notes.mjs generate --commits /tmp/commits.txt
+
+      - name: Commit del changelog
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          if [ -z "$(git status --porcelain docs/CHANGELOG.md)" ]; then
+            echo "docs/CHANGELOG.md sin cambios"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/CHANGELOG.md
+          git commit -m "docs: novedades de la release"
+          git push origin HEAD:${{ github.head_ref }}

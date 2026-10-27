@@ -56,6 +56,7 @@ describe('GoalSchema', () => {
     color: '#ff5500',
     target: 10,
     unit: null,
+    direction: 'up' as const,
     frequency: { type: 'daily' as const },
     sort_order: 0,
     created_at: validIso,
@@ -65,6 +66,16 @@ describe('GoalSchema', () => {
 
   it('acepta goal válido mínimo', () => {
     expect(GoalSchema.parse(validGoal)).toEqual(validGoal)
+  })
+
+  it('aplica default direction up', () => {
+    const { direction: _d, ...sinCamposNuevos } = validGoal
+    expect(GoalSchema.parse(sinCamposNuevos)).toMatchObject({ direction: 'up' })
+  })
+
+  it('acepta objetivo de descontar con la misma meta', () => {
+    const goal = { ...validGoal, direction: 'down' as const }
+    expect(GoalSchema.parse(goal)).toMatchObject({ direction: 'down', target: 10 })
   })
 
   it('acepta goal con unit', () => {
@@ -85,6 +96,7 @@ describe('GoalSchema', () => {
   it('rechaza target <= 0', () => {
     expect(() => GoalSchema.parse({ ...validGoal, target: 0 })).toThrow()
     expect(() => GoalSchema.parse({ ...validGoal, target: -1 })).toThrow()
+    expect(() => GoalSchema.parse({ ...validGoal, direction: 'down', target: 0 })).toThrow()
   })
 
   it('rechaza title vacío', () => {
@@ -192,6 +204,17 @@ describe('CreateGoalDraftSchema', () => {
       })
     ).toThrow()
   })
+
+  it('acepta draft de restar con direction down', () => {
+    const draft = {
+      title: 'Porciones',
+      color: '#aabbcc',
+      direction: 'down' as const,
+      target: 10,
+      frequency: { type: 'daily' as const },
+    }
+    expect(CreateGoalDraftSchema.parse(draft)).toMatchObject(draft)
+  })
 })
 
 describe('UpdateGoalDraftSchema', () => {
@@ -229,6 +252,7 @@ describe('GoalRowSchema', () => {
       color: '#ff5500',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'daily',
       interval_days: null,
       days_of_week: null,
@@ -240,6 +264,7 @@ describe('GoalRowSchema', () => {
     const parsed = GoalRowSchema.parse(row)
     expect(parsed.title).toBe('  con espacios  ')
     expect(parsed.frequency_type).toBe('daily')
+    expect(parsed.direction).toBe('up')
   })
 })
 
@@ -267,6 +292,7 @@ describe('rowToGoal', () => {
       color: '#ff5500',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'daily',
       interval_days: null,
       days_of_week: null,
@@ -288,6 +314,7 @@ describe('rowToGoal', () => {
       color: '#ff5500',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'interval',
       interval_days: 7,
       days_of_week: null,
@@ -308,6 +335,7 @@ describe('rowToGoal', () => {
       color: '#ff5500',
       target: 10,
       unit: null,
+      direction: 'up',
       frequency_type: 'interval',
       interval_days: null,
       days_of_week: null,
@@ -318,6 +346,27 @@ describe('rowToGoal', () => {
     }
     const goal = rowToGoal(row)
     expect(goal.frequency).toEqual({ type: 'interval', interval_days: 1 })
+  })
+
+  it('mapea direction del row', () => {
+    const row = {
+      id: validUuid,
+      title: 'Test',
+      description: null,
+      color: '#ff5500',
+      target: 10,
+      unit: null,
+      direction: 'down',
+      frequency_type: 'daily',
+      interval_days: null,
+      days_of_week: null,
+      sort_order: 0,
+      created_at: validIso,
+      updated_at: validIso,
+      archived_at: null,
+    }
+    expect(rowToGoal(row)).toMatchObject({ direction: 'down', target: 10 })
+    expect(rowToGoal({ ...row, direction: 'cualquiera' })).toMatchObject({ direction: 'up' })
   })
 })
 
@@ -380,6 +429,27 @@ describe('goalToRow', () => {
     const row = goalToRow(draft)
     expect(row.sort_order).toBe(0)
   })
+
+  it('aplana direction', () => {
+    const down = {
+      title: 'Test',
+      color: '#aabbcc',
+      direction: 'down' as const,
+      target: 10,
+      frequency: { type: 'daily' as const },
+    }
+    const row = goalToRow(down)
+    expect(row.direction).toBe('down')
+    expect(row.target).toBe(10)
+
+    const up = goalToRow({
+      title: 'Test',
+      color: '#aabbcc',
+      target: 10,
+      frequency: { type: 'daily' as const },
+    })
+    expect(up.direction).toBe('up')
+  })
 })
 
 describe('rowToGoalLog', () => {
@@ -406,6 +476,7 @@ describe('Round-trip', () => {
       color: '#ff5500',
       target: 10,
       unit: 'páginas',
+      direction: 'up' as const,
       frequency: { type: 'interval' as const, interval_days: 7 },
       sort_order: 5,
       created_at: validIso,
@@ -420,6 +491,7 @@ describe('Round-trip', () => {
       color: goal.color,
       target: goal.target,
       unit: goal.unit,
+      direction: row.direction,
       frequency_type: row.frequency_type,
       interval_days: row.interval_days,
       days_of_week: row.days_of_week,

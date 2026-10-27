@@ -56,6 +56,15 @@ describe('YearStrip', () => {
     }
   })
 
+  it('el label de mes es clickeable y emite month-click con el índice del mes', async () => {
+    const wrapper = mountStrip()
+    const labels = wrapper.findAll("[data-testid='strip-month']")
+    expect(labels[0].classes()).toContain('cursor-pointer')
+    await labels[3].trigger('click')
+    expect(wrapper.emitted('month-click')).toBeTruthy()
+    expect(wrapper.emitted('month-click')![0]).toEqual([3])
+  })
+
   it('renderiza 7 etiquetas de día Dom-Sáb', () => {
     const wrapper = mountStrip()
     const labels = wrapper.findAll("[data-testid='strip-day-label']")

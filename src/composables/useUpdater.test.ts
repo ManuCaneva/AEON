@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn() }))
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }))
 
 const DISMISSED_KEY = 'aeon.updater.dismissed'
+const PENDING_KEY = 'aeon.whatsnew.pending'
 const RELEASES_URL = 'https://github.com/ManuCaneva/AEON/releases/latest'
 
 type DownloadEvent =
@@ -103,6 +104,57 @@ describe('useUpdater', () => {
     updater.dismiss()
     expect(localStorage.getItem(DISMISSED_KEY)).toBeNull()
     expect(updater.status.value).toBe('idle')
+  })
+
+  it('expone las notas parseadas cuando la release las trae', async () => {
+    vi.mocked(check).mockResolvedValue(fakeUpdate({ body: '- **Nuevo** — Cronograma semanal' }))
+    const updater = useUpdater(true)
+
+    await updater.checkForUpdate()
+
+    expect(updater.notes.value).toEqual({
+      summary: null,
+      items: [{ category: 'nuevo', text: 'Cronograma semanal' }],
+    })
+  })
+
+  it('notes queda en null cuando la release no trae notas legibles', async () => {
+    vi.mocked(check).mockResolvedValue(fakeUpdate({ body: 'Solo texto suelto.' }))
+    const updater = useUpdater(true)
+
+    await updater.checkForUpdate()
+
+    expect(updater.notes.value).toBeNull()
+  })
+
+  it('antes del relaunch guarda las novedades pendientes para el próximo arranque', async () => {
+    vi.mocked(check).mockResolvedValue(
+      fakeUpdate({ version: '0.2.0', body: '- **Nuevo** — Cronograma semanal' })
+    )
+    const updater = useUpdater(true)
+    await updater.checkForUpdate()
+
+    await updater.update()
+
+    expect(JSON.parse(values.get(PENDING_KEY) ?? 'null')).toEqual({
+      version: '0.2.0',
+      notes: {
+        summary: null,
+        items: [{ category: 'nuevo', text: 'Cronograma semanal' }],
+      },
+    })
+    expect(vi.mocked(relaunch)).toHaveBeenCalledOnce()
+  })
+
+  it('sin notas no guarda nada pendiente', async () => {
+    vi.mocked(check).mockResolvedValue(fakeUpdate())
+    const updater = useUpdater(true)
+    await updater.checkForUpdate()
+
+    await updater.update()
+
+    expect(values.has(PENDING_KEY)).toBe(false)
+    expect(vi.mocked(relaunch)).toHaveBeenCalledOnce()
   })
 
   it('descarga, instala y reinicia la app', async () => {

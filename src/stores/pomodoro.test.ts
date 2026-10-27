@@ -52,17 +52,18 @@ const busEventos = vi.hoisted(() => {
 
 vi.mock('@tauri-apps/api/event', () => ({ emit: busEventos.emit, listen: busEventos.listen }))
 
-const { prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } = vi.hoisted(
-  () => ({
+const { prewarm, prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } =
+  vi.hoisted(() => ({
+    prewarm: vi.fn(),
     prepareFromUserGesture: vi.fn().mockResolvedValue({ available: true, state: 'running' }),
     playFocusEndChime: vi.fn(() => true),
     playBreakEndChime: vi.fn(() => true),
     playTestChime: vi.fn(() => true),
-  })
-)
+  }))
 
 vi.mock('@/lib/pomodoroSounds', () => ({
   createPomodoroSoundPlayer: () => ({
+    prewarm,
     prepareFromUserGesture,
     playFocusEndChime,
     playBreakEndChime,
@@ -421,6 +422,76 @@ describe('pomodoro store', () => {
     expect(playFocusEndChime).toHaveBeenCalledOnce()
 
     store.stopTicker()
+  })
+
+  it('los segundos del reloj caen en el borde del fin de fase y duran exactamente 1000 ms', async () => {
+    // Fase que arranca con 300 ms de desfasaje respecto del segundo del reloj de
+    // pared: los ticks se alinean al borde del fin de fase, no al del reloj.
+    vi.setSystemTime(new Date('2026-09-01T12:00:00.300Z'))
+    const store = usePomodoroStore()
+    await store.load()
+    store.startTicker()
+    await store.start()
+
+    const inicial = store.remainingMs
+    expect(inicial).toBe(defaultPomodoroSettings.focusMinutes * 60_000)
+
+    await vi.advanceTimersByTimeAsync(700)
+    expect(store.remainingMs).toBe(inicial)
+
+    await vi.advanceTimersByTimeAsync(300)
+    expect(store.remainingMs).toBe(inicial - 1_000)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(store.remainingMs).toBe(inicial - 2_000)
+
+    store.stopTicker()
+  })
+
+  it('la fase cambia en el instante exacto de la expiración, sin esperar al polling', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ focusMinutes: 1, autoStartBreak: false })
+    store.startTicker()
+    await store.start()
+
+    await vi.advanceTimersByTimeAsync(59_999)
+    expect(store.session.phase).toBe('focus')
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(store.session.phase).toBe('shortBreak')
+    expect(playFocusEndChime).toHaveBeenCalledOnce()
+
+    store.stopTicker()
+  })
+
+  it('«Iniciar» muta la sesión antes de cualquier await: la UI no espera ni al audio ni a SQLite', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    let liberar: (() => void) | undefined
+    vi.mocked(db.saveConfig).mockImplementation(
+      () =>
+        new Promise<void>((resolver) => {
+          liberar = resolver
+        })
+    )
+
+    const enVuelo = store.start()
+
+    // Sin await intermedio: el estado ya cambió para la vista que hizo click.
+    expect(store.session.isRunning).toBe(true)
+    expect(store.session.endsAt).not.toBeNull()
+
+    liberar?.()
+    await enVuelo
+  })
+
+  it('el audio se precalienta al cargar: crear el contexto no espera al primer click', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+
+    expect(prewarm).toHaveBeenCalledOnce()
   })
 
   it('loads a still-running session and computes its current remaining time', async () => {
@@ -819,7 +890,7 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
 
     expect(db.saveConfig).toHaveBeenCalledWith(
       'pomodoro-mini-window',
-      JSON.stringify({ isOpen: false, x: null, y: null })
+      JSON.stringify({ isOpen: false, x: null, y: null, width: null, height: null })
     )
   })
 

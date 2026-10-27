@@ -87,6 +87,18 @@ describe('MonthMini', () => {
     expect(wrapper.find('.month-mini__name').text()).toBe('enero')
   })
 
+  it('el nombre del mes es clickeable y emite month-click con el índice del mes', async () => {
+    const wrapper = mount(MonthMini, {
+      props: { year: 2026, month: 4, eventsByDate, monthName: 'mayo' },
+    })
+    const label = wrapper.find("[data-testid='month-name']")
+    expect(label.exists()).toBe(true)
+    expect(label.classes()).toContain('cursor-pointer')
+    await label.trigger('click')
+    expect(wrapper.emitted('month-click')).toBeTruthy()
+    expect(wrapper.emitted('month-click')![0]).toEqual([4])
+  })
+
   it('no muestra header D-L-M-M-J-V-S por defecto', () => {
     const wrapper = mount(MonthMini, {
       props: { year: 2026, month: 0, eventsByDate },
