@@ -11,5 +11,14 @@ fn main() {
     if std::env::var_os("GDK_BACKEND").is_none() {
         std::env::set_var("GDK_BACKEND", "x11");
     }
+    // Sobre X11 el renderer DMA-BUF de WebKitGTK falla al crear buffers
+    // ("Failed to create GBM buffer... Invalid argument") en GPUs híbridas
+    // NVIDIA/AMD y el webview no pinta: la ventana queda gris (WebKit bug
+    // 280210). Desactivarlo fuerza el renderer por software/OpenGL clásico,
+    // que pinta bien bajo XWayland. Un valor externo se respeta (ADR 0011).
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     aeon_lib::run()
 }
