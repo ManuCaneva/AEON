@@ -5,8 +5,9 @@
 // Dos subcomandos:
 //
 //   generate  Redacta la sección de novedades de la versión actual con IA
-//             (GitHub Models) a partir de los commits del PR, y la deja en
-//             docs/CHANGELOG.md para revisión humana en el diff.
+//             (endpoint compatible con OpenAI, Gemini por defecto) a partir
+//             de los commits del PR, y la deja en docs/CHANGELOG.md para
+//             revisión humana en el diff.
 //
 //   extract   Compone el body de la release de GitHub a partir de esa
 //             sección. Lo usa release.yml; cae en auto-notas de GitHub si
@@ -20,7 +21,8 @@
 // scripts/release-notes-prompt.md y la validación dura en
 // src/lib/update/notes.ts (validateNotes). Si la IA se desvía se reintenta
 // una vez con los errores; si insiste se comenta en el PR y jamás se
-// bloquea el merge.
+// bloquea el merge. Sin RELEASE_NOTES_API_KEY se omite la redacción y la
+// release usa auto-notas de GitHub.
 // =============================================================
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -41,8 +43,9 @@ const CHANGELOG_PATH = resolve(root, 'docs/CHANGELOG.md')
 const TAURI_CONF_PATH = resolve(root, 'src-tauri/tauri.conf.json')
 
 const AI_URL =
-  process.env.RELEASE_NOTES_API ?? 'https://models.github.ai/inference/chat/completions'
-const AI_MODEL = process.env.RELEASE_NOTES_MODEL ?? 'gpt-4o'
+  process.env.RELEASE_NOTES_API ??
+  'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+const AI_MODEL = process.env.RELEASE_NOTES_MODEL ?? 'gemini-2.5-flash'
 
 function readVersion() {
   return JSON.parse(readFileSync(TAURI_CONF_PATH, 'utf8')).version
@@ -70,14 +73,14 @@ function extractJson(text) {
 }
 
 async function callAi(messages) {
-  const token = process.env.GITHUB_TOKEN
-  if (!token) throw new Error('GITHUB_TOKEN no está definido')
+  const token = process.env.RELEASE_NOTES_API_KEY
+  if (!token) throw new Error('RELEASE_NOTES_API_KEY no está definida')
 
   const res = await fetch(AI_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
+      Accept: 'application/json',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -164,6 +167,13 @@ async function generate() {
   if (releaseSubjects.length === 0) {
     console.log(
       'Sin commits visibles para el usuario (solo cambios internos): no se toca el changelog.'
+    )
+    return
+  }
+
+  if (!process.env.RELEASE_NOTES_API_KEY) {
+    console.log(
+      'Sin RELEASE_NOTES_API_KEY: se omite la redacción de novedades. La release usará auto-notas de GitHub.'
     )
     return
   }

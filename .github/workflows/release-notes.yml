@@ -13,7 +13,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  models: read
 
 jobs:
   notes:
@@ -53,6 +52,7 @@ jobs:
         if: steps.guard.outputs.skip == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_API_KEY: ${{ secrets.RELEASE_NOTES_API_KEY }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node --experimental-strip-types scripts/release-notes.mjs generate --commits /tmp/commits.txt

@@ -1,6 +1,6 @@
 # Prompt de novedades de release
 
-Este archivo se pasa tal cual a la IA (GitHub Models) cuando se abre o
+Este archivo se pasa tal cual a la IA (endpoint compatible con OpenAI) cuando se abre o
 actualiza el PR a `main`. Editá las reglas de acá para cambiar cómo se
 escribe el resumen de novedades. La validación dura vive en
 `src/lib/update/notes.ts` (`validateNotes`): si la IA se pasa de lista,

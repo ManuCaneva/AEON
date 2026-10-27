@@ -29,6 +29,14 @@ Las novedades se generan solas en el PR a `main`:
    (máx 5 bullets de una línea, lenguaje de usuario, voseo, categoría
    nuevo/arreglado/mejorado). La validación dura es `validateNotes` en
    `src/lib/update/notes.ts`.
+
+   La IA corre sobre cualquier endpoint compatible con OpenAI. Por defecto usa
+   Gemini (`gemini-2.5-flash`) con la API key del secret **`RELEASE_NOTES_API_KEY`**
+   (una key de Google AI Studio alcanza). Se cambia de proveedor con los envs
+   `RELEASE_NOTES_API` y `RELEASE_NOTES_MODEL`. **Sin secret, el paso se omite y la
+   release cae en auto-notas de GitHub** — la app igual muestra novedades, solo que
+   con los títulos de PR.
+
 2. El resultado queda en **`docs/CHANGELOG.md`** como una sección
    `## <versión> — <fecha>`, commiteada a la rama del PR. **El único paso humano es
    mirar ese diff** (y editarlo si querés). Se regenera en cada push al PR; las
