@@ -8,7 +8,6 @@ import { useUiStore } from '@/stores/ui'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import DashboardView from '@/components/dashboard/DashboardView.vue'
 import ExitEditDialog from '@/components/dashboard/ExitEditDialog.vue'
-import ArchivedView from '@/views/ArchivedView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import PomodoroView from '@/views/PomodoroView.vue'
 import { useTheme } from '@/composables/useTheme'
@@ -116,7 +115,6 @@ onBeforeUnmount(() => {
     <div class="glass-strong flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
       <div class="min-h-0 flex-1 overflow-hidden p-4">
         <DashboardView v-if="ui.viewMode === 'dashboard'" />
-        <ArchivedView v-else-if="ui.viewMode === 'archived'" />
         <SettingsView v-else-if="ui.viewMode === 'settings'" />
         <PomodoroView v-else-if="ui.viewMode === 'pomodoro'" />
       </div>

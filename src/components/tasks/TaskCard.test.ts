@@ -7,6 +7,7 @@ import { hasRawPaletteColor } from '@/test/colorGuard'
 const tasksMock = {
   toggleStep: vi.fn(),
   completeTask: vi.fn(),
+  uncompleteTask: vi.fn(),
   colorFor: vi.fn((task: Task) => (task.block_id ? 'rgb(var(--color-block-green))' : task.color)),
 }
 const uiMock = {
@@ -269,6 +270,17 @@ describe('TaskCard', () => {
     const btn = wrapper.find("[data-testid='task-complete-btn']")
     await btn.trigger('click')
     expect(tasksMock.completeTask).toHaveBeenCalledWith('task-1')
+  })
+
+  it('a completed task shows a checked control and can be uncompleted', async () => {
+    const task = { ...mockTaskNoSteps, status: 'done' as const }
+    const wrapper = mount(TaskCard, { props: { task } })
+    const btn = wrapper.find("[data-testid='task-complete-btn']")
+
+    expect(btn.attributes('aria-pressed')).toBe('true')
+    expect(btn.attributes('aria-label')).toBe('Desmarcar tarea')
+    await btn.trigger('click')
+    expect(tasksMock.uncompleteTask).toHaveBeenCalledWith('task-1')
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {

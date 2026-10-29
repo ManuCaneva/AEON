@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, nextTick } from 'vue'
-import { Pencil, Archive, ArchiveRestore } from 'lucide-vue-next'
+import { Pencil, Trash2 } from 'lucide-vue-next'
 
+// Menú de contexto de una entidad sin evento propio (hábitos, metas, notas):
+// editar y eliminar con confirmación. Comparte el chrome y el posicionamiento
+// documentado en DESIGN.md; el texto de la confirmación lo aporta cada dominio.
 const props = defineProps<{
   entityId: string
-  isArchived: boolean
   triggerDataAttr: string
+  confirmTitle: string
 }>()
 
 const emit = defineEmits<{
   edit: []
-  'archive-toggle': []
+  delete: []
   close: []
 }>()
 
+const confirming = ref(false)
 const menuRef = ref<HTMLDivElement | null>(null)
 const position = ref({ top: 0, left: 0 })
 
@@ -44,6 +48,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => document.removeEventListener('mousedown', handleClickOutside))
+
+function handleConfirm() {
+  confirming.value = false
+  emit('delete')
+}
 </script>
 
 <template>
@@ -69,19 +78,38 @@ onUnmounted(() => document.removeEventListener('mousedown', handleClickOutside))
         Editar
       </button>
       <button
+        v-if="!confirming"
         type="button"
-        :class="[
-          'flex w-full items-center gap-2 px-3 py-2 text-body-sm transition-colors',
-          'hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none',
-          isArchived ? 'text-ink' : 'text-accent-red',
-        ]"
+        data-testid="entity-delete-button"
+        class="flex w-full items-center gap-2 px-3 py-2 text-body-sm text-accent-red transition-colors hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none"
         role="menuitem"
-        @click="emit('archive-toggle')"
+        @click="confirming = true"
       >
-        <Archive v-if="!isArchived" :size="14" />
-        <ArchiveRestore v-else :size="14" />
-        {{ isArchived ? 'Restaurar' : 'Archivar' }}
+        <Trash2 :size="14" />
+        Eliminar
       </button>
+
+      <div v-else data-testid="entity-delete-confirm" class="flex flex-col gap-2 px-3 py-2">
+        <span class="text-body-sm text-ink">{{ confirmTitle }}</span>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="entity-delete-confirm-yes"
+            class="flex-1 rounded-md bg-accent-red px-2 py-1.5 text-caption font-medium text-on-primary transition-colors hover:opacity-90"
+            @click="handleConfirm"
+          >
+            Eliminar
+          </button>
+          <button
+            type="button"
+            data-testid="entity-delete-confirm-no"
+            class="flex-1 rounded-md bg-surface-3 px-2 py-1.5 text-caption font-medium text-ink transition-colors hover:bg-surface-2"
+            @click="confirming = false"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   </Teleport>
 </template>

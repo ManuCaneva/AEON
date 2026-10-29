@@ -213,35 +213,3 @@ pub fn delete_task(db: State<'_, Db>, id: String) -> Result<(), String> {
     })();
     result.to_str_err()
 }
-
-#[tauri::command]
-pub fn archive_task(db: State<'_, Db>, id: String, archived_at: String) -> Result<(), String> {
-    let result: DbResult<()> = (|| {
-        let conn = db.conn.lock().unwrap();
-        let n = conn.execute(
-            "UPDATE tasks SET archived_at = ?2, updated_at = ?2 WHERE id = ?1",
-            params![id, archived_at],
-        )?;
-        if n == 0 {
-            return Err(DbError::NotFound);
-        }
-        Ok(())
-    })();
-    result.to_str_err()
-}
-
-#[tauri::command]
-pub fn restore_task(db: State<'_, Db>, id: String, updated_at: String) -> Result<(), String> {
-    let result: DbResult<()> = (|| {
-        let conn = db.conn.lock().unwrap();
-        let n = conn.execute(
-            "UPDATE tasks SET archived_at = NULL, updated_at = ?2 WHERE id = ?1",
-            params![id, updated_at],
-        )?;
-        if n == 0 {
-            return Err(DbError::NotFound);
-        }
-        Ok(())
-    })();
-    result.to_str_err()
-}

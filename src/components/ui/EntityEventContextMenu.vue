@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, nextTick } from 'vue'
-import { Pencil, Archive, ArchiveRestore, Trash2 } from 'lucide-vue-next'
+import { Pencil, Trash2 } from 'lucide-vue-next'
 
-// Menú de contexto de una entidad con evento propio (examen o tarea): editar,
-// archivar (opcional) y eliminar con confirmación. Comparte el chrome y el
-// posicionamiento documentado en DESIGN.md; los textos y los data-testid los
-// aporta cada dominio. EntityContextMenu sigue siendo el menú de las entidades
-// sin evento (hábitos, metas, notas).
+// Menú de contexto de una entidad con evento propio (examen o tarea): editar
+// y eliminar con confirmación. Comparte el chrome y el posicionamiento
+// documentado en DESIGN.md; los textos y los data-testid los aporta cada
+// dominio. EntityContextMenu sigue siendo el menú de las entidades sin evento
+// (hábitos, metas, notas).
 
 const props = defineProps<{
   entityId: string
   /** Atributo data-* del gatillo, p. ej. `data-task-menu-trigger`. */
   triggerDataAttr: string
-  showArchive: boolean
-  isArchived: boolean
   /** Ofrece la acción destructiva. */
   showDelete: boolean
   /** Con vínculo la confirmación ofrece dos salidas. */
@@ -27,7 +25,6 @@ const props = defineProps<{
   deleteWithEventLabel: string
   testIds: {
     edit: string
-    archive?: string
     delete: string
     confirm: string
     only: string
@@ -39,7 +36,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   edit: []
-  'archive-toggle': []
   'delete-only': []
   'delete-with-event': []
   close: []
@@ -110,23 +106,6 @@ function handleDeleteWithEvent() {
       >
         <Pencil :size="14" />
         Editar
-      </button>
-
-      <button
-        v-if="showArchive"
-        type="button"
-        :data-testid="testIds.archive"
-        :class="[
-          'flex w-full items-center gap-2 px-3 py-2 text-body-sm transition-colors',
-          'hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none',
-          isArchived ? 'text-ink' : 'text-accent-red',
-        ]"
-        role="menuitem"
-        @click="emit('archive-toggle')"
-      >
-        <ArchiveRestore v-if="isArchived" :size="14" />
-        <Archive v-else :size="14" />
-        {{ isArchived ? 'Restaurar' : 'Archivar' }}
       </button>
 
       <button

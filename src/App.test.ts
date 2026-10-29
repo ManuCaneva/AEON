@@ -71,10 +71,6 @@ vi.mock('@/components/dashboard/DashboardView.vue', () => ({
   default: { template: '<div data-testid="mock-dashboard" />' },
 }))
 
-vi.mock('@/views/ArchivedView.vue', () => ({
-  default: { template: '<div data-testid="mock-archived" />' },
-}))
-
 vi.mock('@/views/SettingsView.vue', () => ({
   default: { template: '<div data-testid="mock-settings" />' },
 }))

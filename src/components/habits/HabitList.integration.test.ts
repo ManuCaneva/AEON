@@ -9,8 +9,6 @@ vi.mock('@/lib/db', () => ({
   listHabits: vi.fn(),
   createHabit: vi.fn(),
   updateHabit: vi.fn(),
-  archiveHabit: vi.fn(),
-  restoreHabit: vi.fn(),
   upsertHabitLog: vi.fn(),
   deleteLog: vi.fn(),
   listLogsInRange: vi.fn().mockResolvedValue([]),

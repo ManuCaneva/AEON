@@ -4,7 +4,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CheckSquare,
-  Archive,
   Settings,
   Pencil,
   Timer,
@@ -80,7 +79,6 @@ interface NavRow {
 
 const navItems: readonly { id: ViewMode; label: string; icon: typeof CheckSquare }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: CheckSquare },
-  { id: 'archived', label: 'Archivados', icon: Archive },
   { id: 'pomodoro', label: 'Pomodoro', icon: Timer },
 ] as const
 
@@ -114,15 +112,23 @@ const systemRows = computed<NavRow[]>(() => [
 const fadeClass = computed(() =>
   (ui.sidebarCollapsed && !settled.value) || expanding.value ? 'opacity-0' : ''
 )
-const hideClass = computed(() => (ui.sidebarCollapsed && settled.value ? 'hidden' : ''))
-const textFade = computed(() => [fadeClass.value, hideClass.value])
+// Los labels de fila se ocultan con display:none al asentar el colapso: el
+// ícono queda centrado y la altura de la fila la define el ícono (el label no
+// la cambia). Los eyebrows, en cambio, SÓLO pueden perder visibilidad, nunca
+// su caja: con display:none desaparecerían sus paddings y los íconos y el
+// separador saltarían de lugar al colapsar. `invisible` (visibility:hidden)
+// conserva el espacio y además los saca del árbol de accesibilidad.
+const labelHide = computed(() => (ui.sidebarCollapsed && settled.value ? 'hidden' : ''))
+const eyebrowHide = computed(() => (ui.sidebarCollapsed && settled.value ? 'invisible' : ''))
+const textFade = computed(() => [fadeClass.value, labelHide.value])
+const eyebrowFade = computed(() => [fadeClass.value, eyebrowHide.value])
 const logoDuration = computed(() =>
   // Colapsando el logo fadea rápido (100ms) para que no se lo vea viajar a
   // la izquierda mientras el ancho aún se anima; en reposo y al expandir el
   // fade es suave (250ms).
   ui.sidebarCollapsed && !settled.value ? 'duration-100' : 'duration-[250ms]'
 )
-const logoFade = computed(() => [fadeClass.value, hideClass.value, 'text-ink', logoDuration.value])
+const logoFade = computed(() => [fadeClass.value, labelHide.value, 'text-ink', logoDuration.value])
 const centered = computed(() => ui.sidebarCollapsed && settled.value)
 
 const rowBase = computed(
@@ -184,8 +190,8 @@ const rowActive = 'bg-surface-3 text-ink'
       <Text
         variant="eyebrow"
         color="subtle"
-        class="px-2 pb-1 pt-2 transition-opacity duration-300"
-        :class="textFade"
+        class="whitespace-nowrap px-2 pb-1 pt-2 transition-opacity duration-300"
+        :class="eyebrowFade"
       >
         Navegación
       </Text>
@@ -212,8 +218,8 @@ const rowActive = 'bg-surface-3 text-ink'
       <Text
         variant="eyebrow"
         color="subtle"
-        class="px-2 pb-1 pt-1 transition-opacity duration-300"
-        :class="textFade"
+        class="whitespace-nowrap px-2 pb-1 pt-1 transition-opacity duration-300"
+        :class="eyebrowFade"
       >
         Sistema
       </Text>

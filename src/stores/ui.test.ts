@@ -352,7 +352,7 @@ describe('ui store: exclusividad del modo edición', () => {
     const dashboard = useDashboardStore()
     const endEdit = vi.spyOn(dashboard, 'endEdit')
     ui.toggleEditMode()
-    ui.setViewMode('archived')
+    ui.setViewMode('pomodoro')
     expect(endEdit).toHaveBeenCalledTimes(1)
     expect(db.saveConfig).not.toHaveBeenCalled()
   })
@@ -360,7 +360,7 @@ describe('ui store: exclusividad del modo edición', () => {
   it('la edición nunca queda activa con la vista fuera del dashboard', () => {
     const ui = useUiStore()
     ui.toggleEditMode()
-    for (const mode of ['archived', 'pomodoro', 'settings'] as const) {
+    for (const mode of ['pomodoro', 'settings'] as const) {
       ui.setViewMode(mode)
       expect(ui.editMode).toBe(false)
       ui.toggleEditMode()
@@ -441,13 +441,13 @@ describe('ui store: diálogo de salida', () => {
 
   it('«Guardar y salir» persiste, apaga la edición y navega al destino pendiente', () => {
     const { ui } = enterEditWithChanges()
-    ui.setViewMode('archived')
+    ui.setViewMode('pomodoro')
     ui.resolveExitDialog('save')
     expect(db.saveConfig).toHaveBeenCalledWith('aeon-dashboard-layout', expect.any(String))
     expect(ui.editMode).toBe(false)
     expect(ui.exitDialogOpen).toBe(false)
     expect(ui.pendingView).toBeNull()
-    expect(ui.viewMode).toBe('archived')
+    expect(ui.viewMode).toBe('pomodoro')
   })
 
   it('«Guardar y salir» sin destino pendiente no navega', () => {
@@ -536,7 +536,7 @@ describe('ui store: modo edición del cronograma', () => {
 
   it('navegar a otra vista apaga el modo del cronograma', () => {
     const ui = useUiStore()
-    for (const mode of ['archived', 'pomodoro', 'settings'] as const) {
+    for (const mode of ['pomodoro', 'settings'] as const) {
       ui.setViewMode('dashboard')
       ui.toggleScheduleEditMode()
       expect(ui.scheduleEditMode).toBe(true)

@@ -64,10 +64,32 @@ describe('Sidebar', () => {
     expect(setViewMode).toHaveBeenCalledWith('pomodoro')
   })
 
+  it('ya no ofrece la pestaña de archivados', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.find('[data-testid="nav-archived"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Archivados')
+  })
+
   it('muestra la fila de sistema como Configuración (no Settings)', () => {
     const wrapper = mountSidebar()
     expect(wrapper.get('[data-testid="nav-settings"]').text()).toContain('Configuración')
     expect(wrapper.get('[data-testid="nav-settings"]').text()).not.toContain('Settings')
+  })
+
+  it('collapsed settled: los eyebrows conservan su caja para que nada se corra verticalmente', () => {
+    uiState.sidebarCollapsed = true
+    const wrapper = mountSidebar()
+
+    for (const eyebrow of wrapper.findAll('.text-eyebrow')) {
+      // visibility:hidden conserva la caja (alto y paddings) y a la vez lo
+      // saca del árbol de accesibilidad; display:none (hidden) colapsaría el
+      // espacio y saltarían los íconos y el separador al colapsar.
+      expect(eyebrow.classes()).toContain('invisible')
+      expect(eyebrow.classes()).not.toContain('hidden')
+      // Nunca wrappea: a 56px de ancho el texto se recorta, pero el alto del
+      // eyebrow no cambia durante la animación.
+      expect(eyebrow.classes()).toContain('whitespace-nowrap')
+    }
   })
 
   it('renders a section eyebrow per group and no decorative dots', () => {
@@ -75,7 +97,7 @@ describe('Sidebar', () => {
     const eyebrows = wrapper.findAll('.text-eyebrow')
     expect(eyebrows.map((e) => e.text())).toEqual(['Navegación', 'Sistema'])
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.find('span.rounded-full').exists()).toBe(false)
     }
@@ -85,7 +107,7 @@ describe('Sidebar', () => {
     uiState.viewMode = 'pomodoro'
     const wrapper = mountSidebar()
     const active = wrapper.get('[data-testid="nav-pomodoro"]')
-    const idle = wrapper.get('[data-testid="nav-archived"]')
+    const idle = wrapper.get('[data-testid="nav-dashboard"]')
 
     const activeBg = active.classes().find((c) => c.startsWith('bg-'))
     const idleBg = idle.classes().find((c) => c.startsWith('bg-'))
@@ -105,9 +127,11 @@ describe('Sidebar', () => {
     const wrapper = mountSidebar()
 
     expect(wrapper.get('[data-testid="sidebar-logo"]').classes()).toContain('hidden')
-    expect(wrapper.findAll('.text-eyebrow').every((e) => e.classes().includes('hidden'))).toBe(true)
+    expect(wrapper.findAll('.text-eyebrow').every((e) => e.classes().includes('invisible'))).toBe(
+      true
+    )
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.classes()).toContain('justify-center')
     }
@@ -153,7 +177,7 @@ describe('Sidebar', () => {
     const toggle = header.get('[data-testid="sidebar-toggle"]')
     expect(toggle.classes()).toContain('justify-center')
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.classes()).toContain('justify-center')
     }
@@ -364,7 +388,7 @@ describe('Sidebar', () => {
     uiState.sidebarCollapsed = true
     const wrapper = mountSidebar()
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const label = wrapper.get(`[data-testid="nav-label-${key}"]`)
       // display:none (clase hidden) los saca del orden de tabulación y del
       // árbol de accesibilidad; el span nunca es focusable por sí mismo.

@@ -15,12 +15,12 @@ import { isPresetWallpaperId, presetWallpaperUrl } from '@/lib/presetWallpapers'
 
 export const WALLPAPER_SETTINGS_KEY = 'wallpaper-settings'
 
-export type ViewMode = 'dashboard' | 'archived' | 'pomodoro' | 'settings'
+export type ViewMode = 'dashboard' | 'pomodoro' | 'settings'
 
 /** Resolución del diálogo de salida del modo edición. */
 export type ExitDialogAction = 'save' | 'discard' | 'cancel'
 
-const VALID_MODES: readonly ViewMode[] = ['dashboard', 'archived', 'pomodoro', 'settings']
+const VALID_MODES: readonly ViewMode[] = ['dashboard', 'pomodoro', 'settings']
 
 function isViewMode(v: unknown): v is ViewMode {
   return typeof v === 'string' && (VALID_MODES as readonly string[]).includes(v)
