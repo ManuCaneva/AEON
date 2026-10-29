@@ -8,6 +8,7 @@ import DayDetailsModal from '@/components/dashboard/DayDetailsModal.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 import { useLayoutTransition } from '@/composables/useLayoutTransition'
 import { eventKey } from '@/lib/entityEventLink'
+import MonthAgendaPopup from './MonthAgendaPopup.vue'
 
 function flushRaf() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
@@ -51,14 +52,30 @@ const mockExams: {
   exams: unknown[]
   overlayByDate: Map<string, { id: string; title: string; color: string }[]>
   linkedEventKeys: Set<string>
+  colorFor: (e: unknown) => string
 } = {
   exams: [],
   overlayByDate: new Map(),
   linkedEventKeys: new Set(),
+  colorFor: () => 'rgb(var(--color-block-green))',
 }
 
 vi.mock('@/stores/exams', () => ({
   useExamsStore: () => mockExams,
+}))
+
+const mockTasks: {
+  tasks: unknown[]
+  representedEventKeys: Set<string>
+  colorFor: (t: unknown) => string
+} = {
+  tasks: [],
+  representedEventKeys: new Set(),
+  colorFor: () => 'rgb(var(--color-block-cyan))',
+}
+
+vi.mock('@/stores/tasks', () => ({
+  useTasksStore: () => mockTasks,
 }))
 
 describe('YearCalendarWidget', () => {
@@ -74,6 +91,8 @@ describe('YearCalendarWidget', () => {
     mockExams.overlayByDate = new Map()
     mockExams.exams = []
     mockExams.linkedEventKeys = new Set()
+    mockTasks.tasks = []
+    mockTasks.representedEventKeys = new Set()
     // Los tests históricos cubren el modo meses: lo pinean explícito.
     // El comportamiento de auto/tira tiene sus propios tests abajo.
     const values = new Map<string, string>([['aeon:yearcal-mode', 'meses']])
@@ -955,6 +974,89 @@ describe('YearCalendarWidget', () => {
         vi.unstubAllGlobals()
         wrapper.unmount()
       }
+    })
+  })
+
+  describe('popup de mes (agenda mensual)', () => {
+    function stubResize() {
+      let resizeCallback: (() => void) | null = null
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(callback: () => void) {
+            resizeCallback = callback
+          }
+          observe() {}
+          disconnect() {}
+        }
+      )
+      return () => resizeCallback
+    }
+
+    async function mountWithSize(w: number, h: number) {
+      const getCallback = stubResize()
+      const wrapper = mount(YearCalendarWidget, { attachTo: document.body })
+      const bodyEl = wrapper.find('.ycw__body').element as HTMLElement
+      Object.defineProperty(bodyEl, 'clientWidth', { value: w, configurable: true })
+      Object.defineProperty(bodyEl, 'clientHeight', { value: h, configurable: true })
+      const cb = getCallback()
+      if (cb) (cb as () => void)()
+      await flushRaf()
+      await wrapper.vm.$nextTick()
+      return wrapper
+    }
+
+    it('click en el nombre de un mes abre el popup de mes con ese mes y el año actual', async () => {
+      const wrapper = await mountWithSize(1200, 900)
+      await wrapper.findComponent(MonthMini).vm.$emit('month-click', 6)
+      await wrapper.vm.$nextTick()
+      const popup = wrapper.findComponent(MonthAgendaPopup)
+      expect(popup.props('open')).toBe(true)
+      expect(popup.props('year')).toBe(2026)
+      expect(popup.props('month')).toBe(6)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('el popup recibe la agenda del mes indexada por fecha (exámenes incluidos)', async () => {
+      mockExams.exams = [{ id: 'e1', date: '2026-07-22', title: 'Parcial de Física' }]
+      const wrapper = await mountWithSize(1200, 900)
+      await wrapper.findComponent(MonthMini).vm.$emit('month-click', 6)
+      await wrapper.vm.$nextTick()
+      const popup = wrapper.findComponent(MonthAgendaPopup)
+      const agenda = popup.props('agendaByDate') as Map<string, { title: string; kind: string }[]>
+      expect(agenda.get('2026-07-22')?.[0]).toMatchObject({
+        title: 'Parcial de Física',
+        kind: 'exam',
+      })
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('select-day en el popup lo cierra y abre el modal del día con esa fecha', async () => {
+      const wrapper = await mountWithSize(1200, 900)
+      await wrapper.findComponent(MonthMini).vm.$emit('month-click', 6)
+      await wrapper.vm.$nextTick()
+      await wrapper.findComponent(MonthAgendaPopup).vm.$emit('select-day', '2026-07-22')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.findComponent(MonthAgendaPopup).props('open')).toBe(false)
+      const modal = wrapper.findComponent(DayDetailsModal)
+      expect(modal.props('open')).toBe(true)
+      expect(modal.props('date')).toBe('2026-07-22')
+      vi.unstubAllGlobals()
+      wrapper.unmount()
+    })
+
+    it('en tira, el click en un label de mes abre el popup igual', async () => {
+      localStorage.setItem('aeon:yearcal-mode', 'tira')
+      const wrapper = await mountWithSize(1200, 600)
+      await wrapper.findComponent(YearStrip).vm.$emit('month-click', 3)
+      await wrapper.vm.$nextTick()
+      const popup = wrapper.findComponent(MonthAgendaPopup)
+      expect(popup.props('open')).toBe(true)
+      expect(popup.props('month')).toBe(3)
+      vi.unstubAllGlobals()
+      wrapper.unmount()
     })
   })
 })

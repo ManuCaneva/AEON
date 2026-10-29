@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as db from '../lib/db'
+import { MINUTES_PER_DAY } from '../lib/scheduleTime'
 import {
   type BlockColorToken,
   type CreateScheduleBlockDraft,
@@ -25,7 +26,7 @@ function uuidv4(): string {
 }
 
 export function minutesToHHMM(min: number): string {
-  const m = ((min % 1440) + 1440) % 1440
+  const m = ((min % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
   const h = Math.floor(m / 60)
   const mm = m % 60
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
@@ -48,7 +49,6 @@ export function overlaps(
 
 export type ValidationResult =
   | { ok: true }
-  | { ok: false; reason: 'overlap'; day: number; start: number; end: number }
   | {
       ok: false
       reason: 'overlapBlock'
@@ -58,7 +58,7 @@ export type ValidationResult =
       blockTitle: string
     }
 
-export const DEFAULT_VISIBLE_WINDOW = { start_minutes: 360, end_minutes: 1380 } as const
+export const DEFAULT_VISIBLE_WINDOW = { start_minutes: 480, end_minutes: 1080 } as const
 export type VisibleWindow = { start_minutes: number; end_minutes: number }
 
 export function computeVisibleWindow(
@@ -119,33 +119,58 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   })
 
+  function blockForSlot(slotId: string): ScheduleBlockWithSlots | null {
+    return blocksWithSlots.value.find((bw) => bw.slots.some((s) => s.id === slotId)) ?? null
+  }
+
+  /**
+   * Primer horario del día que se solapa con el rango pedido. Es el predicado
+   * compartido por la validación de un destino y la consulta booleana.
+   */
+  function overlappingSlot(
+    day: number,
+    start: number,
+    end: number,
+    ignoreSlotId?: string
+  ): ScheduleSlot | null {
+    const list = blocksByDay.value.get(day) ?? []
+    return (
+      list.find(
+        (s) =>
+          (ignoreSlotId === undefined || s.id !== ignoreSlotId) &&
+          overlaps(s, { start_minutes: start, end_minutes: end })
+      ) ?? null
+    )
+  }
+
   function wouldOverlapOnDay(
     day: number,
     start: number,
     end: number,
     ignoreSlotId?: string
   ): boolean {
-    const list = blocksByDay.value.get(day) ?? []
-    return list.some(
-      (s) =>
-        (ignoreSlotId === undefined || s.id !== ignoreSlotId) &&
-        overlaps(s, { start_minutes: start, end_minutes: end })
-    )
+    return overlappingSlot(day, start, end, ignoreSlotId) !== null
   }
 
   function validateSlot(
     draft: { day_of_week: number; start_minutes: number; end_minutes: number },
     ignoreSlotId?: string
   ): ValidationResult {
-    if (wouldOverlapOnDay(draft.day_of_week, draft.start_minutes, draft.end_minutes, ignoreSlotId))
-      return {
-        ok: false,
-        reason: 'overlap',
-        day: draft.day_of_week,
-        start: draft.start_minutes,
-        end: draft.end_minutes,
-      }
-    return { ok: true }
+    const clash = overlappingSlot(
+      draft.day_of_week,
+      draft.start_minutes,
+      draft.end_minutes,
+      ignoreSlotId
+    )
+    if (!clash) return { ok: true }
+    return {
+      ok: false,
+      reason: 'overlapBlock',
+      day: draft.day_of_week,
+      start: draft.start_minutes,
+      end: draft.end_minutes,
+      blockTitle: blockForSlot(clash.id)?.title ?? 'otro bloque',
+    }
   }
 
   /**
@@ -223,6 +248,79 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   }
 
+  /**
+   * Renombra una ocurrencia. Si su bloque tiene otros horarios, la ocurrencia
+   * se separa en un bloque nuevo con el mismo color: el nombre identifica al
+   * bloque, y un nombre distinto es otro bloque. Si era el único horario, el
+   * bloque entero cambia de nombre.
+   */
+  async function renameOccurrence(slotId: string, title: string): Promise<void> {
+    const block = blockForSlot(slotId)
+    if (!block) throw new Error('Slot no encontrado')
+    const nextTitle = title.trim() || 'Sin título'
+    if (nextTitle === block.title) return
+
+    const slot = block.slots.find((s) => s.id === slotId)
+    if (!slot) throw new Error('Slot no encontrado')
+
+    if (block.slots.length <= 1) {
+      await updateBlock(block.id, { title: nextTitle })
+      return
+    }
+
+    const newBlockId = uuidv4()
+    const newSlotId = uuidv4()
+    const ts = nowIsoUtc()
+    const blockRow = await db.createScheduleBlock(
+      { title: nextTitle, color: block.color, sort_order: block.sort_order },
+      newBlockId,
+      ts,
+      ts
+    )
+    try {
+      const slotRow = await db.createScheduleSlot(
+        {
+          day_of_week: slot.day_of_week,
+          start_minutes: slot.start_minutes,
+          end_minutes: slot.end_minutes,
+        },
+        newSlotId,
+        newBlockId,
+        ts,
+        ts
+      )
+      try {
+        await db.deleteScheduleSlot(slotId)
+      } catch (e) {
+        // La ocurrencia vieja sigue existiendo: deshacemos la copia nueva.
+        try {
+          await db.deleteScheduleSlot(newSlotId)
+        } catch {
+          // El borrado del bloque nuevo limpia también su slot si quedó.
+        }
+        throw e
+      }
+
+      const newBlock: ScheduleBlockWithSlots = {
+        ...rowToScheduleBlock(blockRow),
+        slots: [rowToScheduleSlot(slotRow)],
+      }
+      blocksWithSlots.value = [
+        ...blocksWithSlots.value.map((bw) =>
+          bw.id === block.id ? { ...bw, slots: bw.slots.filter((s) => s.id !== slotId) } : bw
+        ),
+        newBlock,
+      ]
+    } catch (e) {
+      try {
+        await db.deleteScheduleBlock(newBlockId)
+      } catch {
+        // Si tampoco se puede limpiar, el error original es el que importa.
+      }
+      throw e
+    }
+  }
+
   async function addSlot(blockId: string, draft: CreateScheduleSlotDraft): Promise<ScheduleSlot> {
     const v = validateSlot(draft)
     if (!v.ok) throw new Error('El slot se solapa con otro existente en ese día')
@@ -246,7 +344,7 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
       end_minutes?: number
     }
   ): Promise<void> {
-    const bw = blocksWithSlots.value.find((b) => b.slots.some((s) => s.id === slotId))
+    const bw = blockForSlot(slotId)
     if (!bw) throw new Error('Slot no encontrado')
     const existingSlot = bw.slots.find((s) => s.id === slotId)!
     const merged = { ...existingSlot, ...patch }
@@ -260,12 +358,22 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     )
   }
 
+  /**
+   * Borra una ocurrencia. Si era el último horario de su bloque, el bloque
+   * desaparece con ella: un bloque sin horarios no tiene nada que mostrar.
+   */
   async function deleteSlot(slotId: string): Promise<void> {
+    const block = blockForSlot(slotId)
     await db.deleteScheduleSlot(slotId)
+    if (!block) return
+    const remaining = block.slots.filter((s) => s.id !== slotId)
+    if (remaining.length === 0) {
+      await db.deleteScheduleBlock(block.id)
+      blocksWithSlots.value = blocksWithSlots.value.filter((bw) => bw.id !== block.id)
+      return
+    }
     blocksWithSlots.value = blocksWithSlots.value.map((bw) =>
-      bw.id === bw.slots.find((s) => s.id === slotId)?.block_id
-        ? { ...bw, slots: bw.slots.filter((s) => s.id !== slotId) }
-        : bw
+      bw.id === block.id ? { ...bw, slots: remaining } : bw
     )
   }
 
@@ -454,12 +562,14 @@ export const useWeeklyScheduleStore = defineStore('weeklySchedule', () => {
     enabledDays,
     isDayEnabled,
     visibleWindow,
+    blockForSlot,
     wouldOverlapOnDay,
     validateSlot,
     reset,
     loadAll,
     createBlock,
     updateBlock,
+    renameOccurrence,
     deleteBlock,
     addSlot,
     updateSlot,

@@ -37,6 +37,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'select-day': [date: string]
+  'month-click': [month: number]
 }>()
 
 const MAX_DOTS = 4
@@ -107,7 +108,12 @@ function onDaySelect(date: string | null) {
 
 <template>
   <div class="month-mini" data-testid="month-mini">
-    <div v-if="monthName" class="month-mini__name">
+    <div
+      v-if="monthName"
+      class="month-mini__name cursor-pointer"
+      data-testid="month-name"
+      @click="emit('month-click', props.month)"
+    >
       {{ monthName }}
     </div>
     <div v-if="showHeader" class="month-mini__headers">

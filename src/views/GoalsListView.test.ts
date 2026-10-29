@@ -23,7 +23,8 @@ const uiMock = {
   toggleGoalMenu: vi.fn(),
   openEditGoal: vi.fn(),
 }
-vi.mock('@/stores/goals', () => ({
+vi.mock('@/stores/goals', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/stores/goals')>()),
   useGoalsStore: () => goalsMock,
 }))
 vi.mock('@/stores/ui', () => ({
@@ -77,6 +78,7 @@ describe('GoalsListView', () => {
         color: '#00ff00',
         target: 10,
         unit: null,
+        direction: 'up',
         frequency: { type: 'daily' },
         archived_at: null,
       },
@@ -94,6 +96,7 @@ describe('GoalsListView', () => {
         color: '#00ff00',
         target: 10,
         unit: null,
+        direction: 'up',
         frequency: { type: 'daily' },
         archived_at: null,
       },
@@ -104,6 +107,7 @@ describe('GoalsListView', () => {
         color: '#ff0000',
         target: 20,
         unit: null,
+        direction: 'up',
         frequency: { type: 'weekly' },
         archived_at: null,
       },
@@ -121,6 +125,7 @@ describe('GoalsListView', () => {
         color: '#00ff00',
         target: 10,
         unit: null,
+        direction: 'up',
         frequency: { type: 'daily' },
         archived_at: null,
       },
@@ -131,6 +136,7 @@ describe('GoalsListView', () => {
         color: '#ff0000',
         target: 20,
         unit: null,
+        direction: 'up',
         frequency: { type: 'weekly' },
         archived_at: '2026-01-01T00:00:00.000Z',
       },
@@ -155,6 +161,7 @@ describe('GoalsListView', () => {
         color: '#00ff00',
         target: 10,
         unit: null,
+        direction: 'up',
         frequency: { type: 'daily' },
         archived_at: null,
       },
@@ -173,6 +180,7 @@ describe('GoalsListView', () => {
         color: '#00ff00',
         target: 10,
         unit: null,
+        direction: 'up',
         frequency: { type: 'daily' },
         archived_at: null,
       },

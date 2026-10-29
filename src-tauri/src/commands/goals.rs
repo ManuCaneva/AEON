@@ -13,6 +13,10 @@ pub struct GoalFrequency {
     pub days_of_week: Option<String>,
 }
 
+fn default_direction() -> String {
+    String::from("up")
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateGoalInput {
     pub id: String,
@@ -23,6 +27,8 @@ pub struct CreateGoalInput {
     pub target: i32,
     #[serde(default)]
     pub unit: Option<String>,
+    #[serde(default = "default_direction")]
+    pub direction: String,
     pub frequency: GoalFrequency,
     #[serde(default)]
     pub sort_order: i32,
@@ -38,6 +44,7 @@ pub struct UpdateGoalInput {
     pub color: Option<String>,
     pub target: Option<i32>,
     pub unit: Option<Option<String>>,
+    pub direction: Option<String>,
     pub frequency: Option<GoalFrequency>,
     pub sort_order: Option<i32>,
     pub updated_at: String,
@@ -51,6 +58,7 @@ pub struct GoalRow {
     pub color: String,
     pub target: i32,
     pub unit: Option<String>,
+    pub direction: String,
     pub frequency_type: String,
     pub interval_days: Option<i32>,
     pub days_of_week: Option<String>,
@@ -68,6 +76,7 @@ fn row_to_goal(r: &rusqlite::Row<'_>) -> rusqlite::Result<GoalRow> {
         color: r.get("color")?,
         target: r.get("target")?,
         unit: r.get("unit")?,
+        direction: r.get("direction")?,
         frequency_type: r.get("frequency_type")?,
         interval_days: r.get("interval_days")?,
         days_of_week: r.get("days_of_week")?,
@@ -93,8 +102,8 @@ pub fn create_goal(db: State<'_, Db>, input: CreateGoalInput) -> Result<GoalRow,
         let (ftype, idays, dows) = frequency_to_parts(&input.frequency);
 
         conn.execute(
-            "INSERT INTO goals (id, title, description, color, target, unit, frequency_type, interval_days, days_of_week, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO goals (id, title, description, color, target, unit, direction, frequency_type, interval_days, days_of_week, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 input.id,
                 input.title,
@@ -102,6 +111,7 @@ pub fn create_goal(db: State<'_, Db>, input: CreateGoalInput) -> Result<GoalRow,
                 input.color,
                 input.target,
                 input.unit,
+                input.direction,
                 ftype,
                 idays,
                 dows,
@@ -161,11 +171,12 @@ pub fn update_goal(db: State<'_, Db>, input: UpdateGoalInput) -> Result<GoalRow,
                 color          = COALESCE(?5, color),
                 target         = COALESCE(?6, target),
                 unit           = CASE WHEN ?7 = 1 THEN ?8 ELSE unit END,
-                frequency_type = COALESCE(NULLIF(?9, ''), frequency_type),
-                interval_days  = CASE WHEN ?9 != '' THEN ?10 ELSE interval_days END,
-                days_of_week   = CASE WHEN ?9 != '' THEN ?11 ELSE days_of_week END,
-                sort_order     = COALESCE(?12, sort_order),
-                updated_at     = ?13
+                direction      = COALESCE(?9, direction),
+                frequency_type = COALESCE(NULLIF(?10, ''), frequency_type),
+                interval_days  = CASE WHEN ?10 != '' THEN ?11 ELSE interval_days END,
+                days_of_week   = CASE WHEN ?10 != '' THEN ?12 ELSE days_of_week END,
+                sort_order     = COALESCE(?13, sort_order),
+                updated_at     = ?14
              WHERE id = ?1",
             params![
                 input.id,
@@ -176,6 +187,7 @@ pub fn update_goal(db: State<'_, Db>, input: UpdateGoalInput) -> Result<GoalRow,
                 input.target,
                 input.unit.is_some() as i32,
                 input.unit.flatten(),
+                input.direction,
                 ftype,
                 idays,
                 dows,

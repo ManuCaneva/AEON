@@ -4,12 +4,15 @@ import Button from '@/components/ui/Button.vue'
 import Checkbox from '@/components/ui/Checkbox.vue'
 import Heading from '@/components/ui/Heading.vue'
 import Modal from '@/components/ui/Modal.vue'
+import ReleaseNotes from '@/components/layout/ReleaseNotes.vue'
 import type { UpdateStatus } from '@/composables/useUpdater'
+import type { ReleaseNotes as Notes } from '@/lib/update/notes'
 
 const props = defineProps<{
   open: boolean
   status: UpdateStatus
   progress?: number | null
+  notes?: Notes | null
 }>()
 
 const emit = defineEmits<{
@@ -46,6 +49,13 @@ function close() {
         <span v-if="percent == null">Descargando…</span>
         <span v-else>{{ percent }}% completado</span>
       </p>
+
+      <div v-else-if="status === 'available' && notes" class="flex flex-col gap-2">
+        <p class="text-caption font-medium uppercase tracking-wide text-ink-subtle">
+          Qué hay de nuevo
+        </p>
+        <ReleaseNotes :notes="notes" />
+      </div>
 
       <p v-else-if="status === 'error'" class="text-body text-ink">
         Abrimos la página de descargas para que la bajes a mano.

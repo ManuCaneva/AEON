@@ -20,10 +20,13 @@ import ExamFormModal from '@/components/exams/ExamFormModal.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import WallpaperLayer from '@/components/layout/WallpaperLayer.vue'
 import UpdateModal from '@/components/layout/UpdateModal.vue'
+import WhatsNewModal from '@/components/layout/WhatsNewModal.vue'
 import { useUpdater } from '@/composables/useUpdater'
+import { useWhatsNew } from '@/composables/useWhatsNew'
 import { useDesktopEntry } from '@/composables/useDesktopEntry'
 import { onShowPomodoroInMain, requestsPomodoroView } from '@/lib/pomodoroMainWindow'
 import { restorePomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
+import { formatYyyyMmDd } from '@/lib/calendarDates'
 
 const habits = useHabitsStore()
 const tasks = useTasksStore()
@@ -35,11 +38,20 @@ const pomodoro = usePomodoroStore()
 const {
   status: updateStatus,
   progress: updateProgress,
+  notes: updateNotes,
   checkForUpdate,
   update: applyUpdate,
   dismiss: dismissUpdate,
   dismissForever: dismissUpdateForever,
 } = useUpdater()
+
+const {
+  visible: whatsNewVisible,
+  version: whatsNewVersion,
+  notes: whatsNewNotes,
+  checkPending: checkWhatsNew,
+  close: closeWhatsNew,
+} = useWhatsNew()
 
 const { ensureDesktopEntry } = useDesktopEntry()
 
@@ -66,17 +78,19 @@ onMounted(async () => {
   // ventana mini abierta, se reabre donde quedó sin esperar al temporizador.
   void restorePomodoroMiniWindow()
   void registerDesktopIntegration()
+  checkWhatsNew()
   ui.loadWallpaper()
   await habits.loadInitialData()
   await tasks.loadTasks()
   await goals.loadGoals()
   await exams.loadExams()
-  const today = new Date()
-  const ninetyDaysAgo = new Date(today)
-  ninetyDaysAgo.setDate(today.getDate() - 90)
-  const fromDate = ninetyDaysAgo.toISOString().split('T')[0]
-  const toDate = today.toISOString().split('T')[0]
-  await goals.loadLogsForRange(fromDate, toDate)
+  // Ventana local y amplia: un objetivo de intervalo puede tener períodos de
+  // hasta 365 días y el progreso suma los logs desde el inicio del período.
+  const today = formatYyyyMmDd(new Date())
+  const yearAgo = new Date()
+  yearAgo.setDate(yearAgo.getDate() - 366)
+  const fromDate = formatYyyyMmDd(yearAgo)
+  await goals.loadLogsForRange(fromDate, today)
   await pomodoro.load()
   pomodoro.startTicker()
 })
@@ -120,9 +134,18 @@ onBeforeUnmount(() => {
       :open="updateStatus !== 'idle'"
       :status="updateStatus"
       :progress="updateProgress"
+      :notes="updateNotes"
       @update="applyUpdate"
       @dismiss="dismissUpdate"
       @dismiss-forever="dismissUpdateForever"
+    />
+
+    <WhatsNewModal
+      v-if="whatsNewNotes"
+      :open="whatsNewVisible"
+      :version="whatsNewVersion ?? ''"
+      :notes="whatsNewNotes"
+      @close="closeWhatsNew"
     />
   </div>
 </template>

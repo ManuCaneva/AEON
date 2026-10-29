@@ -2,6 +2,20 @@
 
 Convenciones operativas para los agentes (humanos y AI) que trabajan en este proyecto.
 
+## Agent skills
+
+### Issue tracker
+
+Los issues y specs viven en GitHub Issues (`ManuCaneva/AEON`). Ver `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Se usan los cinco labels canónicos de triaje; `ready-for-agent` marca trabajo especificado y delegable. Ver `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Layout single-context: vocabulario en `CONTEXT.md` y `docs/GLOSSARY.md`, decisiones en `docs/adr/`. Ver `docs/agents/domain.md`.
+
 ## Regla de oro: lógica en TypeScript, no en Rust
 
 Toda la lógica de negocio (cálculo de rachas, validación de inputs, decisiones de UI, generación de IDs, normalización de fechas) vive en el frontend (TypeScript / Vue 3). Rust es **solo infraestructura de persistencia** (Tauri commands que hablan con SQLite). Si un PR agrega lógica de negocio en `src-tauri/`, se rechaza.

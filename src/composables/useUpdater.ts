@@ -3,6 +3,8 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { isNewerVersion } from '@/lib/update/semver'
+import { parseNotes, type ReleaseNotes } from '@/lib/update/notes'
+import { savePendingWhatsNew } from '@/composables/useWhatsNew'
 
 /** Versión que el usuario silenció, para no volver a ofrecerla en cada arranque. */
 const DISMISSED_KEY = 'aeon.updater.dismissed'
@@ -40,6 +42,7 @@ export function useUpdater(enabled: boolean = import.meta.env.PROD) {
   const status = ref<UpdateStatus>('idle')
   const version = ref<string | null>(null)
   const progress = ref<number | null>(null)
+  const notes = shallowRef<ReleaseNotes | null>(null)
   const pending = shallowRef<Update | null>(null)
 
   /** Una versión silenciada se oculta salvo que aparezca una más nueva. */
@@ -78,6 +81,7 @@ export function useUpdater(enabled: boolean = import.meta.env.PROD) {
 
       pending.value = found
       version.value = found.version
+      notes.value = parseNotes(found.body)
       status.value = 'available'
     } catch {
       // Silencioso a propósito: sin red o sin latest.json la app arranca igual.
@@ -106,6 +110,9 @@ export function useUpdater(enabled: boolean = import.meta.env.PROD) {
           progress.value = 1
         }
       })
+      // Las novedades se guardan solo si la versión nueva se aplicó: si
+      // el relaunch no llega, no hay nada que mostrar.
+      if (notes.value) savePendingWhatsNew(current.version, notes.value)
       await relaunch()
     } catch {
       // Caso típico: instalación en una ruta sin permisos de escritura (AUR,
@@ -132,6 +139,7 @@ export function useUpdater(enabled: boolean = import.meta.env.PROD) {
     status,
     version,
     progress,
+    notes,
     checkForUpdate,
     update,
     dismiss,
