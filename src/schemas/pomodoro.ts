@@ -13,7 +13,7 @@ export const PomodoroSettingsSchema = z.object({
   longBreakInterval: z.number().int().min(1).max(100).default(4),
   autoStartBreak: z.boolean().default(true),
   autoStartFocus: z.boolean().default(false),
-  volume: z.number().min(0).max(1).default(1),
+  volume: z.number().min(0).max(1).default(0.3),
   muted: z.boolean().default(false),
 })
 export type PomodoroSettings = z.infer<typeof PomodoroSettingsSchema>

@@ -1,255 +1,102 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bootPomodoroMini } from './bootPomodoroMini'
-import * as db from '@/lib/db'
+import { flushPromises } from '@vue/test-utils'
 
-const { useHabitsStore, useTasksStore, useGoalsStore, useExamsStore, showPomodoroInMainWindow } =
-  vi.hoisted(() => ({
-    useHabitsStore: vi.fn(),
-    useTasksStore: vi.fn(),
-    useGoalsStore: vi.fn(),
-    useExamsStore: vi.fn(),
-    showPomodoroInMainWindow: vi.fn().mockResolvedValue(undefined),
-  }))
-
-vi.mock('@/stores/habits', () => ({ useHabitsStore }))
-vi.mock('@/stores/tasks', () => ({ useTasksStore }))
-vi.mock('@/stores/goals', () => ({ useGoalsStore }))
-vi.mock('@/stores/exams', () => ({ useExamsStore }))
-vi.mock('@/lib/pomodoroMainWindow', () => ({ showPomodoroInMainWindow }))
-
-vi.mock('@/lib/db', () => ({
-  loadConfig: vi.fn().mockResolvedValue(null),
-  saveConfig: vi.fn().mockResolvedValue(undefined),
+const h = vi.hoisted(() => ({
+  track: vi.fn(),
+  applyShape: vi.fn(async () => {}),
+  show: vi.fn(async () => {}),
+  useTheme: vi.fn(),
+  uiStore: vi.fn(),
+  pomodoroStore: {
+    load: vi.fn(async () => {}),
+    startTicker: vi.fn(),
+  },
+  pomodoroStoreFactory: vi.fn(),
 }))
 
-vi.mock('@/lib/pomodoroSounds', () => ({
-  createPomodoroSoundPlayer: () => ({
-    prewarm: vi.fn(),
-    prepareFromUserGesture: vi.fn().mockResolvedValue(undefined),
-    playFocusEndChime: vi.fn(() => true),
-    playBreakEndChime: vi.fn(() => true),
-    playTestChime: vi.fn(() => true),
-  }),
+vi.mock('@/components/pomodoro/PomodoroMini.vue', () => ({
+  default: { template: '<div data-testid="mini-stub">mini</div>' },
+}))
+vi.mock('@/composables/useTheme', () => ({ useTheme: h.useTheme }))
+vi.mock('@/stores/ui', () => ({ useUiStore: h.uiStore }))
+vi.mock('@/stores/pomodoro', () => ({
+  usePomodoroStore: h.pomodoroStoreFactory,
+}))
+vi.mock('@/lib/pomodoroMiniWindow', () => ({
+  trackPomodoroMiniWindow: h.track,
+  applyPomodoroMiniWindowShape: h.applyShape,
+  showReadyPomodoroMiniWindow: h.show,
 }))
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(vi.fn()),
-  emit: vi.fn().mockResolvedValue(undefined),
-}))
+import { ORB_WINDOW_CLASS, bootPomodoroMini } from './bootPomodoroMini'
 
-/**
- * La ventana mini real: la que corre el JS que persiste su propio estado de
- * ventana. Vive en la misma webview que se está cerrando o moviendo, así que
- * el tracking anda aunque la ventana que la creó ya no exista. Cada test crea
- * la suya: el seguimiento se registra una sola vez por ventana.
- */
-const { getCurrentWebviewWindow, crearVentanaMini } = vi.hoisted(() => {
-  type Handler = (event: unknown) => unknown
-  function crearVentanaMini() {
-    const handlers = new Map<string, Handler[]>()
-    function registrar(event: string, handler: Handler): Promise<() => void> {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler])
-      return Promise.resolve(() => {})
-    }
-    return {
-      label: 'pomodoro-mini',
-      async emitir(event: string, payload?: unknown): Promise<void> {
-        await Promise.all((handlers.get(event) ?? []).map((handler) => handler({ payload })))
-      },
-      scaleFactor: () => Promise.resolve(1),
-      outerPosition: () => Promise.resolve({ toLogical: () => ({ x: 0, y: 0 }) }),
-      outerSize: () => Promise.resolve({ toLogical: () => ({ width: 200, height: 200 }) }),
-      setSize: vi.fn().mockResolvedValue(undefined),
-      setPosition: vi.fn().mockResolvedValue(undefined),
-      startDragging: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-      onMoved: (handler: Handler) => registrar('tauri://move', handler),
-      onResized: (handler: Handler) => registrar('tauri://resize', handler),
-      onCloseRequested: (handler: Handler) => registrar('tauri://close-requested', handler),
-    }
-  }
-  return { crearVentanaMini, getCurrentWebviewWindow: vi.fn() }
+beforeEach(() => {
+  document.body.innerHTML = '<div id="app"></div>'
+  document.documentElement.className = ''
+  h.track.mockReset()
+  h.applyShape.mockReset().mockResolvedValue(undefined)
+  h.show.mockReset().mockResolvedValue(undefined)
+  h.useTheme.mockReset()
+  h.uiStore.mockReset()
+  h.pomodoroStore.load.mockReset().mockResolvedValue(undefined)
+  h.pomodoroStore.startTicker.mockReset()
+  h.pomodoroStoreFactory.mockReset().mockReturnValue(h.pomodoroStore)
 })
 
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-  getCurrentWebviewWindow,
-  WebviewWindow: { getByLabel: vi.fn().mockResolvedValue(null) },
-}))
+afterEach(() => {
+  document.body.innerHTML = ''
+  document.documentElement.className = ''
+})
 
-vi.mock('@tauri-apps/api/window', () => ({
-  currentMonitor: vi.fn().mockResolvedValue({
-    scaleFactor: 1,
-    size: { toLogical: () => ({ width: 1920, height: 1080 }) },
-    position: { toLogical: () => ({ x: 0, y: 0 }) },
-  }),
-}))
-
-function countdown(): string {
-  return (
-    document.querySelector('[data-testid="pomodoro-mini-countdown"]')?.textContent?.trim() ?? ''
-  )
-}
-
-/** Vacía los microtasks del flujo async de hover (compatible con fake timers). */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i += 1) await Promise.resolve()
-}
-
-/** Trae el cursor al disco: muestra la pastilla de opciones. */
-async function hoverDisco(): Promise<void> {
-  document
-    .querySelector('[data-testid="pomodoro-mini-circle-area"]')
-    ?.dispatchEvent(new MouseEvent('mouseenter'))
-  await settle()
-  expect(document.querySelector('[data-testid="pomodoro-pill"]')).not.toBeNull()
-}
-
-function clickEn(testId: string): void {
-  document
-    .querySelector(`[data-testid="${testId}"]`)
-    ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-}
-
-/** Último estado de la ventana mini escrito en la config. */
-function estadoDeVentanaPersistido(): unknown {
-  const escritas = vi
-    .mocked(db.saveConfig)
-    .mock.calls.filter(([key]) => key === 'pomodoro-mini-window')
-  return JSON.parse(escritas[escritas.length - 1]?.[1] ?? 'null')
-}
-
-describe('arranque de la ventana mini', () => {
-  let ventanaMini: ReturnType<typeof crearVentanaMini>
-
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="app"></div>'
-    showPomodoroInMainWindow.mockClear()
-    ventanaMini = crearVentanaMini()
-    getCurrentWebviewWindow.mockReturnValue(ventanaMini)
-    const values = new Map<string, string>()
-    vi.stubGlobal('localStorage', {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value),
-      removeItem: (key: string) => values.delete(key),
-      clear: () => values.clear(),
-    })
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-09-01T12:00:00.000Z'))
-    // Config en memoria: lo que se guarda es lo que se recupera, como en SQLite.
-    const config = new Map<string, string>()
-    vi.mocked(db.loadConfig).mockImplementation(async (key) => config.get(key) ?? null)
-    vi.mocked(db.saveConfig).mockImplementation(async (key, value) => {
-      config.set(key, value)
-    })
-    vi.mocked(db.saveConfig).mockClear()
+describe('bootPomodoroMini', () => {
+  it('no expone el rectángulo si falla el recorte nativo', async () => {
+    h.applyShape.mockRejectedValue(new Error('shape unavailable'))
+    await expect(bootPomodoroMini()).rejects.toThrow('shape unavailable')
+    expect(h.show).not.toHaveBeenCalled()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-  })
-
-  it('monta la réplica y arranca el reloj compartido, con tema y escala de texto propios', async () => {
-    localStorage.setItem('aeon.textSize', JSON.stringify('large'))
-    vi.mocked(db.loadConfig).mockImplementation(async (key) =>
-      key === 'pomodoro-session'
-        ? JSON.stringify({
-            phase: 'focus',
-            isRunning: true,
-            endsAt: '2026-09-01T12:25:00.000Z',
-            remainingMs: null,
-            completedFocusSessions: 0,
-          })
-        : null
+  it('no muestra la ventana hasta cargar el reloj y aplicar el recorte', async () => {
+    let finishShape!: () => void
+    h.applyShape.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishShape = resolve
+        })
     )
 
-    await bootPomodoroMini()
+    const boot = bootPomodoroMini()
+    await flushPromises()
 
-    expect(document.querySelector('[data-testid="pomodoro-mini"]')).not.toBeNull()
-    expect(countdown()).toBe('25:00')
-    expect(document.documentElement.style.getPropertyValue('--color-canvas')).not.toBe('')
-    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.15')
+    expect(h.show).not.toHaveBeenCalled()
+    finishShape()
+    await boot
 
-    await vi.advanceTimersByTimeAsync(3_000)
-    expect(countdown()).toBe('24:57')
+    expect(h.pomodoroStore.load).toHaveBeenCalled()
+    expect(h.show).toHaveBeenCalledTimes(1)
+    expect(h.pomodoroStore.load.mock.invocationCallOrder[0]).toBeLessThan(
+      h.show.mock.invocationCallOrder[0]
+    )
+    expect(h.applyShape.mock.invocationCallOrder[0]).toBeLessThan(
+      h.show.mock.invocationCallOrder[0]
+    )
   })
 
-  it('no dispara el arranque completo de la app: ningún dominio se carga', async () => {
+  it('marca la ventana como orb, monta el disco y carga el reloj', async () => {
     await bootPomodoroMini()
+    await flushPromises()
 
-    expect(useHabitsStore).not.toHaveBeenCalled()
-    expect(useTasksStore).not.toHaveBeenCalled()
-    expect(useGoalsStore).not.toHaveBeenCalled()
-    expect(useExamsStore).not.toHaveBeenCalled()
+    expect(document.documentElement.classList.contains(ORB_WINDOW_CLASS)).toBe(true)
+    expect(h.track).toHaveBeenCalledTimes(1)
+    expect(h.applyShape).toHaveBeenCalledTimes(1)
+    expect(document.querySelector('[data-testid="mini-stub"]')).not.toBeNull()
+    expect(h.pomodoroStore.load).toHaveBeenCalledTimes(1)
+    expect(h.pomodoroStore.startTicker).toHaveBeenCalledTimes(1)
   })
 
-  it('el botón de la pastilla pide la página Pomodoro en la ventana principal', async () => {
-    await bootPomodoroMini()
-    await hoverDisco()
-
-    clickEn('pomodoro-pill-go')
-
-    expect(showPomodoroInMainWindow).toHaveBeenCalledTimes(1)
-  })
-
-  it('el botón de cerrar de la pastilla persiste el cierre y destruye la ventana', async () => {
-    await bootPomodoroMini()
-    await hoverDisco()
-
-    clickEn('pomodoro-pill-close')
-    await settle()
-
-    expect(estadoDeVentanaPersistido()).toEqual({
-      isOpen: false,
-      x: null,
-      y: null,
-      width: null,
-      height: null,
-    })
-    expect(ventanaMini.close).toHaveBeenCalledOnce()
-  })
-
-  it('la mascota se monta sobre fondo transparente: la ventana es solo el disco', async () => {
+  it('aplica tema y escala de texto de la ventana', async () => {
     await bootPomodoroMini()
 
-    expect(document.documentElement.classList.contains('orb-window')).toBe(true)
-  })
-
-  it('el disco y los controles de la mini no piden navegación', async () => {
-    await bootPomodoroMini()
-    const click = (testId: string) =>
-      document
-        .querySelector(`[data-testid="${testId}"]`)
-        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-
-    click('pomodoro-mini-disc')
-    click('pomodoro-mini-reset')
-    click('pomodoro-mini-toggle')
-    click('pomodoro-mini-skip')
-
-    expect(showPomodoroInMainWindow).not.toHaveBeenCalled()
-  })
-
-  it('la mini persiste su propio cierre y su posición, aunque la ventana que la creó ya no exista', async () => {
-    await bootPomodoroMini()
-
-    await ventanaMini.emitir('tauri://move', { toLogical: () => ({ x: 120, y: 340 }) })
-    await vi.advanceTimersByTimeAsync(250)
-    expect(estadoDeVentanaPersistido()).toEqual({
-      isOpen: true,
-      x: 120,
-      y: 340,
-      width: null,
-      height: null,
-    })
-
-    await ventanaMini.emitir('tauri://close-requested', { preventDefault: () => {} })
-    expect(estadoDeVentanaPersistido()).toEqual({
-      isOpen: false,
-      x: 120,
-      y: 340,
-      width: null,
-      height: null,
-    })
+    expect(h.useTheme).toHaveBeenCalledTimes(1)
+    expect(h.uiStore).toHaveBeenCalledTimes(1)
   })
 })

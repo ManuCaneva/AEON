@@ -1,15 +1,20 @@
 import { currentMonitor, type Monitor } from '@tauri-apps/api/window'
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
+import { invoke } from '@tauri-apps/api/core'
 import {
   loadPomodoroMiniWindowState,
   savePomodoroMiniWindowState,
 } from '@/lib/pomodoroMiniWindowState'
 import { focusWindow, windowExists } from '@/lib/appWindows'
 import {
-  clampOrbDiameter,
-  resolveOrbDiameter,
-  POMODORO_ORB_MIN_DIAMETER,
+  POMODORO_ORB_DEFAULT_DIAMETER,
+  containOrbInMonitor,
+  defaultOrbRect,
+  orbIntersectsMonitor,
+  orbWindowRect,
+  orbWindowOffsetX,
+  mascotShapeRects,
+  type MonitorRect,
   type OrbRect,
 } from '@/lib/pomodoroMiniLayout'
 import type { PomodoroMiniWindowState } from '@/schemas/pomodoroMiniWindow'
@@ -19,28 +24,17 @@ export const POMODORO_MINI_LABEL = 'pomodoro-mini'
 
 /** Título a nivel de sistema de la ventana de la mascota. */
 export const POMODORO_MINI_TITLE = 'AEON — Pomodoro'
-
-interface Rect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-/** Esquina inferior derecha del área dada, para una ventana del tamaño dado. */
-function bottomRightPlacement(area: Rect, width: number, height: number): { x: number; y: number } {
-  return { x: area.x + area.width - width, y: area.y + area.height - height }
-}
+const MINI_READY_EVENT = 'pomodoro-mini-ready'
 
 /** Rectángulo del monitor en píxeles lógicos (los que espera la API de ventanas). */
-function monitorRect(monitor: Monitor): Rect {
+function monitorRect(monitor: Monitor): MonitorRect {
   const size = monitor.size.toLogical(monitor.scaleFactor)
   const position = monitor.position.toLogical(monitor.scaleFactor)
   return { x: position.x, y: position.y, width: size.width, height: size.height }
 }
 
 /** Rectángulo lógico del monitor donde está la mascota, o null si no hay. */
-export async function currentLogicalMonitorRect(): Promise<Rect | null> {
+export async function currentLogicalMonitorRect(): Promise<MonitorRect | null> {
   const monitor = await currentMonitor()
   return monitor ? monitorRect(monitor) : null
 }
@@ -51,26 +45,82 @@ export function isPomodoroMiniWindow(): boolean {
 }
 
 /**
- * Abre la mascota como singleton: si ya existe la enfoca; si no, la crea como
- * disco cuadrado sin decoraciones (transparente, siempre arriba y fuera de la
- * taskbar), del tamaño que la dejó el usuario (nunca fuera del rango) y en la
- * posición donde quedó (o en la esquina inferior derecha del monitor de la
- * principal si nunca se movió). Es la acción explícita del usuario (botón
- * pop-out): la única que enfoca la mascota. Deja el flag de apertura persistido
- * para que el próximo arranque la reabra.
+ * Recorta la ventana opaca a la forma del disco y la pastilla. La ventana se
+ * crea rectangular para que WebKitGTK pinte toda la superficie; el recorte
+ * nativo deja ver el escritorio alrededor sin depender de la transparencia.
+ */
+export async function applyPomodoroMiniWindowShape(pillReveal = 0): Promise<void> {
+  await invoke('set_pomodoro_mini_shape', {
+    rects: mascotShapeRects(POMODORO_ORB_DEFAULT_DIAMETER, pillReveal),
+  })
+}
+
+/** GTK informa cruces que WebKit pierde al usar una región de entrada. */
+export async function listenPomodoroMiniPointer(
+  handler: (inside: boolean) => void
+): Promise<() => void> {
+  const unlisten = await getCurrentWebviewWindow().listen<boolean>(
+    'pomodoro-mini-pointer',
+    (event) => handler(event.payload)
+  )
+  try {
+    await invoke('watch_pomodoro_mini_pointer')
+    return unlisten
+  } catch (error) {
+    unlisten()
+    throw error
+  }
+}
+
+/** El recorte Win32 está en píxeles físicos y debe seguir los cambios de DPI. */
+export function listenPomodoroMiniScaleChanged(handler: () => void): Promise<() => void> {
+  return getCurrentWebviewWindow().onScaleChanged(handler)
+}
+
+/** Solo se muestra después de montar, cargar el reloj y preparar el recorte. */
+export async function showReadyPomodoroMiniWindow(): Promise<void> {
+  const win = getCurrentWebviewWindow()
+  await win.show()
+  await win.emit(MINI_READY_EVENT)
+  if (new URLSearchParams(location.search).get('miniFocus') === '1') await win.setFocus()
+}
+
+/** Escuchar antes de consultar evita perder el primer show durante la consulta. */
+async function focusReadyMiniWindow(): Promise<void> {
+  const win = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL)
+  if (!win) return
+  let ready!: () => void
+  const prepared = new Promise<void>((resolve) => {
+    ready = resolve
+  })
+  const unlisten = await win.once(MINI_READY_EVENT, ready)
+  try {
+    if (!(await win.isVisible())) await prepared
+    await focusWindow(POMODORO_MINI_LABEL)
+  } finally {
+    unlisten()
+  }
+}
+
+/**
+ * Abre la mascota como singleton: si ya existe la enfoca; si no, crea la única
+ * ventana con el disco y la franja de la pastilla. Es la acción explícita del
+ * usuario (botón pop-out): la única que enfoca la mascota.
  */
 export async function openPomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
-  await savePomodoroMiniWindowState({ ...state, isOpen: true })
+  await savePomodoroMiniWindowState({
+    ...state,
+    isOpen: true,
+    width: POMODORO_ORB_DEFAULT_DIAMETER,
+    height: POMODORO_ORB_DEFAULT_DIAMETER,
+  })
   await showPomodoroMiniWindow(state, { focus: true })
 }
 
 /**
  * Arranque de la app: reabre la mascota solo si el usuario la dejó abierta, en
- * la posición donde quedó. No mira el temporizador: la disposición de pantalla
- * es independiente del estado del pomodoro. Nunca enfoca: la restauración no
- * roba la atención y el foco no rebota a la mascota cuando se recrea la ventana
- * principal desde su título.
+ * la posición donde quedó. No roba el foco.
  */
 export async function restorePomodoroMiniWindow(): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
@@ -78,68 +128,55 @@ export async function restorePomodoroMiniWindow(): Promise<void> {
 }
 
 /**
- * Deja la mascota visible en la posición y el diámetro dados. `focus` distingue
- * los dos caminos: la acción del usuario la trae al frente y la enfoca; la
- * restauración solo la crea si falta, sin tocar el foco de nadie. Sin máximo de
- * ventana a propósito: la pastilla de opciones necesita crecer más allá del
- * disco y el tope real lo impone `POMODORO_ORB_MAX_DIAMETER`.
+ * Deja visible la mascota en la posición guardada. La ventana se crea una sola
+ * vez con el tamaño completo (disco + franja) y no se redimensiona después: el
+ * arrastre nativo mueve las dos piezas juntas, sin timers ni IPC.
  */
 async function showPomodoroMiniWindow(
   state: PomodoroMiniWindowState,
   { focus }: { focus: boolean }
 ): Promise<void> {
   if (await windowExists(POMODORO_MINI_LABEL)) {
-    if (focus) await focusWindow(POMODORO_MINI_LABEL)
+    if (focus) await focusReadyMiniWindow()
     return
   }
 
-  const diameter = resolveOrbDiameter(state)
-  const placement =
-    state.x !== null && state.y !== null
-      ? { x: state.x, y: state.y }
-      : await bottomRightOnMainMonitor(diameter, diameter)
+  const monitor = await currentLogicalMonitorRect()
+  const diameter = POMODORO_ORB_DEFAULT_DIAMETER
+  const hasSavedPosition = state.x !== null && state.y !== null
+  let orb: OrbRect
+  if (hasSavedPosition) {
+    orb = { x: state.x as number, y: state.y as number, diameter }
+    // Si la posición guardada es de este monitor, se corrige para que la
+    // franja de la pastilla entre completa. Si es de otro monitor, se respeta.
+    if (monitor && orbIntersectsMonitor(orb, monitor)) orb = containOrbInMonitor(orb, monitor)
+  } else {
+    orb = monitor ? defaultOrbRect(monitor, diameter) : { x: 0, y: 0, diameter }
+  }
 
-  // La creación es fire-and-forget: Tauri avisa con `tauri://created`/`tauri://error`.
-  new WebviewWindow(POMODORO_MINI_LABEL, {
-    url: 'index.html',
+  const rect = orbWindowRect(orb)
+  const position = hasSavedPosition || monitor ? { x: rect.x, y: rect.y } : {}
+
+  // La instancia queda viva en Tauri: acá solo interesa crearla.
+  void new WebviewWindow(POMODORO_MINI_LABEL, {
+    url: `index.html?miniFocus=${focus ? '1' : '0'}`,
     title: POMODORO_MINI_TITLE,
-    width: diameter,
-    height: diameter,
-    minWidth: POMODORO_ORB_MIN_DIAMETER,
-    minHeight: POMODORO_ORB_MIN_DIAMETER,
-    // Redimensionable a propósito: con hints fijos (min=max) algunos WMs —
-    // Wayland sobre todo— clampan también el resize programático y la ventana
-    // no puede crecer para la pastilla. Sin decoraciones no hay bordes que el
-    // usuario pueda estirar; el tamaño lo maneja el disco.
+    width: rect.width,
+    height: rect.height,
+    minWidth: rect.width,
+    minHeight: rect.height,
+    maxWidth: rect.width,
+    maxHeight: rect.height,
     resizable: true,
     alwaysOnTop: true,
     decorations: false,
-    transparent: true,
+    transparent: false,
+    visible: false,
     shadow: false,
     skipTaskbar: true,
-    focus,
-    ...placement,
+    focus: false,
+    ...position,
   })
-}
-
-/**
- * Geometría en vivo de la ventana: mueve y redimensiona a la vez. Es el único
- * camino por el que cambia la geometría (el resize del disco y la expansión de
- * la pastilla), así la ventana no depende de bordes del sistema que ya no tiene.
- * Tamaño y posición salen en paralelo: uno colgado no frena al otro y un gesto
- * de resize no acumula dos round-trips de IPC por movimiento de mouse.
- */
-export async function setPomodoroMiniGeometry(rect: {
-  x: number
-  y: number
-  width: number
-  height: number
-}): Promise<void> {
-  const win = getCurrentWebviewWindow()
-  await Promise.all([
-    win.setSize(new PhysicalSize(Math.round(rect.width), Math.round(rect.height))),
-    win.setPosition(new PhysicalPosition(Math.round(rect.x), Math.round(rect.y))),
-  ])
 }
 
 /** Arrastre nativo de la ventana: el disco entero es el asidero. */
@@ -147,57 +184,25 @@ export function startDraggingPomodoroMiniWindow(): void {
   void getCurrentWebviewWindow().startDragging()
 }
 
-/**
- * Disco actual (posición y diámetro) según la ventana. La posición Y se corrige
- * con el offset vigente de la pastilla: cuando flipa arriba, la ventana está
- * `offset` más arriba que el disco.
- */
-export async function getPomodoroMiniOrbRect(): Promise<OrbRect> {
-  const win = getCurrentWebviewWindow()
-  const scale = await win.scaleFactor()
-  const posicion = (await win.outerPosition()).toLogical(scale)
-  const tamano = (await win.outerSize()).toLogical(scale)
-  return { x: posicion.x, y: posicion.y + orbOffset, diameter: tamano.width }
-}
-
-/**
- * Offset vertical del disco dentro de la ventana (0, o la franja de la pastilla
- * cuando flipa arriba). Lo setea el componente ANTES de cada cambio de
- * geometría: el offset se captura al llegar los eventos de movimiento, así un
- * flush tardío no mezcla geometrías.
- */
-let orbOffset = 0
-
-export function setPomodoroMiniOrbOffset(offsetY: number): void {
-  orbOffset = offsetY
-}
-
-/** Espera tras el último gesto (mover o redimensionar): una sola escritura por gesto. */
+/** Espera tras el último movimiento: una sola escritura por arrastre. */
 const LAYOUT_SAVE_DELAY_MS = 250
 
 /** Ventanas ya seguidas: cada instancia se registra una sola vez. */
 const trackedWindows = new WeakSet<WebviewWindow>()
 
-/** Último movimiento pendiente, con el offset vigente al momento del evento. */
+/** Último movimiento pendiente del disco. */
 let pendingPosition: {
   toLogical: (scale: number) => { x: number; y: number }
-  offsetY: number
 } | null = null
-let pendingSize: { toLogical: (scale: number) => { width: number; height: number } } | null = null
 let layoutTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * La mascota persiste su propia disposición de pantalla (posición del disco y
- * diámetro). Se registra sobre su propia webview y no sobre el handle de quien
- * la creó: con la ventana principal cerrada nadie más la seguiría y el cierre
- * no se escribiría. El flag de apertura solo se escribe en las acciones del
- * usuario (abrir, cerrar): la destrucción de la ventana por el cierre de la app
- * no pasa por acá y deja el flag como estaba, así la próxima sesión la reabre.
- * El cierre lo coordina el store (marca `windowClosing` y espera el guardado
- * antes de destruir). El diámetro se deriva del ancho de la ventana: el alto
- * incluye la franja de la pastilla y no dice nada del disco.
+ * La mascota persiste su propia disposición de pantalla (posición de la
+ * ventana). Se registra sobre la ventana única; el tamaño es fijo y la pastilla
+ * se mueve con la ventana, así que no hay nada más que seguir. El cierre lo
+ * coordina el store.
  */
-export function trackPomodoroMiniWindow(): void {
+export async function trackPomodoroMiniWindow(): Promise<void> {
   const win = getCurrentWebviewWindow()
   if (trackedWindows.has(win)) return
   trackedWindows.add(win)
@@ -206,22 +211,12 @@ export function trackPomodoroMiniWindow(): void {
     if (layoutTimer !== undefined) clearTimeout(layoutTimer)
     layoutTimer = setTimeout(() => {
       layoutTimer = undefined
-      // La ventana existe: mientras se mueve o se redimensiona está abierta.
       return flushMiniWindowState(win, true)
     }, LAYOUT_SAVE_DELAY_MS)
   }
 
   void win.onMoved((event) => {
-    // El offset viaja con el evento: un flush tardío no puede mezclar
-    // geometrías de la pastilla abierta con la cerrada.
-    pendingPosition = {
-      toLogical: (scale) => event.payload.toLogical(scale),
-      offsetY: orbOffset,
-    }
-    programarGuardado()
-  })
-  void win.onResized((event) => {
-    pendingSize = { toLogical: (scale) => event.payload.toLogical(scale) }
+    pendingPosition = { toLogical: (scale) => event.payload.toLogical(scale) }
     programarGuardado()
   })
 }
@@ -229,8 +224,7 @@ export function trackPomodoroMiniWindow(): void {
 /**
  * Persiste el cierre de la mascota: deja el flag de apertura en false y guarda
  * la última disposición pendiente. La espera el handler de cierre del store
- * antes de que Tauri destruya la ventana: si el destroy gana la carrera, el
- * cierre no se guarda y la mascota reaparece en el próximo arranque.
+ * antes de que Tauri destruya la ventana.
  */
 export async function flushPomodoroMiniWindowClosed(): Promise<void> {
   if (layoutTimer !== undefined) {
@@ -240,40 +234,33 @@ export async function flushPomodoroMiniWindowClosed(): Promise<void> {
   await flushMiniWindowState(getCurrentWebviewWindow(), false)
 }
 
-/**
- * Cierra la mascota desde su pastilla: persiste el cierre primero (la ventana
- * se destruye al instante) y recién entonces destruye.
- */
+/** Cierra la mascota desde su pastilla: persiste el cierre y destruye la ventana. */
 export async function closePomodoroMiniWindow(): Promise<void> {
-  await flushPomodoroMiniWindowClosed()
+  if (layoutTimer !== undefined) {
+    clearTimeout(layoutTimer)
+    layoutTimer = undefined
+  }
+  await flushMiniWindowState(getCurrentWebviewWindow(), false)
   await getCurrentWebviewWindow().close()
 }
 
-/** Persiste el flag indicado junto a la última disposición pendiente (si hay). */
+/** Persiste el flag indicado junto a la última posición pendiente (si hay). */
 async function flushMiniWindowState(win: WebviewWindow, isOpen: boolean): Promise<void> {
   const state = await loadPomodoroMiniWindowState()
-  let { x, y, width, height } = state
+  let { x, y } = state
   if (pendingPosition) {
     const logical = pendingPosition.toLogical(await win.scaleFactor())
-    x = logical.x
-    y = logical.y + pendingPosition.offsetY
+    x = logical.x + orbWindowOffsetX(POMODORO_ORB_DEFAULT_DIAMETER)
+    y = logical.y
     pendingPosition = null
   }
-  if (pendingSize) {
-    const logical = pendingSize.toLogical(await win.scaleFactor())
-    // El ancho de la ventana es el disco; el alto suma la franja de la pastilla.
-    width = clampOrbDiameter(logical.width)
-    height = width
-    pendingSize = null
-  }
-  await savePomodoroMiniWindowState({ isOpen, x, y, width, height })
-}
-
-/** Esquina inferior derecha del monitor donde está la ventana principal. */
-async function bottomRightOnMainMonitor(
-  width: number,
-  height: number
-): Promise<{ x?: number; y?: number }> {
-  const monitor = await currentMonitor()
-  return monitor ? bottomRightPlacement(monitorRect(monitor), width, height) : {}
+  const diameter = POMODORO_ORB_DEFAULT_DIAMETER
+  // El estado guarda el disco, no la franja: width/height son el diámetro.
+  await savePomodoroMiniWindowState({
+    isOpen,
+    x,
+    y,
+    width: diameter,
+    height: diameter,
+  })
 }

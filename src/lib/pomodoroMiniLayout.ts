@@ -1,23 +1,32 @@
 /**
  * Geometría pura de la mascota del pomodoro: el disco flotante y la pastilla
- * de opciones que aparece bajo él al hacer hover. Toda la matemática vive acá
- * (sin Tauri ni DOM) para poder testearla sola; la ventana y los componentes
- * solo traducen estos rectángulos a llamadas de la API de ventanas.
+ * de opciones que aparece debajo al hacer hover.
  *
- * Modelo: la ventana del sistema contiene el disco (un cuadrado de lado
- * `diameter`) más, cuando la pastilla está visible, una franja de
- * `POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT` que crece hacia abajo, o hacia
- * arriba si abajo no entra en el monitor (el disco nunca se mueve).
+ * La mascota es **una sola ventana fija**, creada desde el arranque con el
+ * tamaño del disco más la franja de la pastilla. Nunca se redimensiona: el
+ * arrastre nativo mueve el disco y la pastilla juntos, sin timers ni IPC.
+ *
+ * La pastilla vive siempre debajo del disco. Si el usuario arrastra la ventana
+ * contra el borde inferior del monitor, la franja puede quedar fuera: la
+ * colocación no se invierte jamás.
  */
 
 /** Límites del disco en píxeles lógicos: por debajo el contador no entra. */
 export const POMODORO_ORB_MIN_DIAMETER = 80
 export const POMODORO_ORB_MAX_DIAMETER = 480
-export const POMODORO_ORB_DEFAULT_DIAMETER = 200
+export const POMODORO_ORB_DEFAULT_DIAMETER = 100
 
-/** Pastilla de opciones: alto fijo y separación respecto del disco. */
-export const POMODORO_PILL_HEIGHT = 44
-export const POMODORO_PILL_GAP = 10
+/** Pastilla de opciones: alto fijo, separación y sombra que no debe recortarse. */
+export const POMODORO_PILL_HEIGHT = 30
+export const POMODORO_PILL_WIDTH = 64
+export const POMODORO_PILL_GAP = 8
+export const POMODORO_PILL_SHADOW_ROOM = 8
+
+/** Grosor del anillo en el disco chico: 2.5 px se perdía contra el fondo. */
+export const POMODORO_MINI_RING_WIDTH = 4
+
+/** Separación por defecto entre la mascota y los bordes del monitor. */
+export const POMODORO_MINI_WINDOW_MARGIN = 24
 
 /** Diámetro entero y dentro del rango válido. */
 export function clampOrbDiameter(diameter: number): number {
@@ -27,25 +36,6 @@ export function clampOrbDiameter(diameter: number): number {
   )
 }
 
-/**
- * Diámetro con el que se abre la mascota: el guardado del usuario (el ancho;
- * los estados de la mini rectangular guardaban ancho y alto distintos) o el
- * default, nunca fuera del rango.
- */
-export function resolveOrbDiameter(state: { width: number | null; height: number | null }): number {
-  const guardado = state.width ?? state.height
-  return guardado === null ? POMODORO_ORB_DEFAULT_DIAMETER : clampOrbDiameter(guardado)
-}
-
-/**
- * Delta acumulado del mouse desde el inicio del gesto de resize → diámetro:
- * derecha o arriba agrandan, izquierda o abajo achican. Al ser acumulado, el
- * mismo delta da siempre el mismo tamaño y el gesto no se va de madre.
- */
-export function resizedDiameter(diameter: number, deltaX: number, deltaY: number): number {
-  return clampOrbDiameter(diameter + deltaX - deltaY)
-}
-
 /** Posición y tamaño del disco en píxeles lógicos. */
 export interface OrbRect {
   x: number
@@ -53,10 +43,7 @@ export interface OrbRect {
   diameter: number
 }
 
-/** Dónde vive la pastilla respecto del disco. */
-export type PillPlacement = 'none' | 'below' | 'above'
-
-/** Rectángulo de la ventana del sistema en píxeles lógicos. */
+/** Rectángulo de una ventana del sistema en píxeles lógicos. */
 export interface WindowRect {
   x: number
   y: number
@@ -64,49 +51,134 @@ export interface WindowRect {
   height: number
 }
 
-/** Franja vertical que ocupa la pastilla (separación + alto). */
-function pillSpace(placement: PillPlacement): number {
-  return placement === 'none' ? 0 : POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT
+/** Rectángulo del monitor en píxeles lógicos. */
+export interface MonitorRect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
-/** Rectángulo de la ventana para el disco dado y la colocación de la pastilla. */
-export function orbWindowRect(orb: OrbRect, placement: PillPlacement): WindowRect {
+/**
+ * Tamaño de la ventana única: el disco arriba y, debajo, la franja de la
+ * pastilla con su separación y espacio para la sombra. La superficie es
+ * cuadrada para que WebKitGTK pinte completa; la ventana se crea opaca y el
+ * sistema la recorta a la forma del disco y la pastilla.
+ */
+export function mascotWindowSize(diameter: number): { width: number; height: number } {
+  const side = clampOrbDiameter(diameter)
+  const surface = side + POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT + POMODORO_PILL_SHADOW_ROOM
+  return { width: surface, height: surface }
+}
+
+/** Rectángulo completo de la ventana de la mascota (disco + franja). */
+export function orbWindowRect(orb: OrbRect): WindowRect {
+  return { x: orb.x - orbWindowOffsetX(orb.diameter), y: orb.y, ...mascotWindowSize(orb.diameter) }
+}
+
+/** Margen entre el origen nativo de la ventana y el borde izquierdo del disco. */
+export function orbWindowOffsetX(diameter: number): number {
+  return (mascotWindowSize(diameter).width - clampOrbDiameter(diameter)) / 2
+}
+
+/**
+ * Disco por defecto: contra la esquina inferior derecha del monitor, con
+ * margen. La ventana completa (disco + pastilla) queda dentro del monitor.
+ */
+export function defaultOrbRect(
+  monitor: MonitorRect,
+  diameter: number,
+  margin: number = POMODORO_MINI_WINDOW_MARGIN
+): OrbRect {
+  const side = clampOrbDiameter(diameter)
+  const { width, height } = mascotWindowSize(side)
   return {
-    x: orb.x,
-    y: placement === 'above' ? orb.y - pillSpace(placement) : orb.y,
-    width: orb.diameter,
-    height: orb.diameter + pillSpace(placement),
+    x: Math.max(monitor.x, monitor.x + monitor.width - width - margin) + orbWindowOffsetX(side),
+    y: Math.max(monitor.y, monitor.y + monitor.height - height - margin),
+    diameter: side,
   }
 }
 
-/** Offset vertical del disco dentro de la ventana (0, o la franja si flipa arriba). */
-export function orbOffsetY(placement: PillPlacement): number {
-  return placement === 'above' ? pillSpace(placement) : 0
+/**
+ * Corrige una posición guardada que se salió del monitor: la ventana completa
+ * queda adentro. El disco no cambia de tamaño y la pastilla no se invierte.
+ */
+export function containOrbInMonitor(orb: OrbRect, monitor: MonitorRect): OrbRect {
+  const { width, height } = mascotWindowSize(orb.diameter)
+  const offsetX = orbWindowOffsetX(orb.diameter)
+  return {
+    x: Math.max(monitor.x, Math.min(orb.x - offsetX, monitor.x + monitor.width - width)) + offsetX,
+    y: Math.max(monitor.y, Math.min(orb.y, monitor.y + monitor.height - height)),
+    diameter: clampOrbDiameter(orb.diameter),
+  }
 }
 
-/** Disco que representa la ventana dada, dada la colocación vigente. */
-export function orbFromWindowRect(rect: WindowRect, placement: PillPlacement): OrbRect {
-  return { x: rect.x, y: rect.y + orbOffsetY(placement), diameter: rect.width }
+/** true si la ventana del disco se solapa con el monitor indicado. */
+export function orbIntersectsMonitor(orb: OrbRect, monitor: MonitorRect): boolean {
+  const rect = orbWindowRect(orb)
+  return (
+    rect.x + rect.width > monitor.x &&
+    rect.x < monitor.x + monitor.width &&
+    rect.y + rect.height > monitor.y &&
+    rect.y < monitor.y + monitor.height
+  )
 }
 
-/** Centro del disco: el punto que el resize deja fijo. */
-export function orbCenter(orb: OrbRect): { x: number; y: number } {
-  return { x: orb.x + orb.diameter / 2, y: orb.y + orb.diameter / 2 }
+/** Rectángulo de una región de forma (coordenadas locales de la ventana). */
+export interface ShapeRect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
-/** Disco redimensionado alrededor de su centro: el centro no se mueve. */
-export function resizedOrbAroundCenter(orb: OrbRect, diameter: number): OrbRect {
-  const centro = orbCenter(orb)
-  const lado = clampOrbDiameter(diameter)
-  return { x: centro.x - lado / 2, y: centro.y - lado / 2, diameter: lado }
-}
+/**
+ * Región visible de la mascota: el círculo del disco y la cápsula de la
+ * pastilla, expresada como rectángulos de una fila de alto. La ventana se crea
+ * opaca y el sistema la recorta con esta región: WebKitGTK no pinta una
+ * superficie transparente más alta que el disco, pero una ventana opaca sí
+ * pinta completa y la forma nativa deja ver el escritorio alrededor.
+ */
+export function mascotShapeRects(diameter: number, pillReveal = 0): ShapeRect[] {
+  const side = mascotWindowSize(diameter).width
+  const resolvedDiameter = clampOrbDiameter(diameter)
+  const radius = resolvedDiameter / 2
+  const centerX = side / 2
+  const centerY = radius
+  const pillWidth = Math.min(POMODORO_PILL_WIDTH, side)
+  const pillHeight = Math.round(POMODORO_PILL_HEIGHT * Math.max(0, Math.min(1, pillReveal)))
+  const pillRadius = POMODORO_PILL_HEIGHT / 2
+  const pillRadiusY = pillHeight / 2
+  const pillCenterX = side / 2
+  const pillTop =
+    resolvedDiameter + POMODORO_PILL_GAP + Math.round((POMODORO_PILL_HEIGHT - pillHeight) / 2)
+  const pillCenterY = pillTop + pillRadiusY
 
-/** Colocación de la pastilla: abajo si entra en el monitor; si no, arriba. */
-export function choosePillPlacement(
-  orb: OrbRect,
-  monitor: { x: number; y: number; width: number; height: number } | null
-): Exclude<PillPlacement, 'none'> {
-  if (monitor === null) return 'below'
-  const franja = POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT
-  return orb.y + orb.diameter + franja <= monitor.y + monitor.height ? 'below' : 'above'
+  const rects: ShapeRect[] = []
+
+  for (let y = 0; y < side; y += 1) {
+    const spans: Array<[number, number]> = []
+    const discOffset = y + 0.5 - centerY
+    if (Math.abs(discOffset) <= radius) {
+      const half = Math.sqrt(radius * radius - discOffset * discOffset)
+      spans.push([centerX - half, centerX + half])
+    }
+
+    const pillOffset = y + 0.5 - pillCenterY
+    if (pillRadiusY > 0 && Math.abs(pillOffset) < pillRadiusY) {
+      const half =
+        pillWidth / 2 - pillRadius + pillRadius * Math.sqrt(1 - (pillOffset / pillRadiusY) ** 2)
+      spans.push([pillCenterX - half, pillCenterX + half])
+    }
+
+    for (const [left, right] of spans) {
+      // Muestrear el centro del píxel evita expandir el borde hacia el fondo
+      // opaco exterior al círculo SVG (halo más notorio sobre fondos claros).
+      const start = Math.max(0, Math.ceil(left - 0.5))
+      const end = Math.min(side, Math.ceil(right - 0.5))
+      if (end > start) rects.push({ x: start, y, width: end - start, height: 1 })
+    }
+  }
+
+  return rects
 }

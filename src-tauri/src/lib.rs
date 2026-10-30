@@ -81,6 +81,8 @@ pub fn run() {
             commands::weekly_schedule::delete_schedule_block,
             commands::weekly_schedule::delete_schedule_slot,
             commands::oauth::start_oauth_server,
+            commands::window_shape::set_pomodoro_mini_shape,
+            commands::window_shape::watch_pomodoro_mini_pointer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

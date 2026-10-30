@@ -369,6 +369,65 @@
   max-height: 100cqh;
 }
 
+/* La mini es una sola ventana fija: disco de 100 px arriba y franja de la
+   pastilla debajo. La ventana se crea con el alto completo y nunca se
+   redimensiona, así el arrastre nativo mueve las dos piezas juntas.
+   `translateZ(0)` fuerza capas compuestas: sin eso WebKitGTK puede dejar el
+   contenido estático de una ventana transparente sin pintar. */
+.pomodoro-mini-orb {
+  overflow: visible;
+}
+
+.pomodoro-mini-orb-area {
+  width: 100px;
+  height: 100px;
+  flex: 0 0 100px;
+}
+
+.pomodoro-mini-orb-area .pomodoro-circle {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.pomodoro-mini-orb-area .pomodoro-disc {
+  width: 100px;
+  height: 100px;
+  gap: 2px;
+}
+
+.pomodoro-mini-orb-area .pomodoro-countdown {
+  font-size: calc(12px * var(--text-scale));
+}
+
+.pomodoro-mini-orb-area .pomodoro-controls {
+  gap: 2px;
+}
+
+.pomodoro-mini-orb-area .pomodoro-btn {
+  width: 16px;
+  height: 16px;
+}
+
+.pomodoro-mini-pill-area {
+  align-items: flex-start;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.pomodoro-mini-pill {
+  display: flex;
+  transform: translateZ(0);
+  opacity: 1;
+  pointer-events: auto;
+  will-change: opacity, transform;
+}
+
+.pomodoro-mini-pill [data-testid='pomodoro-pill'] {
+  width: 64px;
+}
+
 /* Anillo SVG del pomodoro (compartido por widget, mini y página). El avance
    es `stroke-dashoffset` continuo sobre un anillo de pathLength 100: el reloj
    avanza por pasos de un segundo y la transición interpola ese segundo, así
@@ -386,12 +445,12 @@
 }
 .pomodoro-ring-track {
   fill: none;
-  stroke-width: 2.5;
+  stroke-width: var(--pomodoro-ring-width, 2.5);
 }
 .pomodoro-ring-progress {
   fill: none;
   stroke: var(--pomodoro-ring);
-  stroke-width: 2.5;
+  stroke-width: var(--pomodoro-ring-width, 2.5);
   stroke-dasharray: 100;
   transition:
     stroke-dashoffset 1s linear,
@@ -419,10 +478,10 @@
 .container-widget .pomodoro-countdown {
   font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
 }
-/* Ventana mini (contenedor chico): el piso del contador baja junto con el
-   disco y los controles se compactan, sin dejar de respetar la escala de
-   Configuración. La mini ahora se puede achicar hasta 80 px de diámetro y en
-   ese rango el disco deja de ser un cuadrado lleno de controles. */
+/* Contenedor chico del widget del pomodoro: el piso del contador baja junto
+   con el disco y los controles se compactan, sin dejar de respetar la escala
+   de Configuración. Aplica al widget del dashboard; la mini usa sus propias
+   reglas basadas en `vw`. */
 @container (max-width: 240px) {
   .container-widget .pomodoro-countdown {
     font-size: max(calc(1rem * var(--text-scale)), 12cqmin);
@@ -435,8 +494,8 @@
     height: max(1.5rem, 8cqmin);
   }
 }
-/* Escalón para el rango medio de la mini: el countdown y los controles
-   siguen entrando en el disco. */
+/* Escalón para contenedores chicos: el countdown y los controles siguen
+   entrando en el disco. */
 @container (max-width: 170px) {
   .container-widget .pomodoro-countdown {
     font-size: max(calc(0.875rem * var(--text-scale)), 12cqmin);
@@ -446,8 +505,8 @@
     height: max(1.25rem, 8cqmin);
   }
 }
-/* Mínimo de la mini (80 px de diámetro): el último escalón para que el
-   countdown y los controles respiren en el disco más chico. */
+/* Mínimo de un contenedor chico: el último escalón para que el countdown y
+   los controles respiren en el disco. */
 @container (max-width: 130px) {
   .container-widget .pomodoro-countdown {
     font-size: max(calc(0.75rem * var(--text-scale)), 12cqmin);

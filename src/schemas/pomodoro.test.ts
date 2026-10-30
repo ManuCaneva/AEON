@@ -15,7 +15,7 @@ describe('pomodoro schemas', () => {
       longBreakInterval: 4,
       autoStartBreak: true,
       autoStartFocus: false,
-      volume: 1,
+      volume: 0.3,
       muted: false,
     })
     expect(defaultPomodoroSettings).toEqual(PomodoroSettingsSchema.parse({}))
