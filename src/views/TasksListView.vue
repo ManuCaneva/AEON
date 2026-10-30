@@ -17,7 +17,9 @@ withDefaults(
 
 const tasks = useTasksStore()
 
-const list = computed(() => tasks.pendingTasks)
+// Las pendientes conservan su orden y las terminadas van al final de la
+// sección; completar no borra ni oculta la tarea.
+const list = computed(() => [...tasks.pendingTasks, ...tasks.doneTasks])
 </script>
 
 <template>

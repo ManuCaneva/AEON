@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import { mount } from '@vue/test-utils'
 import Sidebar from './Sidebar.vue'
+import { version } from '../../../package.json'
 import {
   LAYOUT_TRANSITION_FALLBACK_MS,
   useLayoutTransition,
@@ -56,6 +57,29 @@ afterEach(() => {
 })
 
 describe('Sidebar', () => {
+  it('conserva el anillo al pie y oculta solo la versión al colapsar', async () => {
+    const wrapper = mountWithReactiveUi(false)
+    const footer = wrapper.get('[data-testid="sidebar-footer"]')
+    expect(footer.find('[data-testid="sidebar-mark"] svg').exists()).toBe(true)
+    const versionLabel = footer.get('[data-testid="sidebar-version"]')
+    expect(versionLabel.text()).toBe(`v${version}`)
+    expect(versionLabel.classes()).not.toContain('hidden')
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+    fireTransitionEnd(wrapper.get('aside').element)
+    await nextTick()
+    expect(versionLabel.classes()).toContain('hidden')
+    expect(footer.get('[data-testid="sidebar-mark"]').classes()).not.toContain('hidden')
+    expect(footer.get('[data-testid="sidebar-mark"]').classes()).toContain('translate-x-3')
+
+    uiState.sidebarCollapsed = false
+    await nextTick()
+    expect(versionLabel.classes()).not.toContain('hidden')
+    expect(footer.classes()).toContain('justify-between')
+    expect(footer.get('[data-testid="sidebar-mark"]').classes()).toContain('translate-x-0')
+  })
+
   it('offers Pomodoro navigation', async () => {
     const wrapper = mountSidebar()
     const button = wrapper.get('[data-testid="nav-pomodoro"]')
@@ -64,18 +88,49 @@ describe('Sidebar', () => {
     expect(setViewMode).toHaveBeenCalledWith('pomodoro')
   })
 
+  it('ya no ofrece la pestaña de archivados', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.find('[data-testid="nav-archived"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Archivados')
+  })
+
   it('muestra la fila de sistema como Configuración (no Settings)', () => {
     const wrapper = mountSidebar()
     expect(wrapper.get('[data-testid="nav-settings"]').text()).toContain('Configuración')
     expect(wrapper.get('[data-testid="nav-settings"]').text()).not.toContain('Settings')
   })
 
-  it('renders a section eyebrow per group and no decorative dots', () => {
+  it('reemplaza los títulos de ambas divisiones por puntos sin quitar sus separadores', async () => {
+    const wrapper = mountWithReactiveUi(false)
+    const sections = wrapper.findAll('[role="separator"]')
+    expect(sections.map((section) => section.attributes('aria-label'))).toEqual([
+      'Navegación',
+      'Sistema',
+    ])
+
+    for (const section of sections) {
+      expect(section.get('[data-testid="section-label"]').attributes('aria-hidden')).toBe('false')
+      expect(section.get('[data-testid="section-dot"]').classes()).toContain('opacity-0')
+    }
+
+    uiState.sidebarCollapsed = true
+    await nextTick()
+    fireTransitionEnd(wrapper.get('aside').element)
+    await nextTick()
+
+    for (const section of sections) {
+      expect(section.classes()).not.toContain('hidden')
+      expect(section.get('[data-testid="section-label"]').attributes('aria-hidden')).toBe('true')
+      expect(section.get('[data-testid="section-dot"]').classes()).toContain('opacity-100')
+    }
+  })
+
+  it('muestra un título por grupo y no agrega puntos decorativos a las filas', () => {
     const wrapper = mountSidebar()
-    const eyebrows = wrapper.findAll('.text-eyebrow')
+    const eyebrows = wrapper.findAll('[data-testid="section-label"]')
     expect(eyebrows.map((e) => e.text())).toEqual(['Navegación', 'Sistema'])
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.find('span.rounded-full').exists()).toBe(false)
     }
@@ -85,13 +140,13 @@ describe('Sidebar', () => {
     uiState.viewMode = 'pomodoro'
     const wrapper = mountSidebar()
     const active = wrapper.get('[data-testid="nav-pomodoro"]')
-    const idle = wrapper.get('[data-testid="nav-archived"]')
+    const idle = wrapper.get('[data-testid="nav-dashboard"]')
 
     const activeBg = active.classes().find((c) => c.startsWith('bg-'))
     const idleBg = idle.classes().find((c) => c.startsWith('bg-'))
     expect(activeBg).toBeTruthy()
     expect(activeBg).not.toBe(idleBg)
-    expect(idle.classes()).toContain('hover:bg-surface-2')
+    expect(idle.classes()).toContain('hover:bg-surface-2/50')
   })
 
   it('toggles edit mode from the system section', async () => {
@@ -105,9 +160,13 @@ describe('Sidebar', () => {
     const wrapper = mountSidebar()
 
     expect(wrapper.get('[data-testid="sidebar-logo"]').classes()).toContain('hidden')
-    expect(wrapper.findAll('.text-eyebrow').every((e) => e.classes().includes('hidden'))).toBe(true)
+    expect(
+      wrapper
+        .findAll('[data-testid="section-label"]')
+        .every((e) => e.attributes('aria-hidden') === 'true')
+    ).toBe(true)
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.classes()).toContain('justify-center')
     }
@@ -139,6 +198,9 @@ describe('Sidebar', () => {
 
     const header = wrapper.get('[data-testid="sidebar-header"]')
     expect(header.findAll('button')).toHaveLength(1)
+    expect(header.get('[data-testid="sidebar-toggle"]').attributes('aria-label')).toBe(
+      'Expandir sidebar'
+    )
     await header.get('[data-testid="sidebar-toggle"]').trigger('click')
     expect(toggleSidebar).toHaveBeenCalled()
   })
@@ -153,7 +215,7 @@ describe('Sidebar', () => {
     const toggle = header.get('[data-testid="sidebar-toggle"]')
     expect(toggle.classes()).toContain('justify-center')
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const row = wrapper.get(`[data-testid="nav-${key}"]`)
       expect(row.classes()).toContain('justify-center')
     }
@@ -167,17 +229,15 @@ describe('Sidebar', () => {
     expect(toggleIcon.attributes('height')).toBe(navIcon.attributes('height'))
   })
 
-  it('keeps the collapsed and expanded widths unchanged', () => {
+  it('usa los anchos de la variante Soft expandida y colapsada', () => {
     const expanded = mountSidebar()
-    expect(expanded.get('aside').classes()).toContain('w-44')
-    expect(expanded.get('aside').classes()).not.toContain('w-56')
-    expect(expanded.get('aside').classes()).not.toContain('w-14')
+    expect(expanded.get('aside').classes()).toContain('w-48')
+    expect(expanded.get('aside').classes()).not.toContain('w-16')
 
     uiState.sidebarCollapsed = true
     const collapsed = mountSidebar()
-    expect(collapsed.get('aside').classes()).toContain('w-14')
-    expect(collapsed.get('aside').classes()).not.toContain('w-56')
-    expect(collapsed.get('aside').classes()).not.toContain('w-44')
+    expect(collapsed.get('aside').classes()).toContain('w-16')
+    expect(collapsed.get('aside').classes()).not.toContain('w-48')
   })
 
   it('anima el width del panel 300ms con la curva del snap, sin animar todo', () => {
@@ -237,7 +297,7 @@ describe('Sidebar', () => {
     const row = wrapper.get('[data-testid="nav-pomodoro"]')
     const label = row.get('[data-testid="nav-label-pomodoro"]')
 
-    expect(aside.classes()).toContain('w-14')
+    expect(aside.classes()).toContain('w-16')
     expect(label.classes()).toContain('opacity-0')
     expect(label.classes()).not.toContain('hidden')
     expect(row.classes()).not.toContain('justify-center')
@@ -322,7 +382,7 @@ describe('Sidebar', () => {
     await nextTick()
 
     const row = wrapper.get('[data-testid="nav-pomodoro"]')
-    expect(wrapper.get('aside').classes()).toContain('w-44')
+    expect(wrapper.get('aside').classes()).toContain('w-48')
     expect(row.classes()).not.toContain('justify-center')
   })
 
@@ -364,7 +424,7 @@ describe('Sidebar', () => {
     uiState.sidebarCollapsed = true
     const wrapper = mountSidebar()
 
-    for (const key of ['dashboard', 'archived', 'pomodoro', 'edit-mode', 'settings']) {
+    for (const key of ['dashboard', 'pomodoro', 'edit-mode', 'settings']) {
       const label = wrapper.get(`[data-testid="nav-label-${key}"]`)
       // display:none (clase hidden) los saca del orden de tabulación y del
       // árbol de accesibilidad; el span nunca es focusable por sí mismo.

@@ -133,12 +133,8 @@ export async function updateHabit(
   return HabitRowSchema.parse(raw)
 }
 
-export async function archiveHabit(id: string, archived_at: string): Promise<void> {
-  await invoke('archive_habit', { id, archivedAt: archived_at })
-}
-
-export async function restoreHabit(id: string, updated_at: string): Promise<void> {
-  await invoke('restore_habit', { id, updatedAt: updated_at })
+export async function deleteHabit(id: string): Promise<void> {
+  await invoke('delete_habit', { id })
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -255,14 +251,6 @@ export async function updateTask(
 
 export async function deleteTask(id: string): Promise<void> {
   await invoke('delete_task', { id })
-}
-
-export async function archiveTask(id: string, archived_at: string): Promise<void> {
-  await invoke('archive_task', { id, archivedAt: archived_at })
-}
-
-export async function restoreTask(id: string, updated_at: string): Promise<void> {
-  await invoke('restore_task', { id, updatedAt: updated_at })
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -464,14 +452,6 @@ export async function updateGoal(
 
 export async function deleteGoal(id: string): Promise<void> {
   await invoke('delete_goal', { id })
-}
-
-export async function archiveGoal(id: string, archived_at: string): Promise<void> {
-  await invoke('archive_goal', { id, archivedAt: archived_at })
-}
-
-export async function restoreGoal(id: string, updated_at: string): Promise<void> {
-  await invoke('restore_goal', { id, updatedAt: updated_at })
 }
 
 // ───────────────────────────────────────────────────────────────

@@ -10,24 +10,12 @@ const props = defineProps<{ task: Task }>()
 const ui = useUiStore()
 const tasks = useTasksStore()
 
-// Las tareas se archivan; sólo se ofrece borrar cuando hay un vínculo a un
-// evento, y el borrado pregunta si se lleva el evento o no.
+// Toda tarea se puede eliminar; siempre con confirmación. Con vínculo a un
+// evento la confirmación ofrece dos salidas: dejar el evento o borrarlo también.
 const hasEventLink = computed(() => props.task.event_link !== null)
 
 function handleEdit() {
   ui.openEditTask(props.task.id)
-}
-
-async function handleArchiveToggle() {
-  try {
-    if (props.task.archived_at) {
-      await tasks.restoreTask(props.task.id)
-    } else {
-      await tasks.archiveTask(props.task.id)
-    }
-  } finally {
-    ui.closeTaskMenu()
-  }
 }
 
 /** 'Solo la tarea': borra la tarea y deja su evento intacto. */
@@ -53,25 +41,23 @@ async function handleDeleteWithEvent() {
   <EntityEventContextMenu
     :entity-id="task.id"
     trigger-data-attr="data-task-menu-trigger"
-    :show-archive="true"
-    :is-archived="task.archived_at !== null"
-    :show-delete="hasEventLink"
+    :show-delete="true"
     :has-event-link="hasEventLink"
-    :can-delete-without-link="false"
-    :show-confirm-cancel="false"
+    :can-delete-without-link="true"
+    :show-confirm-cancel="true"
     confirm-title="¿Eliminar tarea?"
     delete-only-label="Solo la tarea"
     delete-with-event-label="La tarea y su evento"
     :test-ids="{
       edit: 'task-edit-button',
-      archive: 'task-archive-button',
       delete: 'task-delete-button',
       confirm: 'task-delete-confirm',
       only: 'task-delete-task-only',
       withEvent: 'task-delete-task-and-event',
+      confirmYes: 'task-delete-confirm-yes',
+      confirmNo: 'task-delete-confirm-no',
     }"
     @edit="handleEdit"
-    @archive-toggle="handleArchiveToggle"
     @delete-only="handleDeleteTaskOnly"
     @delete-with-event="handleDeleteWithEvent"
     @close="ui.closeTaskMenu()"

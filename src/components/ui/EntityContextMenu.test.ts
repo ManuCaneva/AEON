@@ -18,12 +18,16 @@ describe('EntityContextMenu', () => {
     return mount(EntityContextMenu, {
       props: {
         entityId,
-        isArchived: false,
         triggerDataAttr: triggerAttr,
+        confirmTitle: '¿Eliminar elemento?',
         ...props,
       },
       attachTo: document.body,
     })
+  }
+
+  function q(testid: string): HTMLElement | null {
+    return document.body.querySelector(`[data-testid="${testid}"]`)
   }
 
   let wrapper: any
@@ -51,16 +55,12 @@ describe('EntityContextMenu', () => {
     expect(menu?.textContent).toContain('Editar')
   })
 
-  it('shows Archivar when not archived', () => {
-    wrapper = mountMenu({ isArchived: false })
+  it('ofrece Eliminar y ya no ofrece Archivar ni Restaurar', () => {
+    wrapper = mountMenu()
     const menu = document.body.querySelector("[role='menu']")
-    expect(menu?.textContent).toContain('Archivar')
-  })
-
-  it('shows Restaurar when archived', () => {
-    wrapper = mountMenu({ isArchived: true })
-    const menu = document.body.querySelector("[role='menu']")
-    expect(menu?.textContent).toContain('Restaurar')
+    expect(menu?.textContent).toContain('Eliminar')
+    expect(menu?.textContent).not.toContain('Archivar')
+    expect(menu?.textContent).not.toContain('Restaurar')
   })
 
   it("emits 'edit' when Editar clicked", async () => {
@@ -72,13 +72,36 @@ describe('EntityContextMenu', () => {
     expect(wrapper.emitted('edit')).toHaveLength(1)
   })
 
-  it("emits 'archive-toggle' when Archivar clicked", async () => {
-    wrapper = mountMenu({ isArchived: false })
-    const buttons = Array.from(document.body.querySelectorAll('button'))
-    const archiveBtn = buttons.find((btn) => btn.textContent?.includes('Archivar'))
-    archiveBtn?.click()
+  it('Eliminar pide confirmación antes de borrar', async () => {
+    wrapper = mountMenu()
+    q('entity-delete-button')!.click()
     await flushPromises()
-    expect(wrapper.emitted('archive-toggle')).toHaveLength(1)
+
+    expect(q('entity-delete-confirm')).not.toBeNull()
+    expect(q('entity-delete-confirm')?.textContent).toContain('¿Eliminar elemento?')
+    expect(wrapper.emitted('delete')).toBeUndefined()
+  })
+
+  it('confirmar emite delete', async () => {
+    wrapper = mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    q('entity-delete-confirm-yes')!.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('delete')).toHaveLength(1)
+  })
+
+  it('cancelar vuelve al menú sin borrar', async () => {
+    wrapper = mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    q('entity-delete-confirm-no')!.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('delete')).toBeUndefined()
+    expect(q('entity-delete-confirm')).toBeNull()
+    expect(q('entity-delete-button')).not.toBeNull()
   })
 
   it("emits 'close' on click outside", async () => {

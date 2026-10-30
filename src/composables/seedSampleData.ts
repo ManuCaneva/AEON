@@ -1,5 +1,4 @@
 import {
-  archiveTask,
   createGoal,
   createHabit,
   createNote,
@@ -71,9 +70,6 @@ async function persist(data: SampleData): Promise<void> {
   }
   for (const task of data.tasks) {
     await createTask(task.draft, task.id, task.created_at, task.created_at)
-    if (task.draft.status === 'done') {
-      await archiveTask(task.id, task.created_at)
-    }
   }
   for (const goal of data.goals) {
     await createGoal(goal.draft, goal.id, goal.created_at, goal.created_at)
