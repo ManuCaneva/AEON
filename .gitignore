@@ -59,6 +59,7 @@ skills-lock.json
 
 # ── Referencias visuales locales (no se suben) ───────────────
 docs/ref-visuales/
+docs/prototypes/
 
 # ── Misc ─────────────────────────────────────────────────────
 *.bak
