@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
     <div
       data-testid="sidebar-slot"
       class="relative h-full shrink-0"
-      :class="ui.sidebarCollapsed ? 'w-14' : 'w-44'"
+      :class="ui.sidebarCollapsed ? 'w-16' : 'w-48'"
     >
       <Sidebar class="absolute inset-y-0 left-0 z-10" />
     </div>

@@ -172,7 +172,7 @@ describe('App layout', () => {
     expect(slot.classList.contains('relative')).toBe(true)
     expect(slot.classList.contains('h-full')).toBe(true)
     expect(slot.classList.contains('shrink-0')).toBe(true)
-    expect(slot.classList.contains('w-44')).toBe(true)
+    expect(slot.classList.contains('w-48')).toBe(true)
     expect(slot.classList.contains('transition-[width]')).toBe(false)
 
     const sidebar = root.querySelector('[data-testid="mock-sidebar"]') as HTMLElement
@@ -193,12 +193,12 @@ describe('App layout', () => {
     const wrapper = mount(App)
     const root = wrapper.element as HTMLElement
     const slot = root.querySelector('[data-testid="sidebar-slot"]') as HTMLElement
-    expect(slot.classList.contains('w-44')).toBe(true)
+    expect(slot.classList.contains('w-48')).toBe(true)
 
     uiState.sidebarCollapsed = true
     await nextTick()
-    expect(slot.classList.contains('w-14')).toBe(true)
-    expect(slot.classList.contains('w-44')).toBe(false)
+    expect(slot.classList.contains('w-16')).toBe(true)
+    expect(slot.classList.contains('w-48')).toBe(false)
 
     const content = root.querySelector('.flex-1.flex.flex-col.min-w-0') as HTMLElement
     expect(content.previousElementSibling).toBe(slot)
