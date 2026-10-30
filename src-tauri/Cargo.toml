@@ -1,6 +1,6 @@
 [package]
 name = "aeon"
-version = "0.5.1"
+version = "0.6.0"
 description = "AEON — local-first productivity dashboard"
 authors = ["GOYA"]
 edition = "2021"
