@@ -192,6 +192,8 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
    * de sonar, para que el aviso no se juegue contra el cierre de la ventana.
    */
   let windowClosing = false
+  /** Las fases vencidas antes de cargar se recuperan sin alarmas atrasadas. */
+  let silentUntil = 0
 
   function setPhase(
     phase: Exclude<PomodoroPhase, 'idle'>,
@@ -238,7 +240,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     // aviso en vez de sonar dos veces.
     await persistAndPublish()
 
-    if (!completedNaturally || windowClosing) return
+    if (!completedNaturally || windowClosing || startsAt <= silentUntil) return
     if (focusCompletado) player().playFocusEndChime(settings.value)
     else player().playBreakEndChime(settings.value)
   }
@@ -315,6 +317,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
     }
     loaded.value = true
     clock.value = Date.now()
+    silentUntil = clock.value
     // El contexto de audio se crea acá, fuera de cualquier click: el primer
     // play no paga la creación (el gesto solo lo despierta).
     player().prewarm()

@@ -10,7 +10,7 @@ import { bootPomodoroMini } from '@/composables/bootPomodoroMini'
 import { isPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 
 if (isPomodoroMiniWindow()) {
-  // La ventana mini solo monta el pomodoro: nada del arranque de la app corre acá.
+  // La ventana de la mascota solo monta el pomodoro: nada del arranque de la app corre acá.
   void bootPomodoroMini()
 } else {
   const app = createApp(App)

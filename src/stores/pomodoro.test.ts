@@ -11,6 +11,7 @@ import { POMODORO_SESSION_KEY, usePomodoroStore } from './pomodoro'
 import PomodoroView from '@/views/PomodoroView.vue'
 import PomodoroWidget from '@/components/dashboard/PomodoroWidget.vue'
 import PomodoroMini from '@/components/pomodoro/PomodoroMini.vue'
+import { POMODORO_ORB_DEFAULT_DIAMETER } from '@/lib/pomodoroMiniLayout'
 
 vi.mock('@/lib/db', () => ({
   loadConfig: vi.fn().mockResolvedValue(null),
@@ -51,6 +52,7 @@ const busEventos = vi.hoisted(() => {
 })
 
 vi.mock('@tauri-apps/api/event', () => ({ emit: busEventos.emit, listen: busEventos.listen }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(undefined) }))
 
 const { prewarm, prepareFromUserGesture, playFocusEndChime, playBreakEndChime, playTestChime } =
   vi.hoisted(() => ({
@@ -121,6 +123,8 @@ const ventanas = vi.hoisted(() => {
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({
     label: ventanas.estado.etiquetaActual,
+    listen: vi.fn().mockResolvedValue(() => {}),
+    onScaleChanged: vi.fn().mockResolvedValue(() => {}),
     onCloseRequested: (handler: (event: unknown) => unknown) => {
       ventanas.registrarCierre(handler)
       return Promise.resolve(() => {})
@@ -178,6 +182,22 @@ describe('pomodoro store', () => {
     expect(store.session.endsAt).toBeNull()
     expect(store.session.phase).toBe('focus')
     expect(store.remainingMs).toBe(defaultPomodoroSettings.focusMinutes * 60_000)
+  })
+
+  it('al abrir no reproduce una alarma de una fase que expiró con la app cerrada', async () => {
+    vi.mocked(db.loadConfig).mockImplementation(async (key) =>
+      key === POMODORO_SESSION_KEY
+        ? JSON.stringify(
+            session({ isRunning: true, endsAt: '2026-09-01T11:59:00.000Z', remainingMs: null })
+          )
+        : null
+    )
+    const store = usePomodoroStore()
+    await store.load()
+
+    expect(store.session.phase).toBe('shortBreak')
+    expect(playFocusEndChime).not.toHaveBeenCalled()
+    expect(playBreakEndChime).not.toHaveBeenCalled()
   })
 
   it('starts, pauses, and resumes using timestamp-based remaining time', async () => {
@@ -890,7 +910,13 @@ describe('pomodoro: el aviso de fin de fase suena una sola vez', () => {
 
     expect(db.saveConfig).toHaveBeenCalledWith(
       'pomodoro-mini-window',
-      JSON.stringify({ isOpen: false, x: null, y: null, width: null, height: null })
+      JSON.stringify({
+        isOpen: false,
+        x: null,
+        y: null,
+        width: POMODORO_ORB_DEFAULT_DIAMETER,
+        height: POMODORO_ORB_DEFAULT_DIAMETER,
+      })
     )
   })
 

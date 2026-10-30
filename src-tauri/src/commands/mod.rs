@@ -14,3 +14,4 @@ pub mod notes;
 pub mod oauth;
 pub mod tasks;
 pub mod weekly_schedule;
+pub mod window_shape;

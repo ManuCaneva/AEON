@@ -5,7 +5,7 @@ import PomodoroRing from '@/components/pomodoro/PomodoroRing.vue'
 import { usePomodoroStore } from '@/stores/pomodoro'
 import { formatRemainingTime, getPhaseDurationMs, getProgressFraction } from '@/lib/pomodoro'
 
-const props = defineProps<{ testIdPrefix: string }>()
+const props = defineProps<{ testIdPrefix: string; ringWidth?: number }>()
 
 const pomodoro = usePomodoroStore()
 
@@ -35,6 +35,7 @@ function testId(suffix: string): string {
     class="pomodoro-circle aspect-square p-0"
     :phase="pomodoro.session.phase"
     :progress="progress"
+    :ring-width="ringWidth"
   >
     <div
       :data-testid="testId('disc')"

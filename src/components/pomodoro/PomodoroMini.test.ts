@@ -1,168 +1,255 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
-import PomodoroMini from './PomodoroMini.vue'
-import { hasRawPaletteColor } from '@/test/colorGuard'
-import { computedTextColors, themeRgb } from '@/test/computedColors'
-import { createPomodoroState } from '@/test/pomodoroState'
-import { DEFAULT_THEME } from '@/lib/themes'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+import type { Component } from 'vue'
 
-const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
-const mockStart = vi.fn().mockResolvedValue(undefined)
-const mockPause = vi.fn().mockResolvedValue(undefined)
-const mockReset = vi.fn().mockResolvedValue(undefined)
-const mockSkip = vi.fn().mockResolvedValue(undefined)
-
-let pomodoroState = createPomodoroState()
-
-vi.mock('@/stores/pomodoro', () => ({
-  usePomodoroStore: () => ({
-    ...pomodoroState,
-    get remainingMs() {
-      return pomodoroState.remainingMs
-    },
-    prepareAudio: mockPrepareAudio,
-    start: mockStart,
-    pause: mockPause,
-    reset: mockReset,
-    skip: mockSkip,
-  }),
+const h = vi.hoisted(() => ({
+  startDragging: vi.fn(),
+  closeWindow: vi.fn(),
+  showInMain: vi.fn(),
+  applyShape: vi.fn(async () => {}),
+  pointer: null as ((inside: boolean) => void) | null,
+  scaleChanged: null as (() => void) | null,
+  unlisten: vi.fn(),
+  unlistenScale: vi.fn(),
 }))
 
+vi.mock('@/lib/pomodoroMiniWindow', () => ({
+  startDraggingPomodoroMiniWindow: h.startDragging,
+  closePomodoroMiniWindow: h.closeWindow,
+  applyPomodoroMiniWindowShape: h.applyShape,
+  listenPomodoroMiniPointer: async (handler: (inside: boolean) => void) => {
+    h.pointer = handler
+    return h.unlisten
+  },
+  listenPomodoroMiniScaleChanged: async (handler: () => void) => {
+    h.scaleChanged = handler
+    return h.unlistenScale
+  },
+}))
+
+vi.mock('@/lib/pomodoroMainWindow', () => ({
+  showPomodoroInMainWindow: h.showInMain,
+}))
+
+import PomodoroMini from './PomodoroMini.vue'
+
+enableAutoUnmount(afterEach)
+
+const DiscStub: Component = {
+  template: `
+    <div data-testid="disc-stub">
+      <div class="pomodoro-countdown" data-testid="pomodoro-mini-countdown">25:00</div>
+      <div class="pomodoro-controls" data-testid="pomodoro-mini-controls">
+        <button data-testid="pomodoro-mini-reset">reset</button>
+        <button data-testid="pomodoro-mini-toggle">toggle</button>
+      </div>
+    </div>
+  `,
+}
+
+const PillStub: Component = {
+  emits: ['go', 'close'],
+  template: `
+    <div data-testid="pill-stub">
+      <button data-testid="pill-go" @click="$emit('go')">go</button>
+      <button data-testid="pill-close" @click="$emit('close')">close</button>
+    </div>
+  `,
+}
+
+function montar() {
+  return mount(PomodoroMini, {
+    global: { stubs: { PomodoroDisc: DiscStub, PomodoroPill: PillStub } },
+  })
+}
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  h.startDragging.mockReset()
+  h.closeWindow.mockReset().mockResolvedValue(undefined)
+  h.showInMain.mockReset().mockResolvedValue(undefined)
+  h.applyShape.mockReset().mockResolvedValue(undefined)
+  h.pointer = null
+  h.scaleChanged = null
+  h.unlisten.mockReset()
+  h.unlistenScale.mockReset()
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
 describe('PomodoroMini', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    mockPrepareAudio.mockClear()
-    mockStart.mockClear()
-    mockPause.mockClear()
-    mockReset.mockClear()
-    mockSkip.mockClear()
-    pomodoroState = createPomodoroState()
+  it('reaplica el recorte al cambiar el DPI sin revelar la pastilla oculta', async () => {
+    montar()
+    await vi.advanceTimersByTimeAsync(0)
+    h.applyShape.mockClear()
+    h.scaleChanged?.()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(h.applyShape).toHaveBeenLastCalledWith(0)
   })
 
-  it('replica el widget: título, disco con anillo, cuenta regresiva y controles, sin configuración', () => {
-    const wrapper = mount(PomodoroMini)
+  it('monta el disco y deja la pastilla inactiva y oculta en reposo', () => {
+    const wrapper = montar()
 
-    expect(wrapper.get('[data-testid="pomodoro-mini-header"]').text()).toContain('Pomodoro')
-    expect(wrapper.get('[data-testid="pomodoro-mini-countdown"]').text()).toBe('25:00')
-    expect(wrapper.get('[data-testid="pomodoro-mini-progress"]').attributes('role')).toBe(
-      'progressbar'
-    )
+    expect(wrapper.get('[data-testid="pomodoro-mini"]').classes()).toContain('pomodoro-orb')
+    expect(wrapper.find('[data-testid="pomodoro-mini-circle-area"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="disc-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="pill-stub"]').exists()).toBe(true)
 
-    const disc = wrapper.get('[data-testid="pomodoro-mini-disc"]')
-    const controls = disc.get('[data-testid="pomodoro-mini-controls"]')
-    const children = controls.element.children
-    expect(children[0].getAttribute('data-testid')).toBe('pomodoro-mini-reset')
-    expect(children[1].getAttribute('data-testid')).toBe('pomodoro-mini-toggle')
-    expect(children[2].getAttribute('data-testid')).toBe('pomodoro-mini-skip')
-
-    expect(wrapper.find('[data-testid="pomodoro-settings"]').exists()).toBe(false)
+    const pill = wrapper.get('[data-testid="pomodoro-mini-pill"]')
+    expect(pill.attributes('aria-hidden')).toBe('true')
+    expect(pill.attributes('inert')).toBeDefined()
   })
 
-  it('escala su contenido igual que el widget', () => {
-    const wrapper = mount(PomodoroMini)
+  it('mantiene la pastilla mientras hay hover y la oculta un segundo después de salir', async () => {
+    const wrapper = montar()
     const root = wrapper.get('[data-testid="pomodoro-mini"]')
-
-    expect(root.classes()).toContain('container-widget')
-    expect(root.attributes('style')).toContain('container-type')
-
-    const area = wrapper.get('[data-testid="pomodoro-mini-circle-area"]')
-    expect(area.attributes('style')).toContain('container-type: size')
-    expect(area.element.children).toHaveLength(1)
-    expect(area.element.children[0].getAttribute('data-testid')).toBe('pomodoro-mini-progress')
+    const pill = wrapper.get('[data-testid="pomodoro-mini-pill"]')
+    await root.trigger('mouseenter')
+    expect(pill.attributes('aria-hidden')).toBe('false')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(pill.attributes('aria-hidden')).toBe('false')
+    expect(h.applyShape).toHaveBeenLastCalledWith(1)
+    await root.trigger('mouseleave')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(pill.attributes('aria-hidden')).toBe('false')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(pill.attributes('aria-hidden')).toBe('true')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(h.applyShape).toHaveBeenLastCalledWith(0)
+    wrapper.unmount()
   })
 
-  it('el anillo usa el token primario en enfoque y success en descansos', async () => {
-    const wrapper = mount(PomodoroMini)
-    const progress = wrapper.get('[data-testid="pomodoro-mini-progress"]')
-    expect((progress.attributes('style') ?? '') as string).toContain('rgb(var(--color-primary)')
-
-    ;(pomodoroState.session as { phase: string }).phase = 'shortBreak'
-    await wrapper.vm.$nextTick()
-    expect((progress.attributes('style') ?? '') as string).toContain('rgb(var(--color-success)')
-    expect((progress.attributes('style') ?? '') as string).not.toContain('rgb(var(--color-primary)')
+  it('permite cruzar el espacio entre disco y pastilla sin ocultarla', async () => {
+    const wrapper = montar()
+    const root = wrapper.get('[data-testid="pomodoro-mini"]')
+    await root.trigger('mouseenter')
+    await root.trigger('mouseleave')
+    await vi.advanceTimersByTimeAsync(400)
+    await root.trigger('mouseenter')
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill"]').attributes('aria-hidden')).toBe(
+      'false'
+    )
+    wrapper.unmount()
   })
 
-  it('la cuenta regresiva sigue al store compartido, sin reloj propio', async () => {
-    const wrapper = mount(PomodoroMini)
-    expect(wrapper.get('[data-testid="pomodoro-mini-countdown"]').text()).toBe('25:00')
-
-    pomodoroState.remainingMs = 24 * 60_000 + 58_000
-    await wrapper.vm.$nextTick()
-    expect(wrapper.get('[data-testid="pomodoro-mini-countdown"]').text()).toBe('24:58')
+  it('no oculta los controles mientras el teclado tiene foco dentro', async () => {
+    const wrapper = montar()
+    const root = wrapper.get('[data-testid="pomodoro-mini"]')
+    await root.trigger('focusin')
+    await root.trigger('mouseleave')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill"]').attributes('inert')).toBeUndefined()
+    await root.trigger('focusout')
+    await vi.advanceTimersByTimeAsync(1250)
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill"]').attributes('aria-hidden')).toBe('true')
+    wrapper.unmount()
   })
 
-  it('los controles delegan en el store compartido', async () => {
-    const wrapper = mount(PomodoroMini)
-
-    await wrapper.get('[data-testid="pomodoro-mini-reset"]').trigger('click')
-    expect(mockReset).toHaveBeenCalledOnce()
-
-    await wrapper.get('[data-testid="pomodoro-mini-skip"]').trigger('click')
-    expect(mockSkip).toHaveBeenCalledOnce()
-
-    await wrapper.get('[data-testid="pomodoro-mini-toggle"]').trigger('click')
-    expect(mockPrepareAudio).toHaveBeenCalledOnce()
-    expect(mockStart).toHaveBeenCalledOnce()
-
-    mockPrepareAudio.mockClear()
-    mockStart.mockClear()
-    pomodoroState.session.isRunning = true
-    await wrapper.vm.$nextTick()
-
-    await wrapper.get('[data-testid="pomodoro-mini-toggle"]').trigger('click')
-    expect(mockPause).toHaveBeenCalledOnce()
-    expect(mockPrepareAudio).not.toHaveBeenCalled()
+  it('oculta la pastilla al salir y cambiar de aplicación aunque el control conserve foco DOM', async () => {
+    const wrapper = montar()
+    const root = wrapper.get('[data-testid="pomodoro-mini"]')
+    await root.trigger('focusin')
+    await root.trigger('mouseleave')
+    window.dispatchEvent(new Event('blur'))
+    await vi.advanceTimersByTimeAsync(1300)
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill"]').attributes('inert')).toBeDefined()
+    expect(h.applyShape).toHaveBeenLastCalledWith(0)
   })
 
-  it('arranca el timer aunque la preparación de audio falle', async () => {
-    mockPrepareAudio.mockRejectedValueOnce(new Error('WebKitGTK audio unavailable'))
-    const wrapper = mount(PomodoroMini)
-
-    await wrapper.get('[data-testid="pomodoro-mini-toggle"]').trigger('click')
-    await wrapper.vm.$nextTick()
-    await new Promise((r) => setTimeout(r, 0))
-    expect(mockStart).toHaveBeenCalledOnce()
+  it('cancela el ocultamiento y la animación al desmontar', async () => {
+    const wrapper = montar()
+    const root = wrapper.get('[data-testid="pomodoro-mini"]')
+    await root.trigger('mouseenter')
+    await root.trigger('mouseleave')
+    wrapper.unmount()
+    h.applyShape.mockClear()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(h.applyShape).not.toHaveBeenCalled()
   })
 
-  it('el header queda accionable para la acción que defina la ventana', async () => {
-    const wrapper = mount(PomodoroMini)
-    const header = wrapper.get('[data-testid="pomodoro-mini-header"]')
-    const title = wrapper.get('[data-testid="pomodoro-mini-header-title"]')
-
-    expect(title.attributes('aria-label')).toBe('Ir a la página Pomodoro')
-    expect(header.attributes('role')).toBeUndefined()
-    expect(header.attributes('tabindex')).toBeUndefined()
-
-    await header.trigger('click')
-    expect(wrapper.emitted('header-activate')).toHaveLength(1)
-
-    await title.trigger('click')
-    expect(wrapper.emitted('header-activate')).toHaveLength(2)
-
-    await title.trigger('keydown', { key: 'Enter' })
-    await title.trigger('keydown', { key: ' ' })
-    expect(wrapper.emitted('header-activate')).toHaveLength(4)
-
-    await title.trigger('keydown', { key: 'Escape' })
-    expect(wrapper.emitted('header-activate')).toHaveLength(4)
+  it('usa la salida nativa cuando WebKitGTK no emite mouseleave', async () => {
+    const wrapper = montar()
+    await wrapper.get('[data-testid="pomodoro-mini"]').trigger('mouseenter')
+    h.pointer?.(false)
+    await vi.advanceTimersByTimeAsync(1300)
+    expect(wrapper.get('[data-testid="pomodoro-mini-pill"]').attributes('aria-hidden')).toBe('true')
+    wrapper.unmount()
+    expect(h.unlisten).toHaveBeenCalledTimes(1)
+    expect(h.unlistenScale).toHaveBeenCalledTimes(1)
   })
 
-  it('el header muestra cursor pointer y el título se ilumina en hover, igual que en el widget', async () => {
-    const wrapper = mount(PomodoroMini, { attachTo: document.body })
-    const header = wrapper.get('[data-testid="pomodoro-mini-header"]')
-    const title = header.get('.text-card-title').element
-
-    expect(header.classes()).toContain('cursor-pointer')
-    expect(header.classes()).toContain('group')
-
-    const { rest, hover } = await computedTextColors(title)
-    expect(rest).toBe(themeRgb(DEFAULT_THEME, 'ink'))
-    expect(hover).toBe(themeRgb(DEFAULT_THEME, 'primary'))
+  it('respeta movimiento reducido sin frames de animación', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    )
+    const wrapper = montar()
+    await wrapper.get('[data-testid="pomodoro-mini"]').trigger('mouseenter')
+    expect(h.applyShape).toHaveBeenLastCalledWith(1)
+    const calls = h.applyShape.mock.calls.length
+    await vi.advanceTimersByTimeAsync(300)
+    expect(h.applyShape).toHaveBeenCalledTimes(calls)
   })
 
-  it('no usa colores de paleta cruda de Tailwind', () => {
-    const wrapper = mount(PomodoroMini)
-    expect(hasRawPaletteColor(wrapper.html())).toBe(false)
+  it('usa un anillo más grueso para que el borde se vea en el disco chico', () => {
+    const wrapper = montar()
+
+    expect(wrapper.get('[data-testid="disc-stub"]').attributes('ring-width')).toBe('4')
+  })
+
+  it('inicia el arrastre nativo desde el disco sin ocultar la pastilla', async () => {
+    const wrapper = montar()
+
+    await wrapper
+      .get('[data-testid="pomodoro-mini-circle-area"]')
+      .trigger('mousedown', { button: 0 })
+    window.dispatchEvent(new MouseEvent('mouseup'))
+
+    expect(h.startDragging).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="pill-stub"]').exists()).toBe(true)
+  })
+
+  it('no inicia el arrastre desde botones, controles ni el contador', async () => {
+    const wrapper = montar()
+
+    for (const testid of [
+      'pomodoro-mini-reset',
+      'pomodoro-mini-toggle',
+      'pomodoro-mini-countdown',
+    ]) {
+      await wrapper.get(`[data-testid="${testid}"]`).trigger('mousedown', { button: 0 })
+    }
+
+    expect(h.startDragging).not.toHaveBeenCalled()
+  })
+
+  it('ignora botones que no son el principal', async () => {
+    const wrapper = montar()
+
+    await wrapper
+      .get('[data-testid="pomodoro-mini-circle-area"]')
+      .trigger('mousedown', { button: 2 })
+
+    expect(h.startDragging).not.toHaveBeenCalled()
+  })
+
+  it('conecta los controles de la pastilla con ir a la app y cerrar', async () => {
+    const wrapper = montar()
+
+    await wrapper.get('[data-testid="pill-go"]').trigger('click')
+    await wrapper.get('[data-testid="pill-close"]').trigger('click')
+
+    expect(h.showInMain).toHaveBeenCalledTimes(1)
+    expect(h.closeWindow).toHaveBeenCalledTimes(1)
   })
 })

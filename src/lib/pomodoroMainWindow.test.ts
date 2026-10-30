@@ -35,15 +35,17 @@ describe('ventana principal pedida desde la ventana mini', () => {
     vi.mocked(emit).mockClear()
   })
 
-  it('con la ventana principal abierta, la enfoca en la página Pomodoro', async () => {
+  it('con la ventana principal minimizada, la restaura en la página Pomodoro sin duplicarla', async () => {
+    const unminimize = vi.fn().mockResolvedValue(undefined)
     const show = vi.fn().mockResolvedValue(undefined)
     const setFocus = vi.fn().mockResolvedValue(undefined)
-    getByLabel.mockResolvedValue({ show, setFocus })
+    getByLabel.mockResolvedValue({ unminimize, show, setFocus })
 
     await showPomodoroInMainWindow()
 
     expect(getByLabel).toHaveBeenCalledWith('main')
     expect(emit).toHaveBeenCalledWith('pomodoro-show-in-main')
+    expect(unminimize).toHaveBeenCalledOnce()
     expect(show).toHaveBeenCalledOnce()
     expect(setFocus).toHaveBeenCalledOnce()
     expect(constructions).toHaveLength(0)
