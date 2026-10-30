@@ -74,9 +74,9 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const activeTasks = computed(() => tasks.value.filter((t) => t.archived_at === null))
 
-  const archivedTasks = computed(() => tasks.value.filter((t) => t.archived_at !== null))
-
   const pendingTasks = computed(() => activeTasks.value.filter((t) => t.status !== 'done'))
+
+  const doneTasks = computed(() => activeTasks.value.filter((t) => t.status === 'done'))
 
   /**
    * Claves de los eventos que ya representa una tarea en la agenda, para no
@@ -163,37 +163,23 @@ export const useTasksStore = defineStore('tasks', () => {
     tasks.value = tasks.value.filter((t) => t.id !== id)
   }
 
-  async function archiveTask(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.archiveTask(id, now)
-    tasks.value = tasks.value.map((t) =>
-      t.id === id ? { ...t, archived_at: now, updated_at: now } : t
-    )
-  }
-
-  async function restoreTask(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.restoreTask(id, now)
-    tasks.value = tasks.value.map((t) =>
-      t.id === id ? { ...t, archived_at: null, updated_at: now } : t
-    )
-  }
-
+  /**
+   * Marca la tarea como terminada. No la archiva ni la saca de la lista: la
+   * sección de tareas muestra las terminadas al final y se pueden desmarcar.
+   */
   async function completeTask(id: string): Promise<void> {
     const now = nowIsoUtc()
     await db.updateTask(id, { status: 'done' }, now)
-    await db.archiveTask(id, now)
     tasks.value = tasks.value.map((t) =>
-      t.id === id ? { ...t, status: 'done' as const, archived_at: now, updated_at: now } : t
+      t.id === id ? { ...t, status: 'done' as const, updated_at: now } : t
     )
   }
 
   async function uncompleteTask(id: string): Promise<void> {
     const now = nowIsoUtc()
     await db.updateTask(id, { status: 'doing' }, now)
-    await db.restoreTask(id, now)
     tasks.value = tasks.value.map((t) =>
-      t.id === id ? { ...t, status: 'doing' as const, archived_at: null, updated_at: now } : t
+      t.id === id ? { ...t, status: 'doing' as const, updated_at: now } : t
     )
   }
 
@@ -286,8 +272,8 @@ export const useTasksStore = defineStore('tasks', () => {
     loading,
     lastError,
     activeTasks,
-    archivedTasks,
     pendingTasks,
+    doneTasks,
     representedEventKeys,
     linkedEventItems,
     reset,
@@ -295,8 +281,6 @@ export const useTasksStore = defineStore('tasks', () => {
     createTask,
     updateTask,
     deleteTask,
-    archiveTask,
-    restoreTask,
     completeTask,
     uncompleteTask,
     toggleStep,

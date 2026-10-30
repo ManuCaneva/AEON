@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GoalContextMenu from './GoalContextMenu.vue'
 
 const goalsMock = {
-  archiveGoal: vi.fn().mockResolvedValue(undefined),
-  restoreGoal: vi.fn().mockResolvedValue(undefined),
+  deleteGoal: vi.fn().mockResolvedValue(undefined),
 }
 const uiMock = {
   openEditGoal: vi.fn(),
@@ -22,9 +21,9 @@ const mockGoal = {
   id: 'goal-1',
   title: 'Test Goal',
   description: null,
-  color: '#00ff00',
+  color: '#ff0000',
   target: 10,
-  unit: null,
+  unit: 'horas',
   direction: 'up' as const,
   frequency: { type: 'daily' as const },
   sort_order: 0,
@@ -33,37 +32,64 @@ const mockGoal = {
   archived_at: null,
 }
 
+function q(testid: string): HTMLElement | null {
+  return document.body.querySelector(`[data-testid="${testid}"]`)
+}
+
 describe('GoalContextMenu', () => {
+  let wrapper: VueWrapper
+
   beforeEach(() => {
     setActivePinia(createPinia())
-    goalsMock.archiveGoal.mockClear()
-    goalsMock.restoreGoal.mockClear()
+    goalsMock.deleteGoal.mockClear()
     uiMock.openEditGoal.mockClear()
     uiMock.closeGoalMenu.mockClear()
   })
 
-  it('renders via EntityContextMenu', () => {
-    const wrapper = mount(GoalContextMenu, {
+  afterEach(() => {
+    wrapper?.unmount()
+  })
+
+  function mountMenu() {
+    wrapper = mount(GoalContextMenu, {
       props: { goal: mockGoal },
+      attachTo: document.body,
     })
-    expect(wrapper.findComponent({ name: 'EntityContextMenu' }).exists()).toBe(true)
+    return wrapper
+  }
+
+  it('renders via EntityContextMenu', () => {
+    const w = mountMenu()
+    expect(w.findComponent({ name: 'EntityContextMenu' }).exists()).toBe(true)
   })
 
   it('passes correct props to EntityContextMenu', () => {
-    const wrapper = mount(GoalContextMenu, {
-      props: { goal: mockGoal },
-    })
-    const ctx = wrapper.findComponent({ name: 'EntityContextMenu' })
+    const w = mountMenu()
+    const ctx = w.findComponent({ name: 'EntityContextMenu' })
     expect(ctx.props('entityId')).toBe('goal-1')
-    expect(ctx.props('isArchived')).toBe(false)
     expect(ctx.props('triggerDataAttr')).toBe('data-goal-menu-trigger')
+    expect(ctx.props('confirmTitle')).toBe('¿Eliminar objetivo?')
   })
 
-  it('passes isArchived=true when goal is archived', () => {
-    const wrapper = mount(GoalContextMenu, {
-      props: { goal: { ...mockGoal, archived_at: '2026-01-01T00:00:00Z' } },
-    })
-    const ctx = wrapper.findComponent({ name: 'EntityContextMenu' })
-    expect(ctx.props('isArchived')).toBe(true)
+  it('Eliminar pide confirmación y recién ahí borra el objetivo', async () => {
+    mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    expect(goalsMock.deleteGoal).not.toHaveBeenCalled()
+
+    q('entity-delete-confirm-yes')!.click()
+    await flushPromises()
+    expect(goalsMock.deleteGoal).toHaveBeenCalledWith('goal-1')
+    expect(uiMock.closeGoalMenu).toHaveBeenCalled()
+  })
+
+  it('cancelar no borra el objetivo', async () => {
+    mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    q('entity-delete-confirm-no')!.click()
+    await flushPromises()
+    expect(goalsMock.deleteGoal).not.toHaveBeenCalled()
+    expect(uiMock.closeGoalMenu).not.toHaveBeenCalled()
   })
 })

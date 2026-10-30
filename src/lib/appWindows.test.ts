@@ -24,14 +24,18 @@ describe('ventanas de la app', () => {
     await expect(windowExists('main')).resolves.toBe(false)
   })
 
-  it('enfocar la trae al frente y la enfoca', async () => {
+  it('enfocar restaura la ventana antes de mostrarla y enfocarla', async () => {
+    const unminimize = vi.fn().mockResolvedValue(undefined)
     const show = vi.fn().mockResolvedValue(undefined)
     const setFocus = vi.fn().mockResolvedValue(undefined)
-    getByLabel.mockResolvedValue({ show, setFocus })
+    getByLabel.mockResolvedValue({ unminimize, show, setFocus })
 
     await expect(focusWindow('main')).resolves.toBe(true)
+    expect(unminimize).toHaveBeenCalledOnce()
     expect(show).toHaveBeenCalledOnce()
     expect(setFocus).toHaveBeenCalledOnce()
+    expect(unminimize.mock.invocationCallOrder[0]).toBeLessThan(show.mock.invocationCallOrder[0])
+    expect(show.mock.invocationCallOrder[0]).toBeLessThan(setFocus.mock.invocationCallOrder[0])
   })
 
   it('enfocar una ventana que no existe no hace nada y lo avisa', async () => {

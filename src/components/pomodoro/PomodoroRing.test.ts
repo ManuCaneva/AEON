@@ -4,7 +4,11 @@ import PomodoroRing from './PomodoroRing.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
 
 function mountRing(
-  props: { phase?: 'focus' | 'shortBreak' | 'longBreak'; progress?: number } = {}
+  props: {
+    phase?: 'focus' | 'shortBreak' | 'longBreak'
+    progress?: number
+    ringWidth?: number
+  } = {}
 ) {
   return mount(PomodoroRing, {
     props: { phase: 'focus', progress: 0, ...props },
@@ -57,6 +61,21 @@ describe('PomodoroRing', () => {
     const descansoLargo = mountRing({ phase: 'longBreak', progress: 0.25 })
     expect(descansoLargo.get('.pomodoro-ring-root').attributes('style') ?? '').toContain(
       'rgb(var(--color-success)'
+    )
+  })
+
+  it('el grosor del anillo se adapta al radio para no recortarse en el viewBox', () => {
+    const fino = mountRing()
+    expect(fino.get('.pomodoro-ring-track').attributes('r')).toBe('48.75')
+    expect(fino.get('.pomodoro-ring-root').attributes('style')).toContain(
+      '--pomodoro-ring-width: 2.5'
+    )
+
+    const grueso = mountRing({ ringWidth: 4 })
+    expect(grueso.get('.pomodoro-ring-track').attributes('r')).toBe('48')
+    expect(grueso.get('.pomodoro-ring-progress').attributes('r')).toBe('48')
+    expect(grueso.get('.pomodoro-ring-root').attributes('style')).toContain(
+      '--pomodoro-ring-width: 4'
     )
   })
 

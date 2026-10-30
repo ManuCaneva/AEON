@@ -13,12 +13,13 @@ export async function windowExists(label: string): Promise<boolean> {
 }
 
 /**
- * Trae la ventana al frente y la enfoca. Devuelve false si no existe, para que
- * quien la llama decida si la crea.
+ * Restaura la ventana minimizada, la muestra y la enfoca. Devuelve false si no
+ * existe, para que quien la llama decida si la crea.
  */
 export async function focusWindow(label: string): Promise<boolean> {
   const target = await WebviewWindow.getByLabel(label)
   if (target === null || target === undefined) return false
+  await target.unminimize()
   await target.show()
   await target.setFocus()
   return true

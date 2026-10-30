@@ -6,6 +6,8 @@ const props = defineProps<{
   phase: Exclude<PomodoroPhase, 'idle'>
   /** Fracción de la fase transcurrida (0..1), continua: no se redondea. */
   progress: number
+  /** Grosor del anillo en unidades del viewBox (0..100). */
+  ringWidth?: number
 }>()
 
 function clamp01(value: number): number {
@@ -14,6 +16,12 @@ function clamp01(value: number): number {
 
 const ringToken = computed(() => (props.phase === 'focus' ? 'primary' : 'success'))
 const progressPercent = computed(() => Math.round(clamp01(props.progress) * 100))
+/**
+ * El radio se corre hacia adentro la mitad del grosor para que el trazo entre
+ * completo en el viewBox: con 4 px el borde exterior queda justo en el límite
+ * y no se recorta.
+ */
+const ringRadius = computed(() => 50 - (props.ringWidth ?? 2.5) / 2)
 /**
  * El avance se dibuja como `stroke-dashoffset` sobre un anillo de pathLength
  * 100: valores continuos que la transición de CSS interpola, sin rAF. Va como
@@ -31,14 +39,17 @@ const dashOffset = computed(() =>
     aria-valuemin="0"
     aria-valuemax="100"
     :aria-valuenow="progressPercent"
-    :style="{ '--pomodoro-ring': `rgb(var(--color-${ringToken}))` }"
+    :style="{
+      '--pomodoro-ring': `rgb(var(--color-${ringToken}))`,
+      '--pomodoro-ring-width': ringWidth ?? 2.5,
+    }"
   >
     <svg class="pomodoro-ring" viewBox="0 0 100 100" aria-hidden="true">
       <circle
         class="pomodoro-ring-track"
         cx="50"
         cy="50"
-        r="48.75"
+        :r="ringRadius"
         pathLength="100"
         :style="{ stroke: 'rgb(var(--color-surface-3))' }"
       />
@@ -46,7 +57,7 @@ const dashOffset = computed(() =>
         class="pomodoro-ring-progress"
         cx="50"
         cy="50"
-        r="48.75"
+        :r="ringRadius"
         pathLength="100"
         :style="{ strokeDashoffset: dashOffset }"
       />

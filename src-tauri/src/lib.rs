@@ -44,8 +44,7 @@ pub fn run() {
             commands::habits::create_habit,
             commands::habits::list_habits,
             commands::habits::update_habit,
-            commands::habits::archive_habit,
-            commands::habits::restore_habit,
+            commands::habits::delete_habit,
             commands::logs::delete_log,
             commands::logs::upsert_habit_log,
             commands::logs::list_logs_in_range,
@@ -53,8 +52,6 @@ pub fn run() {
             commands::tasks::list_tasks,
             commands::tasks::update_task,
             commands::tasks::delete_task,
-            commands::tasks::archive_task,
-            commands::tasks::restore_task,
             commands::exams::create_exam,
             commands::exams::list_exams,
             commands::exams::update_exam,
@@ -67,8 +64,6 @@ pub fn run() {
             commands::goals::list_goals,
             commands::goals::update_goal,
             commands::goals::delete_goal,
-            commands::goals::archive_goal,
-            commands::goals::restore_goal,
             commands::goal_logs::upsert_goal_log,
             commands::goal_logs::delete_goal_log,
             commands::goal_logs::list_goal_logs_in_range,
@@ -81,6 +76,8 @@ pub fn run() {
             commands::weekly_schedule::delete_schedule_block,
             commands::weekly_schedule::delete_schedule_slot,
             commands::oauth::start_oauth_server,
+            commands::window_shape::set_pomodoro_mini_shape,
+            commands::window_shape::watch_pomodoro_mini_pointer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,32 +1,74 @@
 <script setup lang="ts">
-import Container from '@/components/ui/Container.vue'
-import PomodoroDisc from '@/components/pomodoro/PomodoroDisc.vue'
-import PomodoroHeader from '@/components/pomodoro/PomodoroHeader.vue'
+import PomodoroDisc from './PomodoroDisc.vue'
+import PomodoroPill from './PomodoroPill.vue'
+import {
+  POMODORO_MINI_RING_WIDTH,
+  POMODORO_PILL_GAP,
+  POMODORO_PILL_HEIGHT,
+  POMODORO_PILL_SHADOW_ROOM,
+} from '@/lib/pomodoroMiniLayout'
+import { closePomodoroMiniWindow, startDraggingPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
+import { showPomodoroInMainWindow } from '@/lib/pomodoroMainWindow'
+import { usePomodoroMiniPill } from '@/composables/usePomodoroMiniPill'
 
 /**
- * Acción del header: la define la ventana que hospede la mini. Se expone como
- * evento para no atar la réplica a un comportamiento concreto.
+ * La mascota del pomodoro: disco y pastilla viven en la **misma ventana**, así
+ * el arrastre nativo mueve las dos piezas en lockstep. Solo la máscara de la
+ * pastilla cambia al entrar/salir; la ventana nunca cambia de tamaño.
  */
-const emit = defineEmits<{ 'header-activate': [] }>()
+const { visible: pillVisible, onEnter, onLeave, onFocusIn, onFocusOut } = usePomodoroMiniPill()
+
+/** El disco arrastra la ventana; los botones del temporizador se quedan clickeables. */
+function onOrbMouseDown(event: MouseEvent): void {
+  if (event.button !== 0) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button, .pomodoro-controls, .pomodoro-countdown')) return
+
+  startDraggingPomodoroMiniWindow()
+}
+
+function onGo(): void {
+  void showPomodoroInMainWindow()
+}
+
+function onClose(): void {
+  void closePomodoroMiniWindow()
+}
 </script>
 
 <template>
-  <Container
+  <div
     data-testid="pomodoro-mini"
-    variant="default"
-    glass
-    padding="none"
-    class="container-widget flex h-screen flex-col overflow-hidden"
-    style="container-type: inline-size"
+    class="pomodoro-mini-orb pomodoro-orb flex h-screen w-full select-none flex-col items-center"
+    @mouseenter="onEnter"
+    @mouseleave="onLeave"
+    @focusin="onFocusIn"
+    @focusout="onFocusOut"
   >
-    <PomodoroHeader test-id-prefix="pomodoro-mini" @activate="emit('header-activate')" />
-
     <div
       data-testid="pomodoro-mini-circle-area"
-      class="pomodoro-circle-area flex min-h-0 flex-1 items-center justify-center p-4"
-      style="container-type: size"
+      class="pomodoro-mini-orb-area relative shrink-0"
+      @mousedown="onOrbMouseDown"
     >
-      <PomodoroDisc test-id-prefix="pomodoro-mini" />
+      <PomodoroDisc test-id-prefix="pomodoro-mini" :ring-width="POMODORO_MINI_RING_WIDTH" />
     </div>
-  </Container>
+
+    <div
+      data-testid="pomodoro-mini-pill-area"
+      class="pomodoro-mini-pill-area flex w-full shrink-0 justify-center"
+      :style="{
+        height: `${POMODORO_PILL_GAP + POMODORO_PILL_HEIGHT + POMODORO_PILL_SHADOW_ROOM}px`,
+        paddingTop: `${POMODORO_PILL_GAP}px`,
+      }"
+    >
+      <div
+        data-testid="pomodoro-mini-pill"
+        class="pomodoro-mini-pill"
+        :aria-hidden="!pillVisible"
+        :inert="!pillVisible"
+      >
+        <PomodoroPill @go="onGo" @close="onClose" />
+      </div>
+    </div>
+  </div>
 </template>

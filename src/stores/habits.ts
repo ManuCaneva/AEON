@@ -55,8 +55,6 @@ export const useHabitsStore = defineStore('habits', () => {
   // ── getters ────────────────────────────────────────────────
   const activeHabits = computed(() => habits.value.filter((h) => h.archived_at === null))
 
-  const archivedHabits = computed(() => habits.value.filter((h) => h.archived_at !== null))
-
   const logsByHabit = computed(() => {
     const map = new Map<string, HabitLog[]>()
     for (const log of logs.value) {
@@ -116,20 +114,9 @@ export const useHabitsStore = defineStore('habits', () => {
     return habit
   }
 
-  async function archiveHabit(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.archiveHabit(id, now)
-    habits.value = habits.value.map((h) =>
-      h.id === id ? { ...h, archived_at: now, updated_at: now } : h
-    )
-  }
-
-  async function restoreHabit(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.restoreHabit(id, now)
-    habits.value = habits.value.map((h) =>
-      h.id === id ? { ...h, archived_at: null, updated_at: now } : h
-    )
+  async function deleteHabit(id: string): Promise<void> {
+    await db.deleteHabit(id)
+    habits.value = habits.value.filter((h) => h.id !== id)
   }
 
   // ── acciones: logs ─────────────────────────────────────────
@@ -306,7 +293,6 @@ export const useHabitsStore = defineStore('habits', () => {
     lastError,
     // getters
     activeHabits,
-    archivedHabits,
     logsByHabit,
     completedToday,
     isCompletedToday,
@@ -314,8 +300,7 @@ export const useHabitsStore = defineStore('habits', () => {
     loadHabits,
     createHabit,
     updateHabit,
-    archiveHabit,
-    restoreHabit,
+    deleteHabit,
     // logs
     loadLogsForRange,
     incrementCheckIn,

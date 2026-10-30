@@ -31,7 +31,7 @@ Las novedades se generan solas en el PR a `main`:
    `src/lib/update/notes.ts`.
 
    La IA corre sobre cualquier endpoint compatible con OpenAI. Por defecto usa
-   Gemini (`gemini-2.5-flash`) con la API key del secret **`RELEASE_NOTES_API_KEY`**
+   Gemini (`gemini-3.8-flash`) con la API key del secret **`RELEASE_NOTES_API_KEY`**
    (una key de Google AI Studio alcanza). Se cambia de proveedor con los envs
    `RELEASE_NOTES_API` y `RELEASE_NOTES_MODEL`. **Sin secret, el paso se omite y la
    release cae en auto-notas de GitHub** — la app igual muestra novedades, solo que
