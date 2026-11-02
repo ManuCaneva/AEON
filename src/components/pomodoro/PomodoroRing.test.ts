@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PomodoroRing from './PomodoroRing.vue'
@@ -64,19 +65,34 @@ describe('PomodoroRing', () => {
     )
   })
 
-  it('el grosor del anillo se adapta al radio para no recortarse en el viewBox', () => {
+  it('el anillo rota dentro del SVG para que su borde no dependa de una transformación CSS', () => {
+    const wrapper = mountRing()
+    const svg = wrapper.get('.pomodoro-ring')
+
+    expect(svg.get('g').attributes('transform')).toBe('rotate(-90 50 50)')
+    expect(svg.attributes('style') ?? '').not.toContain('rotate')
+    expect(readFileSync('src/styles/tailwind.css', 'utf8')).not.toMatch(
+      /\.pomodoro-ring\s*\{[^}]*rotate\(/
+    )
+  })
+
+  it('el grosor del anillo se adapta al radio y deja margen para el antialias del borde', () => {
     const fino = mountRing()
-    expect(fino.get('.pomodoro-ring-track').attributes('r')).toBe('48.75')
+    expect(fino.get('.pomodoro-ring-track').attributes('r')).toBe('48')
     expect(fino.get('.pomodoro-ring-root').attributes('style')).toContain(
-      '--pomodoro-ring-width: 2.5'
+      '--pomodoro-ring-width: 3'
     )
 
     const grueso = mountRing({ ringWidth: 4 })
-    expect(grueso.get('.pomodoro-ring-track').attributes('r')).toBe('48')
-    expect(grueso.get('.pomodoro-ring-progress').attributes('r')).toBe('48')
+    expect(grueso.get('.pomodoro-ring-track').attributes('r')).toBe('47.5')
+    expect(grueso.get('.pomodoro-ring-progress').attributes('r')).toBe('47.5')
     expect(grueso.get('.pomodoro-ring-root').attributes('style')).toContain(
       '--pomodoro-ring-width: 4'
     )
+
+    const mini = mountRing({ ringWidth: 4.8 })
+    expect(mini.get('.pomodoro-ring-track').attributes('r')).toBe('47.1')
+    expect(mini.get('.pomodoro-ring-progress').attributes('r')).toBe('47.1')
   })
 
   it('recibe el centro por slot y no usa colores de paleta crudos', () => {

@@ -22,8 +22,8 @@ export const POMODORO_PILL_WIDTH = 64
 export const POMODORO_PILL_GAP = 8
 export const POMODORO_PILL_SHADOW_ROOM = 8
 
-/** Grosor del anillo en el disco chico: 2.5 px se perdía contra el fondo. */
-export const POMODORO_MINI_RING_WIDTH = 4
+/** Grosor del anillo en el disco chico: 20% más que antes para que no se pierda. */
+export const POMODORO_MINI_RING_WIDTH = 4.8
 
 /** Separación por defecto entre la mascota y los bordes del monitor. */
 export const POMODORO_MINI_WINDOW_MARGIN = 24

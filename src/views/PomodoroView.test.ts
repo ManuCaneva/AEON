@@ -15,6 +15,7 @@ function createStore(overrides: Record<string, unknown> = {}) {
       autoStartFocus: false,
       volume: 0.7,
       muted: false,
+      soundId: 'bell',
     },
     session: { phase: 'focus', isRunning: false, completedFocusSessions: 2 },
     loaded: true,

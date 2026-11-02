@@ -16,6 +16,7 @@ export function createPomodoroState() {
       autoStartFocus: false,
       volume: 0.7,
       muted: false,
+      soundId: 'bell',
     },
     session: {
       phase: 'focus' as const,

@@ -17,8 +17,17 @@ describe('pomodoro schemas', () => {
       autoStartFocus: false,
       volume: 0.3,
       muted: false,
+      soundId: 'bell',
     })
     expect(defaultPomodoroSettings).toEqual(PomodoroSettingsSchema.parse({}))
+  })
+
+  it('acepta las alarmas disponibles y vuelve a la campana ante un id desconocido', () => {
+    for (const soundId of ['bell', 'happy-bells', 'interface-back', 'urgent-tone']) {
+      expect(PomodoroSettingsSchema.parse({ soundId }).soundId).toBe(soundId)
+    }
+
+    expect(PomodoroSettingsSchema.parse({ soundId: 'alarma-vieja' }).soundId).toBe('bell')
   })
 
   it('validates settings ranges and active sessions', () => {

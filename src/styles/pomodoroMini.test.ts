@@ -50,8 +50,20 @@ describe('layout de la mascota de una sola ventana', () => {
 
     const button = css.match(/\.pomodoro-mini-orb-area \.pomodoro-btn\s*\{([^}]*)\}/)
     expect(button).not.toBeNull()
-    expect(button![1]).toMatch(/width:\s*16px/)
-    expect(button![1]).toMatch(/height:\s*16px/)
+    expect(button![1]).toMatch(/width:\s*17\.6px/)
+    expect(button![1]).toMatch(/height:\s*17\.6px/)
+
+    const icon = css.match(/\.pomodoro-mini-orb-area \.pomodoro-btn svg\s*\{([^}]*)\}/)
+    expect(icon).not.toBeNull()
+    expect(icon![1]).toMatch(/width:\s*15\.4px/)
+    expect(icon![1]).toMatch(/height:\s*15\.4px/)
+
+    const phase = css.match(/\.pomodoro-mini-orb-area \.pomodoro-disc-phase\s*\{([^}]*)\}/)
+    expect(phase).not.toBeNull()
+    expect(phase![1]).toMatch(/font-size:\s*calc\(9px \* var\(--text-scale\)\)/)
+    // En 100 px la etiqueta en mayúsculas se cruza con el anillo; en minúsculas
+    // entra completa incluso con la escala de texto grande.
+    expect(phase![1]).toMatch(/text-transform:\s*none/)
   })
 
   it('el disco no se compone en una capa que tape el anillo', () => {
