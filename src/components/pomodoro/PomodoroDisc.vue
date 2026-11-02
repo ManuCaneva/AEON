@@ -14,6 +14,9 @@ const progress = computed(() => getProgressFraction(pomodoro.remainingMs, durati
 const toggleLabel = computed(() =>
   pomodoro.session.isRunning ? 'Pausar Pomodoro' : 'Iniciar Pomodoro'
 )
+const phaseLabel = computed(() =>
+  pomodoro.session.phase === 'focus' ? 'Concentración' : 'Descanso'
+)
 
 function toggle() {
   if (pomodoro.session.isRunning) {
@@ -41,6 +44,12 @@ function testId(suffix: string): string {
       :data-testid="testId('disc')"
       class="pomodoro-disc flex flex-col items-center justify-center gap-1.5 rounded-full bg-surface-1"
     >
+      <span
+        :data-testid="testId('disc-phase')"
+        class="pomodoro-disc-phase text-caption font-medium text-ink-subtle"
+      >
+        {{ phaseLabel }}
+      </span>
       <span
         :key="pomodoro.session.phase"
         :data-testid="testId('countdown')"

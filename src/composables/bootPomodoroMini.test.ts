@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 const h = vi.hoisted(() => ({
   track: vi.fn(),
   applyShape: vi.fn(async () => {}),
+  disableZoom: vi.fn(async () => {}),
   show: vi.fn(async () => {}),
   useTheme: vi.fn(),
   uiStore: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('@/stores/pomodoro', () => ({
 vi.mock('@/lib/pomodoroMiniWindow', () => ({
   trackPomodoroMiniWindow: h.track,
   applyPomodoroMiniWindowShape: h.applyShape,
+  disablePomodoroMiniZoom: h.disableZoom,
   showReadyPomodoroMiniWindow: h.show,
 }))
 
@@ -35,6 +37,7 @@ beforeEach(() => {
   document.documentElement.className = ''
   h.track.mockReset()
   h.applyShape.mockReset().mockResolvedValue(undefined)
+  h.disableZoom.mockReset().mockResolvedValue(undefined)
   h.show.mockReset().mockResolvedValue(undefined)
   h.useTheme.mockReset()
   h.uiStore.mockReset()
@@ -79,6 +82,22 @@ describe('bootPomodoroMini', () => {
     expect(h.applyShape.mock.invocationCallOrder[0]).toBeLessThan(
       h.show.mock.invocationCallOrder[0]
     )
+  })
+
+  it('desactiva el zoom nativo antes de mostrar la mini', async () => {
+    await bootPomodoroMini()
+
+    expect(h.disableZoom).toHaveBeenCalledTimes(1)
+    expect(h.disableZoom.mock.invocationCallOrder[0]).toBeLessThan(
+      h.show.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('muestra la mini aunque falle el bloqueo nativo del zoom', async () => {
+    h.disableZoom.mockRejectedValue(new Error('webview unavailable'))
+
+    await expect(bootPomodoroMini()).resolves.toBeUndefined()
+    expect(h.show).toHaveBeenCalledTimes(1)
   })
 
   it('marca la ventana como orb, monta el disco y carga el reloj', async () => {

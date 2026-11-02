@@ -32,6 +32,7 @@
   html.orb-window,
   html.orb-window body {
     background: transparent;
+    touch-action: none;
   }
 
   *:focus-visible {
@@ -398,7 +399,7 @@
 }
 
 .pomodoro-mini-orb-area .pomodoro-countdown {
-  font-size: calc(12px * var(--text-scale));
+  font-size: calc(14px * var(--text-scale));
 }
 
 .pomodoro-mini-orb-area .pomodoro-controls {
@@ -406,8 +407,20 @@
 }
 
 .pomodoro-mini-orb-area .pomodoro-btn {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
+}
+
+.pomodoro-mini-orb-area .pomodoro-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.pomodoro-mini-orb-area .pomodoro-disc-phase {
+  font-size: calc(9px * var(--text-scale));
+  /* A 100 px, «CONCENTRACIÓN» en mayúsculas cruza el anillo interior. Con
+     solo la primera mayúscula entra completa incluso con escala de texto grande. */
+  text-transform: none;
 }
 
 .pomodoro-mini-pill-area {
@@ -438,19 +451,18 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  transform: rotate(-90deg);
   /* Capa decorativa que cubre todo el círculo: sin esto tapa los clicks de
      los controles que viven dentro del disco. */
   pointer-events: none;
 }
 .pomodoro-ring-track {
   fill: none;
-  stroke-width: var(--pomodoro-ring-width, 2.5);
+  stroke-width: var(--pomodoro-ring-width, 3.45);
 }
 .pomodoro-ring-progress {
   fill: none;
   stroke: var(--pomodoro-ring);
-  stroke-width: var(--pomodoro-ring-width, 2.5);
+  stroke-width: var(--pomodoro-ring-width, 3.45);
   stroke-dasharray: 100;
   transition:
     stroke-dashoffset 1s linear,
@@ -458,6 +470,15 @@
 }
 
 /* Entrada del countdown al cambiar de fase */
+.pomodoro-disc-phase {
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.container-widget .pomodoro-disc-phase {
+  font-size: calc(0.6875rem * var(--text-scale));
+}
+
 .pomodoro-fade-in {
   animation: pomodoro-fade 280ms ease-out;
 }
@@ -478,6 +499,15 @@
 .container-widget .pomodoro-countdown {
   font-size: max(calc(1.6875rem * var(--text-scale)), 12cqmin);
 }
+/* Base de los controles antes de los @container: con la misma especificidad,
+   los escalones chicos solo ganan la cascada si están después. */
+.container-widget .pomodoro-controls {
+  gap: max(0.25rem, 2cqmin);
+}
+.container-widget .pomodoro-btn {
+  width: max(1.925rem, 8.8cqmin);
+  height: max(1.925rem, 8.8cqmin);
+}
 /* Contenedor chico del widget del pomodoro: el piso del contador baja junto
    con el disco y los controles se compactan, sin dejar de respetar la escala
    de Configuración. Aplica al widget del dashboard; la mini usa sus propias
@@ -490,8 +520,8 @@
     gap: max(0.125rem, 2cqmin);
   }
   .container-widget .pomodoro-btn {
-    width: max(1.5rem, 8cqmin);
-    height: max(1.5rem, 8cqmin);
+    width: max(1.65rem, 8.8cqmin);
+    height: max(1.65rem, 8.8cqmin);
   }
 }
 /* Escalón para contenedores chicos: el countdown y los controles siguen
@@ -501,8 +531,8 @@
     font-size: max(calc(0.875rem * var(--text-scale)), 12cqmin);
   }
   .container-widget .pomodoro-btn {
-    width: max(1.25rem, 8cqmin);
-    height: max(1.25rem, 8cqmin);
+    width: max(1.375rem, 8.8cqmin);
+    height: max(1.375rem, 8.8cqmin);
   }
 }
 /* Mínimo de un contenedor chico: el último escalón para que el countdown y
@@ -515,16 +545,9 @@
     gap: max(0.0625rem, 2cqmin);
   }
   .container-widget .pomodoro-btn {
-    width: max(1rem, 8cqmin);
-    height: max(1rem, 8cqmin);
+    width: max(1.1rem, 8.8cqmin);
+    height: max(1.1rem, 8.8cqmin);
   }
-}
-.container-widget .pomodoro-controls {
-  gap: max(0.25rem, 2cqmin);
-}
-.container-widget .pomodoro-btn {
-  width: max(1.75rem, 8cqmin);
-  height: max(1.75rem, 8cqmin);
 }
 .container-widget .pomodoro-btn svg {
   width: 45%;

@@ -4,6 +4,7 @@ import PomodoroMini from '@/components/pomodoro/PomodoroMini.vue'
 import { useTheme } from '@/composables/useTheme'
 import {
   applyPomodoroMiniWindowShape,
+  disablePomodoroMiniZoom,
   showReadyPomodoroMiniWindow,
   trackPomodoroMiniWindow,
 } from '@/lib/pomodoroMiniWindow'
@@ -40,6 +41,12 @@ export async function bootPomodoroMini(): Promise<void> {
   await pomodoro.load()
   pomodoro.startTicker()
   await nextTick()
+  try {
+    // El pellizco nativo de WebKitGTK no llega al DOM: se corta en GTK.
+    await disablePomodoroMiniZoom()
+  } catch {
+    // Es una defensa extra: un fallo nativo no debe impedir abrir la mini.
+  }
   // Nunca exponer la superficie rectangular de arranque al compositor.
   await applyPomodoroMiniWindowShape()
   await showReadyPomodoroMiniWindow()

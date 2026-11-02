@@ -78,6 +78,7 @@ pub fn run() {
             commands::oauth::start_oauth_server,
             commands::window_shape::set_pomodoro_mini_shape,
             commands::window_shape::watch_pomodoro_mini_pointer,
+            commands::window_shape::disable_pomodoro_mini_zoom,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

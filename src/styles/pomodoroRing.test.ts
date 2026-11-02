@@ -26,6 +26,14 @@ describe('pomodoro ring (anillo SVG)', () => {
     expect(track).toMatch(/fill:\s*none/)
   })
 
+  it('la rotación vive en el SVG y no en una transformación CSS compuesta', () => {
+    // WebKitGTK puede rasterizar la capa transformada antes que el SVG y dejar
+    // el borde dentado. El grupo SVG se encarga del arranque en las 12.
+    const anillo = rule('.pomodoro-ring')
+    expect(anillo).not.toMatch(/rotate\(/)
+    expect(anillo).not.toMatch(/transform:/)
+  })
+
   it('el anillo es decorativo y no intercepta los clicks de los controles del disco', () => {
     // El SVG cubre todo el círculo y el disco con los botones va dentro de su
     // slot: sin pointer-events: none el overlay posicionado se traga los clicks

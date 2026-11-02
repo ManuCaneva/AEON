@@ -41,9 +41,35 @@ describe('PomodoroDisc', () => {
   it('compone sus ids con el prefijo de la superficie que lo hospeda', () => {
     const wrapper = mount(PomodoroDisc, { props: { testIdPrefix: 'superficie' } })
 
-    for (const sufijo of ['progress', 'disc', 'countdown', 'controls', 'reset', 'toggle', 'skip']) {
+    for (const sufijo of [
+      'progress',
+      'disc',
+      'disc-phase',
+      'countdown',
+      'controls',
+      'reset',
+      'toggle',
+      'skip',
+    ]) {
       expect(wrapper.find(`[data-testid="superficie-${sufijo}"]`).exists()).toBe(true)
     }
+  })
+
+  it('muestra Concentración o Descanso dentro del disco, arriba de la cuenta regresiva', async () => {
+    const wrapper = mount(PomodoroDisc, { props: { testIdPrefix: 'x' } })
+    const fase = wrapper.get('[data-testid="x-disc-phase"]')
+
+    expect(fase.text()).toBe('Concentración')
+    expect(fase.classes()).not.toContain('uppercase')
+    expect(fase.element.nextElementSibling?.getAttribute('data-testid')).toBe('x-countdown')
+
+    ;(pomodoroState.session as { phase: string }).phase = 'shortBreak'
+    await wrapper.vm.$nextTick()
+    expect(fase.text()).toBe('Descanso')
+
+    ;(pomodoroState.session as { phase: string }).phase = 'longBreak'
+    await wrapper.vm.$nextTick()
+    expect(fase.text()).toBe('Descanso')
   })
 
   it('los tres controles viven en el disco, en una fila con el orden [reset, toggle, skip]', () => {

@@ -53,9 +53,10 @@ describe('PomodoroWidget', () => {
     pomodoroState = createPomodoroState()
   })
 
-  it('muestra countdown y anillo, sin texto de fase, y botones reset/skip siempre visibles', () => {
+  it('muestra la fase dentro del disco, el countdown y el anillo, sin rótulo externo', () => {
     const wrapper = mount(PomodoroWidget)
 
+    expect(wrapper.get('[data-testid="pomodoro-widget-disc-phase"]').text()).toBe('Concentración')
     expect(wrapper.get('[data-testid="pomodoro-widget-countdown"]').text()).toBe('25:00')
     expect(wrapper.get('[data-testid="pomodoro-widget-progress"]').attributes('role')).toBe(
       'progressbar'
@@ -361,6 +362,34 @@ describe('PomodoroWidget', () => {
     )
     // Los controles escalan con el widget.
     expect(css).toMatch(/\.container-widget \.pomodoro-btn\s*\{[^}]*cqmin/)
+  })
+
+  it('agranda un 10% los botones del disco sin usar transformaciones', () => {
+    const css = readFileSync('src/styles/tailwind.css', 'utf-8')
+    const buttonRules = [...css.matchAll(/\.container-widget \.pomodoro-btn\s*\{([^}]*)\}/g)]
+    const base = buttonRules[0]
+    expect(base).toBeDefined()
+    expect(base![1]).toMatch(/max\(1\.925rem, 8\.8cqmin\)/)
+    expect(base![1]).not.toMatch(/transform:/)
+
+    // Las reglas base van antes de los @container (misma especificidad): si
+    // quedan después, los escalones chicos nunca ganan la cascada.
+    const firstContainer = css.indexOf('@container (max-width: 240px)')
+    expect(firstContainer).toBeGreaterThan(-1)
+    expect(css.indexOf('.container-widget .pomodoro-btn {')).toBeLessThan(firstContainer)
+    expect(css.indexOf('.container-widget .pomodoro-controls {')).toBeLessThan(firstContainer)
+
+    for (const [breakpoint, size] of [
+      ['240px', '1\\.65rem'],
+      ['170px', '1\\.375rem'],
+      ['130px', '1\\.1rem'],
+    ] as const) {
+      expect(css).toMatch(
+        new RegExp(
+          `@container \\(max-width: ${breakpoint}\\)[\\s\\S]*?\\.container-widget \\.pomodoro-btn\\s*\\{[^}]*width:\\s*max\\(${size}`
+        )
+      )
+    }
   })
 
   it('no usa colores de paleta cruda de Tailwind', () => {
