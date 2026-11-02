@@ -266,7 +266,7 @@ export const usePomodoroStore = defineStore('pomodoro', () => {
   }
 
   async function prepareAudio(): Promise<void> {
-    await player().prepareFromUserGesture()
+    await player().prepareFromUserGesture(settings.value.soundId)
   }
 
   function playTestSound(): boolean {

@@ -6,6 +6,14 @@ export type PomodoroPhase = z.infer<typeof PomodoroPhaseSchema>
 
 const positiveMinutes = z.number().int().min(1).max(1440)
 
+export const PomodoroSoundIdSchema = z.enum([
+  'bell',
+  'happy-bells',
+  'interface-back',
+  'urgent-tone',
+])
+export type PomodoroSoundId = z.infer<typeof PomodoroSoundIdSchema>
+
 export const PomodoroSettingsSchema = z.object({
   focusMinutes: positiveMinutes.default(25),
   shortBreakMinutes: positiveMinutes.default(5),
@@ -15,6 +23,9 @@ export const PomodoroSettingsSchema = z.object({
   autoStartFocus: z.boolean().default(false),
   volume: z.number().min(0).max(1).default(0.3),
   muted: z.boolean().default(false),
+  // Una configuración guardada con una alarma retirada sigue siendo válida y
+  // vuelve a la campana en vez de bloquear la carga del pomodoro.
+  soundId: PomodoroSoundIdSchema.catch('bell').default('bell'),
 })
 export type PomodoroSettings = z.infer<typeof PomodoroSettingsSchema>
 

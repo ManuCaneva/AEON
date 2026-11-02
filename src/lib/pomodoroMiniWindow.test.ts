@@ -161,6 +161,7 @@ describe('openPomodoroMiniWindow', () => {
       maxWidth: WINDOW_SIZE,
       maxHeight: WINDOW_SIZE,
       resizable: true,
+      zoomHotkeysEnabled: false,
       transparent: false,
       visible: false,
       focus: false,

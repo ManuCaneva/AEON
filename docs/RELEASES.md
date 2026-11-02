@@ -52,9 +52,8 @@ sin sección en el changelog, la release sale con auto-notas de GitHub (fallback
 
 ### Qué ve el usuario
 
-- **Antes de actualizar**: la sección "Qué hay de nuevo" del modal de actualización.
-- **Después de actualizar**: el modal "Novedades de la versión X" al abrir la app, una
-  sola vez por versión.
+- **Al abrir una versión nueva**: el modal "Novedades de la versión X", una sola vez
+  por versión. El aviso de actualización no repite las novedades.
 
 ## Reglas
 

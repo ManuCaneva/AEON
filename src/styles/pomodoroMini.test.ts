@@ -10,6 +10,12 @@ import { readFileSync } from 'node:fs'
 describe('layout de la mascota de una sola ventana', () => {
   const css = readFileSync('src/styles/tailwind.css', 'utf-8')
 
+  it('desactiva el zoom táctil solo en la ventana mini', () => {
+    const rule = css.match(/html\.orb-window,\s*html\.orb-window body\s*\{([^}]*)\}/)
+    expect(rule).not.toBeNull()
+    expect(rule![1]).toMatch(/touch-action:\s*none/)
+  })
+
   it('la raíz no recorta el contenido', () => {
     const rule = css.match(/\.pomodoro-mini-orb\s*\{([^}]*)\}/)
     expect(rule).not.toBeNull()
@@ -42,7 +48,7 @@ describe('layout de la mascota de una sola ventana', () => {
 
     const countdown = css.match(/\.pomodoro-mini-orb-area \.pomodoro-countdown\s*\{([^}]*)\}/)
     expect(countdown).not.toBeNull()
-    expect(countdown![1]).toMatch(/font-size:\s*calc\(12px \* var\(--text-scale\)\)/)
+    expect(countdown![1]).toMatch(/font-size:\s*calc\(14px \* var\(--text-scale\)\)/)
 
     const controls = css.match(/\.pomodoro-mini-orb-area \.pomodoro-controls\s*\{([^}]*)\}/)
     expect(controls).not.toBeNull()
@@ -50,8 +56,20 @@ describe('layout de la mascota de una sola ventana', () => {
 
     const button = css.match(/\.pomodoro-mini-orb-area \.pomodoro-btn\s*\{([^}]*)\}/)
     expect(button).not.toBeNull()
-    expect(button![1]).toMatch(/width:\s*16px/)
-    expect(button![1]).toMatch(/height:\s*16px/)
+    expect(button![1]).toMatch(/width:\s*15px/)
+    expect(button![1]).toMatch(/height:\s*15px/)
+
+    const icon = css.match(/\.pomodoro-mini-orb-area \.pomodoro-btn svg\s*\{([^}]*)\}/)
+    expect(icon).not.toBeNull()
+    expect(icon![1]).toMatch(/width:\s*11px/)
+    expect(icon![1]).toMatch(/height:\s*11px/)
+
+    const phase = css.match(/\.pomodoro-mini-orb-area \.pomodoro-disc-phase\s*\{([^}]*)\}/)
+    expect(phase).not.toBeNull()
+    expect(phase![1]).toMatch(/font-size:\s*calc\(9px \* var\(--text-scale\)\)/)
+    // En 100 px la etiqueta en mayúsculas se cruza con el anillo; con solo la
+    // primera mayúscula entra completa incluso con la escala de texto grande.
+    expect(phase![1]).toMatch(/text-transform:\s*none/)
   })
 
   it('el disco no se compone en una capa que tape el anillo', () => {

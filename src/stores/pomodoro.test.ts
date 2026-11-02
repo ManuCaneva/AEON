@@ -313,7 +313,17 @@ describe('pomodoro store', () => {
     expect(playBreakEndChime).toHaveBeenCalledTimes(1)
   })
 
-  it('previews the focus chime through playTestSound even when muted', async () => {
+  it('prepara el audio con la alarma elegida', async () => {
+    const store = usePomodoroStore()
+    await store.load()
+    await store.saveSettings({ soundId: 'urgent-tone' })
+
+    await store.prepareAudio()
+
+    expect(prepareFromUserGesture).toHaveBeenCalledWith('urgent-tone')
+  })
+
+  it('previews the selected alarm through playTestSound even when muted', async () => {
     const store = usePomodoroStore()
     await store.load()
     await store.saveSettings({ muted: true })

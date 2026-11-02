@@ -55,6 +55,15 @@ export async function applyPomodoroMiniWindowShape(pillReveal = 0): Promise<void
   })
 }
 
+/**
+ * En Linux, WebKitGTK procesa el pellizco del touchpad antes de JavaScript.
+ * Este comando desactiva ese gesto nativo; en el resto de las plataformas es
+ * un no-op y queda el bloqueo de eventos del composable.
+ */
+export async function disablePomodoroMiniZoom(): Promise<void> {
+  await invoke('disable_pomodoro_mini_zoom')
+}
+
 /** GTK informa cruces que WebKit pierde al usar una región de entrada. */
 export async function listenPomodoroMiniPointer(
   handler: (inside: boolean) => void
@@ -168,6 +177,7 @@ async function showPomodoroMiniWindow(
     maxWidth: rect.width,
     maxHeight: rect.height,
     resizable: true,
+    zoomHotkeysEnabled: false,
     alwaysOnTop: true,
     decorations: false,
     transparent: false,

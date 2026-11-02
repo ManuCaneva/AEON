@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PomodoroSettingsPanel from './PomodoroSettingsPanel.vue'
 import { hasRawPaletteColor } from '@/test/colorGuard'
+import type { PomodoroSettings } from '@/schemas/pomodoro'
 
 const mockPrepareAudio = vi.fn().mockResolvedValue(undefined)
 const mockPlayTestSound = vi.fn(() => true)
@@ -19,7 +20,7 @@ afterEach(() => {
   mockPlayTestSound.mockReturnValue(true)
 })
 
-const settings = {
+const settings: PomodoroSettings = {
   focusMinutes: 25,
   shortBreakMinutes: 5,
   longBreakMinutes: 15,
@@ -28,6 +29,7 @@ const settings = {
   autoStartFocus: false,
   volume: 1,
   muted: false,
+  soundId: 'bell',
 }
 
 describe('PomodoroSettingsPanel', () => {
@@ -62,6 +64,30 @@ describe('PomodoroSettingsPanel', () => {
       [{ volume: 0.4 }],
       [{ muted: true }],
     ])
+  })
+
+  it('elige la alarma en un desplegable sobre el volumen y emite el id elegido', async () => {
+    const wrapper = mount(PomodoroSettingsPanel, { props: { settings } })
+    const selector = wrapper.get('[data-testid="setting-alarm"]')
+
+    expect(wrapper.get('label[for="setting-alarm"]').text()).toBe('Alarma')
+    expect((selector.element as HTMLSelectElement).value).toBe('bell')
+    expect(selector.findAll('option').map((option) => option.text())).toEqual([
+      'Campana',
+      'Campanas alegres',
+      'Interfaz',
+      'Tono urgente',
+    ])
+    expect(
+      wrapper
+        .get('[data-testid="setting-alarm"]')
+        .element.compareDocumentPosition(wrapper.get('[data-testid="setting-volume"]').element) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    await selector.setValue('urgent-tone')
+
+    expect(wrapper.emitted('update:settings')).toEqual([[{ soundId: 'urgent-tone' }]])
   })
 
   it('does not emit invalid numeric settings', async () => {

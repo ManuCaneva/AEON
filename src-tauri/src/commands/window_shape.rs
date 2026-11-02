@@ -44,6 +44,38 @@ pub fn watch_pomodoro_mini_pointer(_window: tauri::Window) -> Result<(), String>
     Ok(())
 }
 
+/// Desactiva el gesto de zoom nativo que WebKitGTK atiende antes del DOM.
+///
+/// GtkGestureZoom vive como dato privado del WebView y no expone una API para
+/// desconectarlo. Se destruyen únicamente sus signal handlers: liberar el dato
+/// privado dejaría un puntero colgante dentro de WebKit y cerraría la app.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub fn disable_pomodoro_mini_zoom(window: tauri::WebviewWindow) -> Result<(), String> {
+    use gtk::prelude::*;
+    use webkit2gtk::WebViewExt;
+
+    window
+        .with_webview(|webview| {
+            let view = webview.inner();
+            view.set_zoom_level(1.0);
+            // SAFETY: el dato pertenece al WebView y sigue vivo. Solo se
+            // destruyen sus handlers; nunca se libera ni se reemplaza.
+            unsafe {
+                if let Some(gesture) = view.data::<gobject_sys::GObject>("wk-view-zoom-gesture") {
+                    gobject_sys::g_signal_handlers_destroy(gesture.as_ptr().cast());
+                }
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn disable_pomodoro_mini_zoom(_window: tauri::WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
+
 /// Rectángulo en píxeles lógicos, relativo a la ventana.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct ShapeRect {

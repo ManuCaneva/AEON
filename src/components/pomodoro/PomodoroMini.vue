@@ -10,12 +10,14 @@ import {
 import { closePomodoroMiniWindow, startDraggingPomodoroMiniWindow } from '@/lib/pomodoroMiniWindow'
 import { showPomodoroInMainWindow } from '@/lib/pomodoroMainWindow'
 import { usePomodoroMiniPill } from '@/composables/usePomodoroMiniPill'
+import { usePomodoroMiniZoomLock } from '@/composables/usePomodoroMiniZoomLock'
 
 /**
  * La mascota del pomodoro: disco y pastilla viven en la **misma ventana**, así
  * el arrastre nativo mueve las dos piezas en lockstep. Solo la máscara de la
  * pastilla cambia al entrar/salir; la ventana nunca cambia de tamaño.
  */
+usePomodoroMiniZoomLock()
 const { visible: pillVisible, onEnter, onLeave, onFocusIn, onFocusOut } = usePomodoroMiniPill()
 
 /** El disco arrastra la ventana; los botones del temporizador se quedan clickeables. */
