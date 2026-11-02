@@ -204,7 +204,7 @@ describe('PomodoroMini', () => {
   it('usa un anillo más grueso para que el borde se vea en el disco chico', () => {
     const wrapper = montar()
 
-    expect(wrapper.get('[data-testid="disc-stub"]').attributes('ring-width')).toBe('4.8')
+    expect(wrapper.get('[data-testid="disc-stub"]').attributes('ring-width')).toBe('5.52')
   })
 
   it('inicia el arrastre nativo desde el disco sin ocultar la pastilla', async () => {

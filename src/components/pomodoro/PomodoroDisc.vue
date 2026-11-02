@@ -46,7 +46,7 @@ function testId(suffix: string): string {
     >
       <span
         :data-testid="testId('disc-phase')"
-        class="pomodoro-disc-phase text-caption font-medium uppercase text-ink-subtle"
+        class="pomodoro-disc-phase text-caption font-medium text-ink-subtle"
       >
         {{ phaseLabel }}
       </span>

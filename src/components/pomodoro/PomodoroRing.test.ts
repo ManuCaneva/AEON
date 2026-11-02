@@ -78,9 +78,9 @@ describe('PomodoroRing', () => {
 
   it('el grosor del anillo se adapta al radio y deja margen para el antialias del borde', () => {
     const fino = mountRing()
-    expect(fino.get('.pomodoro-ring-track').attributes('r')).toBe('48')
+    expect(fino.get('.pomodoro-ring-track').attributes('r')).toBe('47.775')
     expect(fino.get('.pomodoro-ring-root').attributes('style')).toContain(
-      '--pomodoro-ring-width: 3'
+      '--pomodoro-ring-width: 3.45'
     )
 
     const grueso = mountRing({ ringWidth: 4 })
@@ -90,9 +90,9 @@ describe('PomodoroRing', () => {
       '--pomodoro-ring-width: 4'
     )
 
-    const mini = mountRing({ ringWidth: 4.8 })
-    expect(mini.get('.pomodoro-ring-track').attributes('r')).toBe('47.1')
-    expect(mini.get('.pomodoro-ring-progress').attributes('r')).toBe('47.1')
+    const mini = mountRing({ ringWidth: 5.52 })
+    expect(mini.get('.pomodoro-ring-track').attributes('r')).toBe('46.74')
+    expect(mini.get('.pomodoro-ring-progress').attributes('r')).toBe('46.74')
   })
 
   it('recibe el centro por slot y no usa colores de paleta crudos', () => {

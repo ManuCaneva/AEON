@@ -14,7 +14,7 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-const DEFAULT_RING_WIDTH = 3
+const DEFAULT_RING_WIDTH = 3.45
 /**
  * Medio píxel de aire entre el borde exterior del trazo y el viewBox. Sin ese
  * margen el antialias del SVG se recorta justo en el límite y el círculo se ve

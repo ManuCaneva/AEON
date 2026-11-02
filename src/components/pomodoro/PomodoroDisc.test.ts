@@ -60,6 +60,7 @@ describe('PomodoroDisc', () => {
     const fase = wrapper.get('[data-testid="x-disc-phase"]')
 
     expect(fase.text()).toBe('Concentración')
+    expect(fase.classes()).not.toContain('uppercase')
     expect(fase.element.nextElementSibling?.getAttribute('data-testid')).toBe('x-countdown')
 
     ;(pomodoroState.session as { phase: string }).phase = 'shortBreak'
