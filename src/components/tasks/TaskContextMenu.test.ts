@@ -5,8 +5,6 @@ import TaskContextMenu from './TaskContextMenu.vue'
 import type { Task } from '@/schemas/tasks'
 
 const tasksMock = {
-  archiveTask: vi.fn().mockResolvedValue(undefined),
-  restoreTask: vi.fn().mockResolvedValue(undefined),
   deleteTaskWithEvent: vi.fn().mockResolvedValue(undefined),
 }
 const uiMock = {
@@ -60,15 +58,18 @@ describe('TaskContextMenu', () => {
     return wrapper
   }
 
-  it('ofrece editar y archivar', () => {
+  it('ofrece editar y eliminar, sin archivar', () => {
     mountMenu()
+    const menu = document.body.querySelector("[role='menu']")
     expect(q('task-edit-button')).not.toBeNull()
-    expect(q('task-archive-button')?.textContent).toContain('Archivar')
+    expect(q('task-delete-button')).not.toBeNull()
+    expect(menu?.textContent).not.toContain('Archivar')
+    expect(menu?.textContent).not.toContain('Restaurar')
   })
 
   it('se apoya en el menú compartido de entidad con evento', () => {
-    const wrapper = mountMenu()
-    expect(wrapper.findComponent({ name: 'EntityEventContextMenu' }).exists()).toBe(true)
+    const w = mountMenu()
+    expect(w.findComponent({ name: 'EntityEventContextMenu' }).exists()).toBe(true)
   })
 
   it('editar abre el formulario de edición', () => {
@@ -77,25 +78,30 @@ describe('TaskContextMenu', () => {
     expect(uiMock.openEditTask).toHaveBeenCalledWith('task-1')
   })
 
-  it('archivar archiva la tarea activa', async () => {
+  it('sin vínculo, eliminar pide confirmación y borra solo la tarea', async () => {
     mountMenu()
-    q('task-archive-button')!.click()
+    q('task-delete-button')!.click()
     await flushPromises()
-    expect(tasksMock.archiveTask).toHaveBeenCalledWith('task-1')
-    expect(tasksMock.restoreTask).not.toHaveBeenCalled()
+
+    expect(q('task-delete-confirm')).not.toBeNull()
+    expect(tasksMock.deleteTaskWithEvent).not.toHaveBeenCalled()
+
+    q('task-delete-confirm-yes')!.click()
+    await flushPromises()
+    expect(tasksMock.deleteTaskWithEvent).toHaveBeenCalledWith('task-1', false)
+    expect(uiMock.closeTaskMenu).toHaveBeenCalled()
   })
 
-  it('una tarea archivada se restaura', async () => {
-    mountMenu(makeTask({ archived_at: '2026-01-02T00:00:00Z' }))
-    expect(q('task-archive-button')?.textContent).toContain('Restaurar')
-    q('task-archive-button')!.click()
-    await flushPromises()
-    expect(tasksMock.restoreTask).toHaveBeenCalledWith('task-1')
-  })
-
-  it('sin vínculo a evento no ofrece eliminar (las tareas se archivan)', () => {
+  it('sin vínculo, cancelar no borra', async () => {
     mountMenu()
-    expect(q('task-delete-button')).toBeNull()
+    q('task-delete-button')!.click()
+    await flushPromises()
+    q('task-delete-confirm-no')!.click()
+    await flushPromises()
+
+    expect(tasksMock.deleteTaskWithEvent).not.toHaveBeenCalled()
+    expect(q('task-delete-confirm')).toBeNull()
+    expect(q('task-delete-button')).not.toBeNull()
   })
 
   it('con vínculo ofrece eliminar con las dos salidas', async () => {

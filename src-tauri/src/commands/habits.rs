@@ -212,29 +212,10 @@ pub fn update_habit(db: State<'_, Db>, input: UpdateHabitInput) -> Result<HabitR
 }
 
 #[tauri::command]
-pub fn archive_habit(db: State<'_, Db>, id: String, archived_at: String) -> Result<(), String> {
+pub fn delete_habit(db: State<'_, Db>, id: String) -> Result<(), String> {
     let result: DbResult<()> = (|| {
         let conn = db.conn.lock().unwrap();
-        let n = conn.execute(
-            "UPDATE habits SET archived_at = ?2, updated_at = ?2 WHERE id = ?1",
-            params![id, archived_at],
-        )?;
-        if n == 0 {
-            return Err(DbError::NotFound);
-        }
-        Ok(())
-    })();
-    result.to_str_err()
-}
-
-#[tauri::command]
-pub fn restore_habit(db: State<'_, Db>, id: String, updated_at: String) -> Result<(), String> {
-    let result: DbResult<()> = (|| {
-        let conn = db.conn.lock().unwrap();
-        let n = conn.execute(
-            "UPDATE habits SET archived_at = NULL, updated_at = ?2 WHERE id = ?1",
-            params![id, updated_at],
-        )?;
+        let n = conn.execute("DELETE FROM habits WHERE id = ?1", params![id])?;
         if n == 0 {
             return Err(DbError::NotFound);
         }

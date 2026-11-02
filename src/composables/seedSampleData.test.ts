@@ -11,7 +11,6 @@ const dbMocks = vi.hoisted(() => ({
   listLogsInRange: vi.fn(),
   createTask: vi.fn(),
   listTasks: vi.fn(),
-  archiveTask: vi.fn(),
   createNote: vi.fn(),
   listNotes: vi.fn(),
   listExams: vi.fn(),
@@ -64,9 +63,6 @@ describe('seedSampleDataIfFirstRun — primera ejecución', () => {
     expect(dbMocks.createScheduleBlock).toHaveBeenCalledTimes(expected.scheduleBlocks.length)
     const slotCount = expected.scheduleBlocks.reduce((n, b) => n + b.slots.length, 0)
     expect(dbMocks.createScheduleSlot).toHaveBeenCalledTimes(slotCount)
-    expect(dbMocks.archiveTask).toHaveBeenCalledTimes(
-      expected.tasks.filter((t) => t.draft.status === 'done').length
-    )
     expect(dbMocks.saveConfig).toHaveBeenCalledWith(SEED_MARKER_KEY, expect.any(String))
   })
 

@@ -25,6 +25,9 @@ const tasksMock = {
   get pendingTasks() {
     return tasksState.value.filter((t) => t.status !== 'done')
   },
+  get doneTasks() {
+    return tasksState.value.filter((t) => t.status === 'done')
+  },
   colorFor: (t: { color: string }) => t.color,
   blockFor: () => undefined,
 }
@@ -132,11 +135,11 @@ describe('TasksListView', () => {
     expect(wrapper.findAllComponents({ name: 'TaskCard' })).toHaveLength(2)
   })
 
-  it('no renderiza tareas done', () => {
+  it('muestra las tareas terminadas al final de la sección', () => {
     tasksState.value = [
       {
         id: 'task-1',
-        title: 'Task 1',
+        title: 'Pendiente A',
         description: null,
         color: '#ff0000',
         status: 'todo',
@@ -148,7 +151,7 @@ describe('TasksListView', () => {
       },
       {
         id: 'task-2',
-        title: 'Task 2',
+        title: 'Terminada B',
         description: null,
         color: '#00ff00',
         status: 'done',
@@ -158,9 +161,40 @@ describe('TasksListView', () => {
         steps: [],
         archived_at: null,
       },
+      {
+        id: 'task-3',
+        title: 'Pendiente C',
+        description: null,
+        color: '#0000ff',
+        status: 'doing',
+        due_date: null,
+        block_id: null,
+        event_link: null,
+        steps: [],
+        archived_at: null,
+      },
+      {
+        id: 'task-4',
+        title: 'Terminada D',
+        description: null,
+        color: '#ffff00',
+        status: 'done',
+        due_date: null,
+        block_id: null,
+        event_link: null,
+        steps: [],
+        archived_at: null,
+      },
     ]
     const wrapper = mount(TasksListView)
-    expect(wrapper.findAllComponents({ name: 'TaskCard' })).toHaveLength(1)
+    const texts = wrapper.findAll('[data-testid="task-card"]').map((c) => c.text())
+    expect(texts).toHaveLength(4)
+
+    const at = (title: string) => texts.findIndex((t) => t.includes(title))
+    // Primero las pendientes en su orden, y recién al final las terminadas.
+    expect(at('Pendiente A')).toBeLessThan(at('Pendiente C'))
+    expect(at('Pendiente C')).toBeLessThan(at('Terminada B'))
+    expect(at('Terminada B')).toBeLessThan(at('Terminada D'))
   })
 
   it('renderiza NewTaskCard', () => {

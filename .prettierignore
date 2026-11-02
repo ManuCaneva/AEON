@@ -6,6 +6,7 @@ src-tauri/target/
 *.sql
 package-lock.json
 index.html
+docs/CHANGELOG.md
 docs/ARCHITECTURE.md
 docs/DASHBOARD.md
 docs/DESIGN.md

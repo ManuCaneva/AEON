@@ -46,7 +46,7 @@ const TAURI_CONF_PATH = resolve(root, 'src-tauri/tauri.conf.json')
 const AI_URL =
   process.env.RELEASE_NOTES_API ??
   'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
-const AI_MODEL = process.env.RELEASE_NOTES_MODEL ?? 'gemini-2.5-flash'
+const AI_MODEL = process.env.RELEASE_NOTES_MODEL ?? 'gemini-3.8-flash'
 
 function readVersion() {
   return JSON.parse(readFileSync(TAURI_CONF_PATH, 'utf8')).version

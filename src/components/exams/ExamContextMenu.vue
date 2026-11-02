@@ -41,8 +41,6 @@ async function handleDeleteWithEvent() {
   <EntityEventContextMenu
     :entity-id="examId"
     trigger-data-attr="data-exam-menu-trigger"
-    :show-archive="false"
-    :is-archived="false"
     :show-delete="true"
     :has-event-link="hasEventLink"
     :can-delete-without-link="true"

@@ -28,6 +28,35 @@ fn record_versions(conn: &Connection, through: i64) {
     }
 }
 
+#[test]
+fn migration_015_restores_archived_rows_and_skips_missing_tables() {
+    let conn = Connection::open_in_memory().expect("open in-memory database");
+    conn.execute_batch(
+        "CREATE TABLE habits (id TEXT PRIMARY KEY, archived_at TEXT);
+         CREATE TABLE tasks (id TEXT PRIMARY KEY, archived_at TEXT);
+         INSERT INTO habits VALUES ('habit', '2026-01-01');
+         INSERT INTO tasks VALUES ('task', '2026-01-01');",
+    )
+    .expect("create partial schema with archived rows");
+
+    Db::run_migration_015(&conn).expect("restore rows without requiring every table");
+
+    let habit_archived_at: Option<String> = conn
+        .query_row(
+            "SELECT archived_at FROM habits WHERE id='habit'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read restored habit");
+    let task_archived_at: Option<String> = conn
+        .query_row("SELECT archived_at FROM tasks WHERE id='task'", [], |row| {
+            row.get(0)
+        })
+        .expect("read restored task");
+    assert_eq!(habit_archived_at, None);
+    assert_eq!(task_archived_at, None);
+}
+
 fn legacy_db() -> (Db, String, String, String) {
     let conn = Connection::open_in_memory().expect("open in-memory database");
     conn.execute_batch(include_str!("migrations/001_init.sql"))

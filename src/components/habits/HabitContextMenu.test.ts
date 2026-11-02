@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import HabitContextMenu from './HabitContextMenu.vue'
 
 const habitsMock = {
-  archiveHabit: vi.fn().mockResolvedValue(undefined),
-  restoreHabit: vi.fn().mockResolvedValue(undefined),
+  deleteHabit: vi.fn().mockResolvedValue(undefined),
 }
 const uiMock = {
   openEdit: vi.fn(),
@@ -31,37 +30,71 @@ const mockHabit = {
   archived_at: null,
 }
 
+function q(testid: string): HTMLElement | null {
+  return document.body.querySelector(`[data-testid="${testid}"]`)
+}
+
 describe('HabitContextMenu', () => {
+  let wrapper: VueWrapper
+
   beforeEach(() => {
     setActivePinia(createPinia())
-    habitsMock.archiveHabit.mockClear()
-    habitsMock.restoreHabit.mockClear()
+    habitsMock.deleteHabit.mockClear()
     uiMock.openEdit.mockClear()
     uiMock.closeMenu.mockClear()
   })
 
-  it('renders via EntityContextMenu', () => {
-    const wrapper = mount(HabitContextMenu, {
+  afterEach(() => {
+    wrapper?.unmount()
+  })
+
+  function mountMenu() {
+    wrapper = mount(HabitContextMenu, {
       props: { habit: mockHabit },
+      attachTo: document.body,
     })
-    expect(wrapper.findComponent({ name: 'EntityContextMenu' }).exists()).toBe(true)
+    return wrapper
+  }
+
+  it('renders via EntityContextMenu', () => {
+    const w = mountMenu()
+    expect(w.findComponent({ name: 'EntityContextMenu' }).exists()).toBe(true)
   })
 
   it('passes correct props to EntityContextMenu', () => {
-    const wrapper = mount(HabitContextMenu, {
-      props: { habit: mockHabit },
-    })
-    const ctx = wrapper.findComponent({ name: 'EntityContextMenu' })
+    const w = mountMenu()
+    const ctx = w.findComponent({ name: 'EntityContextMenu' })
     expect(ctx.props('entityId')).toBe('habit-1')
-    expect(ctx.props('isArchived')).toBe(false)
     expect(ctx.props('triggerDataAttr')).toBe('data-habit-menu-trigger')
+    expect(ctx.props('confirmTitle')).toBe('¿Eliminar hábito?')
   })
 
-  it('passes isArchived=true when habit is archived', () => {
-    const wrapper = mount(HabitContextMenu, {
-      props: { habit: { ...mockHabit, archived_at: '2026-01-01T00:00:00Z' } },
-    })
-    const ctx = wrapper.findComponent({ name: 'EntityContextMenu' })
-    expect(ctx.props('isArchived')).toBe(true)
+  it('Eliminar pide confirmación y recién ahí borra el hábito', async () => {
+    mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    expect(habitsMock.deleteHabit).not.toHaveBeenCalled()
+
+    q('entity-delete-confirm-yes')!.click()
+    await flushPromises()
+    expect(habitsMock.deleteHabit).toHaveBeenCalledWith('habit-1')
+    expect(uiMock.closeMenu).toHaveBeenCalled()
+  })
+
+  it('cancelar no borra el hábito', async () => {
+    mountMenu()
+    q('entity-delete-button')!.click()
+    await flushPromises()
+    q('entity-delete-confirm-no')!.click()
+    await flushPromises()
+    expect(habitsMock.deleteHabit).not.toHaveBeenCalled()
+    expect(uiMock.closeMenu).not.toHaveBeenCalled()
+  })
+
+  it('editar abre el formulario de edición', () => {
+    mountMenu()
+    const buttons = Array.from(document.body.querySelectorAll('button'))
+    buttons.find((btn) => btn.textContent?.includes('Editar'))!.click()
+    expect(uiMock.openEdit).toHaveBeenCalledWith('habit-1')
   })
 })

@@ -120,7 +120,7 @@ impl Db {
         )
         .map_err(|e| DbError::Migration(format!("schema_version: {e}")))?;
 
-        let migrations: [(i64, &str, &str); 14] = [
+        let migrations: [(i64, &str, &str); 15] = [
             (1, "001_init", include_str!("migrations/001_init.sql")),
             (2, "002_config", include_str!("migrations/002_config.sql")),
             (
@@ -151,6 +151,7 @@ impl Db {
                 include_str!("migrations/013_task_block_event.sql"),
             ),
             (14, "014_goals_direction", ""), // Migración 014 se ejecuta en Rust (run_migration_014)
+            (15, "015_remove_archiving", ""),
         ];
 
         for (version, name, sql) in &migrations {
@@ -205,6 +206,12 @@ impl Db {
                     )?;
                 } else if *version == 14 {
                     Self::run_migration_014(&conn)?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+                        params![version, now_iso8601()],
+                    )?;
+                } else if *version == 15 {
+                    Self::run_migration_015(&conn)?;
                     conn.execute(
                         "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
                         params![version, now_iso8601()],
@@ -615,6 +622,35 @@ impl Db {
             )));
         }
         result
+    }
+
+    /// Migration 015: restores previously archived entities now that the UI
+    /// no longer exposes an archive view. Partial schemas used by older tests
+    /// may omit one or more entity tables, so inspect each table and column.
+    fn run_migration_015(conn: &Connection) -> DbResult<()> {
+        for table in ["habits", "goals", "tasks"] {
+            let table_exists: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |row| row.get(0),
+            )?;
+            if !table_exists {
+                continue;
+            }
+
+            let has_archived_at: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info(?1) WHERE name='archived_at')",
+                [table],
+                |row| row.get(0),
+            )?;
+            if has_archived_at {
+                conn.execute(&format!("UPDATE {table} SET archived_at = NULL"), [])
+                    .map_err(|error| {
+                        DbError::Migration(format!("015: restaurar {table}: {error}"))
+                    })?;
+            }
+        }
+        Ok(())
     }
 
     fn ensure_schedule_blocks_schema(conn: &Connection, migration: &str) -> DbResult<()> {

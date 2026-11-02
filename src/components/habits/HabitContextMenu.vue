@@ -13,13 +13,9 @@ function handleEdit() {
   ui.openEdit(props.habit.id)
 }
 
-async function handleArchiveToggle() {
+async function handleDelete() {
   try {
-    if (props.habit.archived_at) {
-      await habits.restoreHabit(props.habit.id)
-    } else {
-      await habits.archiveHabit(props.habit.id)
-    }
+    await habits.deleteHabit(props.habit.id)
   } finally {
     ui.closeMenu()
   }
@@ -29,10 +25,10 @@ async function handleArchiveToggle() {
 <template>
   <EntityContextMenu
     :entity-id="habit.id"
-    :is-archived="!!habit.archived_at"
     trigger-data-attr="data-habit-menu-trigger"
+    confirm-title="¿Eliminar hábito?"
     @edit="handleEdit"
-    @archive-toggle="handleArchiveToggle"
+    @delete="handleDelete"
     @close="ui.closeMenu()"
   />
 </template>

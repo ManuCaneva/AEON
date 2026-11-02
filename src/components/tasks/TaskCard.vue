@@ -64,7 +64,11 @@ function handleToggleStep(stepId: string) {
 }
 
 function handleComplete() {
-  store.completeTask(props.task.id)
+  if (props.task.status === 'done') {
+    store.uncompleteTask(props.task.id)
+  } else {
+    store.completeTask(props.task.id)
+  }
 }
 </script>
 
@@ -84,7 +88,12 @@ function handleComplete() {
 
       <div class="min-w-0 flex-1 cursor-pointer" data-testid="task-card-body" @click="toggleExpand">
         <div class="mb-1 flex items-center gap-2">
-          <Text as="div" variant="body" weight="500" class="truncate">
+          <Text
+            as="div"
+            variant="body"
+            weight="500"
+            :class="['truncate', task.status === 'done' && 'text-ink-muted line-through']"
+          >
             {{ task.title }}
           </Text>
           <button
@@ -186,7 +195,15 @@ function handleComplete() {
       <div class="flex shrink-0 items-center">
         <button
           data-testid="task-complete-btn"
-          class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-hairline-strong bg-surface-1 text-transparent transition-all duration-150 hover:border-accent-green hover:bg-accent-green-tint hover:text-accent-green"
+          type="button"
+          :aria-pressed="task.status === 'done'"
+          :aria-label="task.status === 'done' ? 'Desmarcar tarea' : 'Completar tarea'"
+          :class="[
+            'flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border transition-all duration-150',
+            task.status === 'done'
+              ? 'border-accent-green bg-accent-green-tint text-accent-green'
+              : 'border-hairline-strong bg-surface-1 text-transparent hover:border-accent-green hover:bg-accent-green-tint hover:text-accent-green',
+          ]"
           @click.stop="handleComplete"
         >
           <Check :size="14" stroke-width="3" />

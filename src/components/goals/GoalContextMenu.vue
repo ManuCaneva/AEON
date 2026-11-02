@@ -13,13 +13,9 @@ function handleEdit() {
   ui.openEditGoal(props.goal.id)
 }
 
-async function handleArchiveToggle() {
+async function handleDelete() {
   try {
-    if (props.goal.archived_at) {
-      await goals.restoreGoal(props.goal.id)
-    } else {
-      await goals.archiveGoal(props.goal.id)
-    }
+    await goals.deleteGoal(props.goal.id)
   } finally {
     ui.closeGoalMenu()
   }
@@ -29,10 +25,10 @@ async function handleArchiveToggle() {
 <template>
   <EntityContextMenu
     :entity-id="goal.id"
-    :is-archived="!!goal.archived_at"
     trigger-data-attr="data-goal-menu-trigger"
+    confirm-title="¿Eliminar objetivo?"
     @edit="handleEdit"
-    @archive-toggle="handleArchiveToggle"
+    @delete="handleDelete"
     @close="ui.closeGoalMenu()"
   />
 </template>

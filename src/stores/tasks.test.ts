@@ -11,8 +11,6 @@ vi.mock('@/lib/db', () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
   deleteTask: vi.fn().mockResolvedValue(undefined),
-  archiveTask: vi.fn().mockResolvedValue(undefined),
-  restoreTask: vi.fn().mockResolvedValue(undefined),
 }))
 
 // El store de tareas orquesta el calendario: se mockea entero para no tocar
@@ -624,121 +622,30 @@ describe('deadlineProgress', () => {
   })
 })
 
-describe('tasks store - archiveTask', () => {
+describe('tasks store - doneTasks', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
-  it('should call db.archiveTask and set archived_at on the task', async () => {
-    const store = useTasksStore()
+  function task(id: string, status: 'todo' | 'doing' | 'done') {
     const now = new Date().toISOString()
-    const taskId = '11111111-1111-1111-1111-111111111111'
+    return makeTask({ id, status, created_at: now, updated_at: now, archived_at: null })
+  }
 
+  it('pendingTasks son las no terminadas, doneTasks las terminadas', () => {
+    const store = useTasksStore()
     store.tasks = [
-      {
-        id: taskId,
-        title: 'To archive',
-        description: null,
-        color: '#5e6ad2',
-        status: 'todo',
-        due_date: null,
-        block_id: null,
-        event_link: null,
-        steps: [],
-        sort_order: 0,
-        created_at: now,
-        updated_at: now,
-        archived_at: null,
-      },
+      task('11111111-1111-1111-1111-111111111111', 'todo'),
+      task('22222222-2222-2222-2222-222222222222', 'done'),
+      task('33333333-3333-3333-3333-333333333333', 'doing'),
     ]
 
-    await store.archiveTask(taskId)
-
-    expect(db.archiveTask).toHaveBeenCalledTimes(1)
-    expect(db.archiveTask).toHaveBeenCalledWith(taskId, expect.any(String))
-    expect(store.tasks[0].archived_at).not.toBeNull()
-    expect(store.tasks[0].archived_at).toBeTruthy()
-  })
-
-  it('should exclude archived tasks from activeTasks', async () => {
-    const store = useTasksStore()
-    const now = new Date().toISOString()
-
-    store.tasks = [
-      {
-        id: '11111111-1111-1111-1111-111111111111',
-        title: 'Active',
-        description: null,
-        color: '#5e6ad2',
-        status: 'todo',
-        due_date: null,
-        block_id: null,
-        event_link: null,
-        steps: [],
-        sort_order: 0,
-        created_at: now,
-        updated_at: now,
-        archived_at: null,
-      },
-      {
-        id: '22222222-2222-2222-2222-222222222222',
-        title: 'Archived',
-        description: null,
-        color: '#ff0000',
-        status: 'todo',
-        due_date: null,
-        block_id: null,
-        event_link: null,
-        steps: [],
-        sort_order: 1,
-        created_at: now,
-        updated_at: now,
-        archived_at: now,
-      },
-    ]
-
-    expect(store.activeTasks).toHaveLength(1)
-    expect(store.activeTasks[0].title).toBe('Active')
-    expect(store.archivedTasks).toHaveLength(1)
-    expect(store.archivedTasks[0].title).toBe('Archived')
-  })
-})
-
-describe('tasks store - restoreTask', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    vi.clearAllMocks()
-  })
-
-  it('should call db.restoreTask and clear archived_at', async () => {
-    const store = useTasksStore()
-    const now = new Date().toISOString()
-    const taskId = '11111111-1111-1111-1111-111111111111'
-
-    store.tasks = [
-      {
-        id: taskId,
-        title: 'To restore',
-        description: null,
-        color: '#5e6ad2',
-        status: 'todo',
-        due_date: null,
-        block_id: null,
-        event_link: null,
-        steps: [],
-        sort_order: 0,
-        created_at: now,
-        updated_at: now,
-        archived_at: now,
-      },
-    ]
-
-    await store.restoreTask(taskId)
-
-    expect(db.restoreTask).toHaveBeenCalledTimes(1)
-    expect(db.restoreTask).toHaveBeenCalledWith(taskId, expect.any(String))
-    expect(store.tasks[0].archived_at).toBeNull()
+    expect(store.pendingTasks.map((t) => t.id)).toEqual([
+      '11111111-1111-1111-1111-111111111111',
+      '33333333-3333-3333-3333-333333333333',
+    ])
+    expect(store.doneTasks.map((t) => t.id)).toEqual(['22222222-2222-2222-2222-222222222222'])
   })
 })
 
@@ -748,7 +655,7 @@ describe('tasks store - completeTask / uncompleteTask', () => {
     vi.clearAllMocks()
   })
 
-  it('completeTask sets status to done and archives', async () => {
+  it('completeTask la marca done sin archivar ni ocultarla', async () => {
     const store = useTasksStore()
     const taskId = '11111111-1111-1111-1111-111111111111'
     store.tasks = [makeTask({ id: taskId, status: 'todo' as const, archived_at: null })]
@@ -773,16 +680,15 @@ describe('tasks store - completeTask / uncompleteTask', () => {
     await store.completeTask(taskId)
 
     expect(db.updateTask).toHaveBeenCalledWith(taskId, { status: 'done' }, expect.any(String))
-    expect(db.archiveTask).toHaveBeenCalledWith(taskId, expect.any(String))
     expect(store.tasks[0].status).toBe('done')
-    expect(store.tasks[0].archived_at).not.toBeNull()
+    // Sigue en la lista: la terminada se muestra al final, no desaparece.
+    expect(store.doneTasks.map((t) => t.id)).toEqual([taskId])
   })
 
-  it('uncompleteTask sets status to doing and restores', async () => {
+  it('uncompleteTask la devuelve a pendiente', async () => {
     const store = useTasksStore()
     const taskId = '11111111-1111-1111-1111-111111111111'
-    const archivedAt = new Date().toISOString()
-    store.tasks = [makeTask({ id: taskId, status: 'done' as const, archived_at: archivedAt })]
+    store.tasks = [makeTask({ id: taskId, status: 'done' as const, archived_at: null })]
 
     vi.mocked(db.updateTask).mockResolvedValue({
       id: taskId,
@@ -796,7 +702,7 @@ describe('tasks store - completeTask / uncompleteTask', () => {
       event_id: null,
       steps: '[]',
       sort_order: 0,
-      created_at: archivedAt,
+      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       archived_at: null,
     })
@@ -804,9 +710,9 @@ describe('tasks store - completeTask / uncompleteTask', () => {
     await store.uncompleteTask(taskId)
 
     expect(db.updateTask).toHaveBeenCalledWith(taskId, { status: 'doing' }, expect.any(String))
-    expect(db.restoreTask).toHaveBeenCalledWith(taskId, expect.any(String))
     expect(store.tasks[0].status).toBe('doing')
-    expect(store.tasks[0].archived_at).toBeNull()
+    expect(store.pendingTasks.map((t) => t.id)).toEqual([taskId])
+    expect(store.doneTasks).toHaveLength(0)
   })
 })
 
@@ -855,13 +761,11 @@ describe('tasks store - toggleStep (no auto-complete)', () => {
     expect(store.tasks[0].steps[0].done).toBe(true)
     expect(store.tasks[0].status).toBe('todo')
     expect(store.tasks[0].archived_at).toBeNull()
-    expect(db.archiveTask).not.toHaveBeenCalled()
 
     await store.toggleStep(taskId, step2)
     expect(store.tasks[0].steps[1].done).toBe(true)
     expect(store.tasks[0].status).toBe('todo')
     expect(store.tasks[0].archived_at).toBeNull()
-    expect(db.archiveTask).not.toHaveBeenCalled()
   })
 
   it('toggleStep no revierte estado ni restaura al desmarcar paso', async () => {
@@ -903,7 +807,6 @@ describe('tasks store - toggleStep (no auto-complete)', () => {
     expect(store.tasks[0].steps[0].done).toBe(false)
     expect(store.tasks[0].status).toBe('todo')
     expect(store.tasks[0].archived_at).toBeNull()
-    expect(db.restoreTask).not.toHaveBeenCalled()
   })
 })
 

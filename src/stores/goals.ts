@@ -95,8 +95,6 @@ export const useGoalsStore = defineStore('goals', () => {
 
   const activeGoals = computed(() => goals.value.filter((g) => g.archived_at === null))
 
-  const archivedGoals = computed(() => goals.value.filter((g) => g.archived_at !== null))
-
   /** Vacía el contenido en memoria (objetivos y sus logs). Para «Borrar datos». */
   function reset(): void {
     goals.value = []
@@ -147,22 +145,6 @@ export const useGoalsStore = defineStore('goals', () => {
     await db.deleteGoal(id)
     goals.value = goals.value.filter((g) => g.id !== id)
     logs.value = logs.value.filter((l) => l.goal_id !== id)
-  }
-
-  async function archiveGoal(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.archiveGoal(id, now)
-    goals.value = goals.value.map((g) =>
-      g.id === id ? { ...g, archived_at: now, updated_at: now } : g
-    )
-  }
-
-  async function restoreGoal(id: string): Promise<void> {
-    const now = nowIsoUtc()
-    await db.restoreGoal(id, now)
-    goals.value = goals.value.map((g) =>
-      g.id === id ? { ...g, archived_at: null, updated_at: now } : g
-    )
   }
 
   /** Cola de escrituras de logs por objetivo: serializa los clicks rápidos para
@@ -251,15 +233,12 @@ export const useGoalsStore = defineStore('goals', () => {
     loading,
     lastError,
     activeGoals,
-    archivedGoals,
     reset,
     loadGoals,
     loadLogsForRange,
     createGoal,
     updateGoal,
     deleteGoal,
-    archiveGoal,
-    restoreGoal,
     incrementLog,
     setLogAmount,
     undoLog,
