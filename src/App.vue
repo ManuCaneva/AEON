@@ -37,7 +37,6 @@ const pomodoro = usePomodoroStore()
 const {
   status: updateStatus,
   progress: updateProgress,
-  notes: updateNotes,
   checkForUpdate,
   update: applyUpdate,
   dismiss: dismissUpdate,
@@ -132,7 +131,6 @@ onBeforeUnmount(() => {
       :open="updateStatus !== 'idle'"
       :status="updateStatus"
       :progress="updateProgress"
-      :notes="updateNotes"
       @update="applyUpdate"
       @dismiss="dismissUpdate"
       @dismiss-forever="dismissUpdateForever"

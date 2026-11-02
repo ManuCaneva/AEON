@@ -67,36 +67,11 @@ describe('UpdateModal', () => {
     expect(mounted.emitted('dismiss')).toBeUndefined()
   })
 
-  it('muestra las novedades de la versión cuando hay notas', () => {
-    factory({
-      notes: {
-        summary: 'Esta versión trae novedades de calendario.',
-        items: [{ category: 'nuevo', text: 'Cronograma semanal' }],
-      },
-    })
-
-    expect(dialogText()).toContain('Qué hay de nuevo')
-    expect(dialogText()).toContain('Cronograma semanal')
-    expect(document.body.querySelector('[data-note-group="nuevo"]')).not.toBeNull()
-  })
-
-  it('no muestra la sección de novedades sin notas', () => {
-    factory({ notes: null })
+  it('no repite las novedades: se muestran al reiniciar', () => {
+    factory()
 
     expect(dialogText()).not.toContain('Qué hay de nuevo')
-  })
-
-  it('no muestra novedades mientras descarga o si falló', () => {
-    const notes = {
-      summary: null,
-      items: [{ category: 'nuevo', text: 'Cronograma semanal' }],
-    }
-
-    factory({ notes, status: 'downloading' })
-    expect(dialogText()).not.toContain('Qué hay de nuevo')
-
-    factory({ notes, status: 'error' })
-    expect(dialogText()).not.toContain('Qué hay de nuevo')
+    expect(document.body.querySelector('[data-note-group]')).toBeNull()
   })
 
   it('muestra el progreso mientras descarga', () => {
