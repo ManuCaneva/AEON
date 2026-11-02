@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-11-02
+
+Pomodoro suma alarmas a elección y la mini queda más prolija; las novedades dejan de repetirse.
+
+- **Nuevo** — Ahora podés elegir entre cuatro alarmas para el Pomodoro desde Configuración.
+- **Mejorado** — El disco del Pomodoro muestra la fase y sus controles se ven más grandes.
+- **Arreglado** — La mini del Pomodoro ya no se agranda con el gesto de zoom del touchpad.
+- **Arreglado** — Las novedades de la versión se muestran una sola vez, al reiniciar la app.
+
 ## 0.6.0 — 2026-10-30
 
 Llegó la mascota flotante de Pomodoro y renovamos la barra lateral para que organices tu estudio con más comodidad.
